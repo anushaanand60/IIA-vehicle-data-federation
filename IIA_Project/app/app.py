@@ -83,7 +83,7 @@ tab_investigate, tab_plantrace, tab_matcher, tab_catalog, tab_reports = st.tabs(
 # laptop, the write lands in a file nothing queries -- so the edit "succeeds" and the decision never
 # changes. Check first and hand over the command to run on the owning machine instead of lying.
 def mutation_target(source_id: str):
-    """(can_write_here, explanation, command_to_run_on_the_owning_laptop)."""
+    """(can_write_here, explanation)."""
     import httpx as _httpx
     from urllib.parse import urlparse
     meta = get_source_catalog().get(source_id, {})
@@ -95,23 +95,22 @@ def mutation_target(source_id: str):
         engine = _httpx.get(base.rstrip("/") + "/health", timeout=3.0).json().get("dbms", "?")
     except Exception:
         pass
-    cmd = f"python scripts/mutate_source.py renew {source_id} <PLATE> --until <DD/MM/YYYY> --url <owner-url>"
     if not is_local:
-        return False, f"{source_id} runs on {host}, not this laptop.", cmd
+        return False, f"{source_id} runs on {host}, not this laptop."
     if str(engine).lower() != "sqlite":
-        return False, f"{source_id} here is {engine}, but this button writes a SQLite file.", cmd
-    return True, "", cmd
+        return False, f"{source_id} here is {engine}, but this button writes a SQLite file."
+    return True, ""
 
 
-def guarded(source_id: str, write, success_msg: str, kind=st.success):
-    ok, why, cmd = mutation_target(source_id)
+def guarded(source_id: str, write, success_msg: str, cmd: str, kind=st.success):
+    ok, why = mutation_target(source_id)
     if ok:
         write()
         kind(success_msg)
         return
     st.error(f"Not applied. {why}")
-    st.caption("A mediator cannot write into an autonomous source — the wrappers are read-only by "
-               "design. Run this on the laptop that owns it, then re-query here:")
+    st.caption("A mediator cannot write into an autonomous source — the wrappers accept only "
+               "SELECT. Run this on the laptop that owns the source, then re-query here:")
     st.code(cmd, language="bash")
 
 
@@ -137,24 +136,29 @@ with st.sidebar:
         new_exp = st.text_input("New Expiry Date (DD/MM/YYYY)", "31/12/2027")
         if st.button("Apply Renewal to INS DB", type="primary"):
             guarded("INS", lambda: live_update.renew_insurance(mut_plate, new_exp),
-                    f"Updated INS database: {mut_plate} renewed until {new_exp}! Re-run query now.")
+                    f"Updated INS database: {mut_plate} renewed until {new_exp}! Re-run query now.",
+                    f"python scripts/mutate_source.py renew INS {mut_plate} --until {new_exp} --url <owner-url>")
     elif "Expire" in mut_action:
         old_exp = st.text_input("Expired Date (DD/MM/YYYY)", "10/01/2026")
         if st.button("Expire Policy in INS DB", type="primary"):
             guarded("INS", lambda: live_update.expire_insurance(mut_plate, old_exp),
-                    f"Updated INS database: {mut_plate} expired on {old_exp}! Re-run query now.", st.warning)
+                    f"Updated INS database: {mut_plate} expired on {old_exp}! Re-run query now.",
+                    f"python scripts/mutate_source.py expire INS {mut_plate} --until {old_exp} --url <owner-url>", st.warning)
     elif "Stolen" in mut_action:
         fir = st.text_input("FIR Number", "FIR-LIVE-101/2026")
         if st.button("Log Theft in THEFT DB", type="primary"):
             guarded("THEFT", lambda: live_update.report_stolen(mut_plate, fir_no=fir),
-                    f"Inserted into THEFT database: {mut_plate} reported STOLEN! Re-run query now.", st.error)
+                    f"Inserted into THEFT database: {mut_plate} reported STOLEN! Re-run query now.",
+                    f"python scripts/mutate_source.py steal THEFT {mut_plate} --url <owner-url>", st.error)
     elif "Sighting" in mut_action:
         c_make = st.text_input("Observed Make", "Hyundai")
         c_model = st.text_input("Observed Model", "Creta")
         c_col = st.text_input("Observed Colour", "White")
         if st.button("Record Sighting in CAM DB", type="primary"):
             guarded("CAM", lambda: live_update.add_camera_sighting(mut_plate, "NH8 Toll Plaza", c_make, c_model, c_col),
-                    f"Inserted into CAM database: {mut_plate} sighted by camera! Re-run query now.", st.info)
+                    f"Inserted into CAM database: {mut_plate} sighted by camera! Re-run query now.",
+                    f"python scripts/mutate_source.py sight CAM {mut_plate} --make {c_make} --model {c_model} "
+                    f"--colour {c_col} --url <owner-url>", st.info)
     elif "Register" in mut_action:
         r_owner = st.text_input("Owner Name", "Rajesh Khanna")
         r_make = st.text_input("Make", "Maruti Suzuki")
@@ -162,7 +166,9 @@ with st.sidebar:
         r_col = st.text_input("Colour", "White")
         if st.button("Register in REG DB", type="primary"):
             guarded("REG", lambda: live_update.register_vehicle(mut_plate, r_owner, r_make, r_model, r_col),
-                    f"Inserted into REG database: {mut_plate} registered for {r_owner}! Re-run query now.")
+                    f"Inserted into REG database: {mut_plate} registered for {r_owner}! Re-run query now.",
+                    f'python scripts/mutate_source.py register REG {mut_plate} --owner "{r_owner}" --make {r_make} '
+                    f"--model {r_model} --colour {r_col} --url <owner-url>")
 
     st.markdown("---")
     st.caption("Freshness Rule: The mediator holds no source data. Edits in the source databases reflect instantly upon re-querying without ETL.")

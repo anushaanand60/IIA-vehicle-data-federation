@@ -7,6 +7,8 @@ Run this ON THE LAPTOP THAT OWNS THE SOURCE, then re-run the query on the mediat
     python scripts/mutate_source.py expire INS DL05CD9876 --until 10/06/2026
     python scripts/mutate_source.py steal  THEFT DL01AB1234
     python scripts/mutate_source.py clear  THEFT DL01AB1234
+    python scripts/mutate_source.py sight  CAM   DL01AB1234 --make Kia --model Seltos --colour Blue
+    python scripts/mutate_source.py register REG DL77NEW0001 --owner "Rajesh Khanna"
 
 Why this exists alongside live_update.py. That module writes to sources/<id>/<id>.db directly, so it
 only works when the source is the local SQLite file. Once INS is MySQL on another laptop, the
@@ -38,7 +40,12 @@ from scripts.load_source import sqlite_url  # noqa: E402  same file the wrapper 
 SOURCES = {
     "INS": ("POLICY_RECORDS", "vehicle_reg", "policy_until", "is_active"),
     "THEFT": ("CRIME_RECORDS", "vehicle_number", "reported_date", None),
+    "CAM": ("PLATE_CAPTURES", "plate_id", "captured_at", None),
+    "REG": ("VEHICLE_REGISTRATION", "registration_no", "registered_on", None),
 }
+# Which action belongs to which source, so the GUI and the CLI agree.
+ACTIONS = {"renew": "INS", "expire": "INS", "steal": "THEFT", "clear": "THEFT",
+           "sight": "CAM", "register": "REG"}
 
 
 def resolve_url(source_id: str, override: str | None) -> str:
@@ -117,23 +124,63 @@ def clear_theft(engine: Engine, plate: str) -> None:
     print(f"  removed {n} demo incident row(s) (rows loaded from CSV are left alone)")
 
 
+def sight(engine: Engine, plate: str, make: str, model: str, colour: str) -> None:
+    """Record a fresh camera capture. CAM stores the plate as OCR read it, uppercase."""
+    from datetime import datetime
+    table, col, date_col, _ = SOURCES["CAM"]
+    with engine.begin() as conn:
+        next_id = (conn.execute(text(f"SELECT MAX(capture_id) FROM {table}")).scalar() or 0) + 1
+        camera = conn.execute(text("SELECT camera_id FROM CAMERAS")).scalar()
+        conn.execute(text(
+            f"INSERT INTO {table} (capture_id, {col}, camera_id, {date_col}, observed_make, "
+            f"observed_model, observed_colour, ocr_confidence) "
+            f"VALUES (:i, :p, :c, :t, :mk, :md, :cl, 0.95)"),
+            {"i": next_id, "p": canonical(plate), "c": camera,
+             "t": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+             "mk": make, "md": model, "cl": colour})
+    print(f"  inserted capture {next_id}: seen just now as {make} {model} {colour}")
+
+
+def register(engine: Engine, plate: str, owner: str, make: str, model: str, colour: str) -> None:
+    """Register a brand-new vehicle, owner row included."""
+    table, col, date_col, _ = SOURCES["REG"]
+    from datetime import date
+    with engine.begin() as conn:
+        owner_id = (conn.execute(text("SELECT MAX(owner_id) FROM OWNERS")).scalar() or 0) + 1
+        reg_id = (conn.execute(text(f"SELECT MAX(registration_id) FROM {table}")).scalar() or 0) + 1
+        conn.execute(text("INSERT INTO OWNERS (owner_id, full_name, address_line, city) "
+                          "VALUES (:i, :n, 'Live Demo Address', 'New Delhi')"),
+                     {"i": owner_id, "n": owner})
+        conn.execute(text(
+            f"INSERT INTO {table} (registration_id, {col}, owner_id, make, model, colour, "
+            f"fuel_type, {date_col}, reg_status, rto_code) "
+            f"VALUES (:r, :p, :o, :mk, :md, :cl, 'PETROL', :d, 'ACTIVE', :rto)"),
+            {"r": reg_id, "p": canonical(plate), "o": owner_id, "mk": make, "md": model,
+             "cl": colour, "d": date.today().isoformat(), "rto": canonical(plate)[:4]})
+    print(f"  registered {canonical(plate)} to {owner} (owner {owner_id}, registration {reg_id})")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("action", choices=["show", "renew", "expire", "steal", "clear"])
-    parser.add_argument("source", help="INS or THEFT")
+    parser.add_argument("action", choices=["show", "renew", "expire", "steal", "clear",
+                                           "sight", "register"])
+    parser.add_argument("source", help=", ".join(SOURCES))
     parser.add_argument("plate")
     parser.add_argument("--until", default="31/12/2027", help="DD/MM/YYYY for renew/expire")
+    parser.add_argument("--owner", default="Rajesh Khanna", help="owner name for register")
+    parser.add_argument("--make", default="Maruti Suzuki")
+    parser.add_argument("--model", default="Swift")
+    parser.add_argument("--colour", default="White")
     parser.add_argument("--url", help="owner SQLAlchemy URL (default: <SRC>_ADMIN_URL, <SRC>_DB_URL, SQLite)")
     args = parser.parse_args(argv)
 
     source_id = args.source.upper()
     if source_id not in SOURCES:
         raise SystemExit("this tool handles " + ", ".join(SOURCES) + "; got " + source_id)
-    if args.action in ("renew", "expire") and source_id != "INS":
-        raise SystemExit(args.action + " applies to INS")
-    if args.action in ("steal", "clear") and source_id != "THEFT":
-        raise SystemExit(args.action + " applies to THEFT")
+    expected = ACTIONS.get(args.action)
+    if expected and source_id != expected:
+        raise SystemExit(args.action + " applies to " + expected + ", not " + source_id)
 
     url = resolve_url(source_id, args.url)
     print(source_id + " -> " + re.sub(r"://[^@/]+@", "://***@", url))
@@ -157,8 +204,12 @@ def main(argv: list[str] | None = None) -> int:
             expire(engine, args.plate, args.until)
         elif args.action == "steal":
             steal(engine, args.plate)
-        else:
+        elif args.action == "clear":
             clear_theft(engine, args.plate)
+        elif args.action == "sight":
+            sight(engine, args.plate, args.make, args.model, args.colour)
+        else:
+            register(engine, args.plate, args.owner, args.make, args.model, args.colour)
     except Exception as exc:
         raise SystemExit("write failed: " + type(exc).__name__ + ": " + str(exc).splitlines()[0]
                          + "\n  a read-only account cannot write - pass --url with the owner account")
