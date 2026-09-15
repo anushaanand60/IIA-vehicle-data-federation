@@ -62,6 +62,20 @@ pytest -q            # 267 passed, 3 deselected
 each source's `/schema`, so on a clone with no databases yet they fail with
 `AssertionError: None != 'plate_number'`. That is missing data, not broken code.
 
+**Run `pytest` in a shell with no `<SOURCE>_DB_URL` set,** or only after that source's real database
+is loaded. The end-to-end tests start the four wrappers in-process, and a wrapper reads its
+`<SOURCE>_DB_URL` when it is imported. So a shell where you exported `INS_DB_URL` points the test's
+INS wrapper at MySQL. If that database exists but has not been loaded yet, INS truthfully answers
+"no policy" and `DL01AB1234` decides `UNINSURED — REPORT` instead of `CLEAR`:
+
+```
+AssertionError: 'UNINSURED — REPORT' != 'CLEAR'
+: Decision mismatch for DL01AB1234
+```
+
+The mediator is working correctly there — it is reporting an empty database. Either load the real
+database, or open a fresh terminal (no env var) to run the suite against the local SQLite copies.
+
 If that is green, this machine can run the whole federation on its own before any DBMS enters the
 picture.
 
@@ -326,6 +340,9 @@ streamlit run app/app.py                   # or: python run_system.py
 | `table doesn't exist` on MySQL/Linux | table-name case | match the `CREATE TABLE` spelling exactly |
 | `--verify` shows 0 rows everywhere | CSVs missing, or wrong working directory | run from `IIA_Project/` |
 | `MH12IJ7788` shows 0 rows in REG | correct — it is the unregistered vehicle | nothing to fix |
+| `ModuleNotFoundError: No module named 'sqlalchemy'` | the venv is not active; `Activate.ps1` is often blocked by PowerShell's execution policy | call it by path: `.venv\Scripts\python.exe -m pip install -r requirements.txt`, then `.venv\Scripts\python.exe <command>` |
+| `AssertionError: 'UNINSURED — REPORT' != 'CLEAR'` in `test_e2e_groundtruth` | `INS_DB_URL` is set and that database is empty | load it, or run `pytest` from a terminal with no `*_DB_URL` set |
+| One source's tests fail only on your laptop | your `<SOURCE>_DB_URL` points at a database that exists but was never loaded | `scripts/load_source.py <SRC> --url ... --verify` |
 
 Anything else not `OK` → `NETWORK.md` section 6, which maps each status and error message to its
 cause.
