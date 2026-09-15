@@ -45,7 +45,8 @@ PLATE_COLUMN = {
     "CAM": ("PLATE_CAPTURES", "plate_id"),
     "PUC": ("POLLUTION_CERT", "regn_number"),
 }
-DEMO_PLATES = ("DL01AB1234", "DL05CD9876", "HR26EF4455", "UP16GH1122", "MH12IJ7788")
+DEMO_PLATES = ("DL01AB1234", "DL05CD9876", "HR26EF4455", "UP16GH1122", "MH12IJ7788",
+               "DL03SC5566")  # the scrapped vehicle: REG, THEFT and CAM only
 
 
 def sqlite_url(source_id: str) -> str:
