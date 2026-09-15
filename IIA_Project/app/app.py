@@ -78,6 +78,43 @@ tab_investigate, tab_plantrace, tab_matcher, tab_catalog, tab_reports = st.tabs(
     "📑 5. Ministry Reports"
 ])
 
+# live_update.py writes straight to sources/<id>/<id>.db. That is the source itself only when the
+# source is this machine's SQLite file. Once a source is PostgreSQL/MySQL, or lives on another
+# laptop, the write lands in a file nothing queries -- so the edit "succeeds" and the decision never
+# changes. Check first and hand over the command to run on the owning machine instead of lying.
+def mutation_target(source_id: str):
+    """(can_write_here, explanation, command_to_run_on_the_owning_laptop)."""
+    import httpx as _httpx
+    from urllib.parse import urlparse
+    meta = get_source_catalog().get(source_id, {})
+    base = str(meta.get("base_url") or "")
+    host = urlparse(base).hostname or ""
+    is_local = host in ("127.0.0.1", "localhost", "::1")
+    engine = "?"
+    try:
+        engine = _httpx.get(base.rstrip("/") + "/health", timeout=3.0).json().get("dbms", "?")
+    except Exception:
+        pass
+    cmd = f"python scripts/mutate_source.py renew {source_id} <PLATE> --until <DD/MM/YYYY> --url <owner-url>"
+    if not is_local:
+        return False, f"{source_id} runs on {host}, not this laptop.", cmd
+    if str(engine).lower() != "sqlite":
+        return False, f"{source_id} here is {engine}, but this button writes a SQLite file.", cmd
+    return True, "", cmd
+
+
+def guarded(source_id: str, write, success_msg: str, kind=st.success):
+    ok, why, cmd = mutation_target(source_id)
+    if ok:
+        write()
+        kind(success_msg)
+        return
+    st.error(f"Not applied. {why}")
+    st.caption("A mediator cannot write into an autonomous source — the wrappers are read-only by "
+               "design. Run this on the laptop that owns it, then re-query here:")
+    st.code(cmd, language="bash")
+
+
 # Sidebar: Live Source Mutation (For Real-Time Demo / Prof Testing)
 with st.sidebar:
     st.markdown("### ⚡ Live Source Data Mutator")
@@ -99,33 +136,33 @@ with st.sidebar:
     if "Renew" in mut_action:
         new_exp = st.text_input("New Expiry Date (DD/MM/YYYY)", "31/12/2027")
         if st.button("Apply Renewal to INS DB", type="primary"):
-            live_update.renew_insurance(mut_plate, new_exp)
-            st.success(f"Updated INS database: {mut_plate} renewed until {new_exp}! Re-run query now.")
+            guarded("INS", lambda: live_update.renew_insurance(mut_plate, new_exp),
+                    f"Updated INS database: {mut_plate} renewed until {new_exp}! Re-run query now.")
     elif "Expire" in mut_action:
         old_exp = st.text_input("Expired Date (DD/MM/YYYY)", "10/01/2026")
         if st.button("Expire Policy in INS DB", type="primary"):
-            live_update.expire_insurance(mut_plate, old_exp)
-            st.warning(f"Updated INS database: {mut_plate} expired on {old_exp}! Re-run query now.")
+            guarded("INS", lambda: live_update.expire_insurance(mut_plate, old_exp),
+                    f"Updated INS database: {mut_plate} expired on {old_exp}! Re-run query now.", st.warning)
     elif "Stolen" in mut_action:
         fir = st.text_input("FIR Number", "FIR-LIVE-101/2026")
         if st.button("Log Theft in THEFT DB", type="primary"):
-            live_update.report_stolen(mut_plate, fir_no=fir)
-            st.error(f"Inserted into THEFT database: {mut_plate} reported STOLEN! Re-run query now.")
+            guarded("THEFT", lambda: live_update.report_stolen(mut_plate, fir_no=fir),
+                    f"Inserted into THEFT database: {mut_plate} reported STOLEN! Re-run query now.", st.error)
     elif "Sighting" in mut_action:
         c_make = st.text_input("Observed Make", "Hyundai")
         c_model = st.text_input("Observed Model", "Creta")
         c_col = st.text_input("Observed Colour", "White")
         if st.button("Record Sighting in CAM DB", type="primary"):
-            live_update.add_camera_sighting(mut_plate, "NH8 Toll Plaza", c_make, c_model, c_col)
-            st.info(f"Inserted into CAM database: {mut_plate} sighted by camera! Re-run query now.")
+            guarded("CAM", lambda: live_update.add_camera_sighting(mut_plate, "NH8 Toll Plaza", c_make, c_model, c_col),
+                    f"Inserted into CAM database: {mut_plate} sighted by camera! Re-run query now.", st.info)
     elif "Register" in mut_action:
         r_owner = st.text_input("Owner Name", "Rajesh Khanna")
         r_make = st.text_input("Make", "Maruti Suzuki")
         r_model = st.text_input("Model", "Swift")
         r_col = st.text_input("Colour", "White")
         if st.button("Register in REG DB", type="primary"):
-            live_update.register_vehicle(mut_plate, r_owner, r_make, r_model, r_col)
-            st.success(f"Inserted into REG database: {mut_plate} registered for {r_owner}! Re-run query now.")
+            guarded("REG", lambda: live_update.register_vehicle(mut_plate, r_owner, r_make, r_model, r_col),
+                    f"Inserted into REG database: {mut_plate} registered for {r_owner}! Re-run query now.")
 
     st.markdown("---")
     st.caption("Freshness Rule: The mediator holds no source data. Edits in the source databases reflect instantly upon re-querying without ETL.")
