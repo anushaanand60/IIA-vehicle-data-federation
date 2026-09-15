@@ -333,7 +333,10 @@ with tab_matcher:
             burl = cat[chosen_source]["base_url"]
             try:
                 import httpx
-                r = httpx.get(f"{burl}/schema", timeout=2.0)
+                # 2 s was enough for localhost, but /schema runs a DISTINCT sample query per
+                # column and has to cross the hotspot to another laptop. A timeout here fails the
+                # schema-matching demo outright, so allow for a slow link.
+                r = httpx.get(f"{burl}/schema", timeout=15.0)
                 schema_data = r.json()
             except Exception as e:
                 st.error(f"Failed to fetch live schema from {chosen_source}: {e}")
