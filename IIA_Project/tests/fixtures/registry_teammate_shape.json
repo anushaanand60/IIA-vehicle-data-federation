@@ -1,0 +1,34 @@
+{
+  "_comment": "A plausible matcher output that does NOT follow CLAUDE.md §5.2. Every divergence here must be absorbed by registry_loader.py (INTEGRATION_REPORT §3.4).",
+  "generated_by": "matcher.py v0.3",
+  "sources": {
+    "reg": {
+      "name": "RTO",
+      "dbms": "PostgreSQL",
+      "url": "127.0.0.1:8001/",
+      "authority": "AUTHORITATIVE",
+      "trust": 95,
+      "key_predicate": "vehicle_reg_no",
+      "matched_at": "2026-09-10T11:02:00",
+      "attribute_map": [
+        {"table": "vehicle_registration", "source_column": "vehicle_reg_no",  "global_attr": "plate_number", "score": 100},
+        {"table": "vehicle_registration", "source_column": "owner_full_name", "global_attr": "owner_name",   "score": 91},
+        {"table": "vehicle_registration", "source_column": "reg_id",          "global_attr": null,           "score": 12}
+      ]
+    },
+    "cam": {
+      "display_name": "Road cameras",
+      "dbms": "postgres",
+      "base_url": "http://127.0.0.1:8004",
+      "authority": "obs",
+      "trust": 0.6,
+      "timeout_ms": 900,
+      "key_predicate": {"column": "plate_text", "match": "in_variants", "variant_map": {"0": ["O"]}},
+      "aggregate": {"strategy": "latest", "global_attr": "last_seen_time"},
+      "attribute_map": [
+        {"source_table": "plate_captures", "source_attr": "plate_text",  "global_attr": "plate_number"},
+        {"source_table": "plate_captures", "source_attr": "captured_ts", "global_attr": "last_seen_time"}
+      ]
+    }
+  }
+}

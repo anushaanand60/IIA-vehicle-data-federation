@@ -1,0 +1,915 @@
+{
+  "about": "FederationResponse examples for the six story vehicles, one narrow UC1 request and one insurer-down variant: the handoff from the transport layer to Teammate C (transforms, integration, conflicts, decisions). Rows are RAW: source column names and source value formats, exactly as each agency stores them. The schemas are the team design PDF's (section 3).",
+  "regenerate": "python tests/fixtures/make_source_results.py (starts its own mocks on ports 17001-17004)",
+  "contract": "mediator/contract.py. Load a case with FederationResponse.model_validate(case['response']).",
+  "status_rules": {
+    "OK": "The wrapper answered. Zero rows is still OK: absence is data.",
+    "TIMEOUT": "No reply within the source's timeout_ms, or the database cancelled a slow statement (HTTP 504). Undetermined.",
+    "DOWN": "No TCP connection to the wrapper, or the wrapper replied 503 because its own database is unreachable. Undetermined.",
+    "ERROR": "Our bug: the guard or the database rejected the SQL, or the reply was not valid JSON. Undetermined."
+  },
+  "selection_rules": "A source is asked when it covers a requested attribute; derived attributes such as insurance_status count as their inputs. REG is also asked on every narrow request to confirm the plate is registered, and then its row holds registration_no only. Skipped sources carry a reason.",
+  "source_formats": {
+    "REG": "one row per plate; VEHICLE_REGISTRATION LEFT JOIN OWNERS. registration_no 'DL01AB1234'; registered_on 'YYYY-MM-DD'; reg_status ACTIVE / SUSPENDED / CANCELLED; make may be null or misspelt",
+    "INS": "many policies per plate, unordered; POLICY_RECORDS LEFT JOIN INSURERS. vehicle_reg 'DL-01-AB-1234'; policy_start and policy_until are DD/MM/YYYY text; policy_type THIRD_PARTY / COMPREHENSIVE",
+    "THEFT": "many incidents per plate, newest first. vehicle_number 'dl 01 ab 1234'; reported_date Unix seconds; incident_type THEFT / SHREDDING / HIT_AND_RUN; stolen_flag and recovered_flag Y/N; case_status OPEN/CLOSED",
+    "CAM": "many sightings per plate, newest first; PLATE_CAPTURES LEFT JOIN CAMERAS. plate_id is raw OCR and may be misread O<->0 or I<->1 ('DLOIAB1234'); captured_at 'YYYY-MM-DD HH:MM:SS+05:30'; observed_make and observed_model upper case; observed_colour may be null"
+  },
+  "cases": [
+    {
+      "id": "clean",
+      "plate_entered": "dl 01 ab 1234",
+      "story": "Clean vehicle. Registered, insured, never reported stolen, and the cameras saw the registered car.",
+      "look_at": [
+        "THEFT is OK with zero rows. That is data (no incident on record), not a failure.",
+        "CAM matched 'DLOIAB1234' as well as 'DL01AB1234': variant expansion found the O/I misread. Group CAM rows by the plate you asked for, not by plate_id.",
+        "REG full_name arrives through the OWNERS join and INS insurer_name through the INSURERS join; both are ordinary columns in the rows.",
+        "REG says make 'Maruti Suzuki' / colour 'Red', CAM says 'MARUTI SUZUKI' / 'red'. Same car, different casing: normalise before comparing."
+      ],
+      "response": {
+        "results": [
+          {
+            "source_id": "REG",
+            "status": "OK",
+            "rows": [
+              {
+                "registration_no": "DL01AB1234",
+                "full_name": "Aarav Sharma",
+                "make": "Maruti Suzuki",
+                "model": "Swift",
+                "colour": "Red",
+                "registered_on": "2019-03-14",
+                "reg_status": "ACTIVE"
+              }
+            ],
+            "row_count": 1,
+            "sql_sent": "SELECT VEHICLE_REGISTRATION.registration_no, OWNERS.full_name, VEHICLE_REGISTRATION.make, VEHICLE_REGISTRATION.model, VEHICLE_REGISTRATION.colour, VEHICLE_REGISTRATION.registered_on, VEHICLE_REGISTRATION.reg_status FROM VEHICLE_REGISTRATION LEFT JOIN OWNERS ON VEHICLE_REGISTRATION.owner_id = OWNERS.owner_id WHERE VEHICLE_REGISTRATION.registration_no = 'DL01AB1234'",
+            "fetched_at": "2026-09-12T12:06:03.709104Z",
+            "elapsed_ms": 5,
+            "error": null
+          },
+          {
+            "source_id": "INS",
+            "status": "OK",
+            "rows": [
+              {
+                "vehicle_reg": "DL-01-AB-1234",
+                "insurer_name": "ICICI Lombard",
+                "policy_type": "COMPREHENSIVE",
+                "policy_start": "14/03/2025",
+                "policy_until": "13/03/2026"
+              },
+              {
+                "vehicle_reg": "DL-01-AB-1234",
+                "insurer_name": "ICICI Lombard",
+                "policy_type": "COMPREHENSIVE",
+                "policy_start": "14/03/2026",
+                "policy_until": "13/03/2027"
+              }
+            ],
+            "row_count": 2,
+            "sql_sent": "SELECT POLICY_RECORDS.vehicle_reg, INSURERS.insurer_name, POLICY_RECORDS.policy_type, POLICY_RECORDS.policy_start, POLICY_RECORDS.policy_until FROM POLICY_RECORDS LEFT JOIN INSURERS ON POLICY_RECORDS.insurer_id = INSURERS.insurer_id WHERE POLICY_RECORDS.vehicle_reg = 'DL-01-AB-1234'",
+            "fetched_at": "2026-09-12T12:06:03.708408Z",
+            "elapsed_ms": 5,
+            "error": null
+          },
+          {
+            "source_id": "THEFT",
+            "status": "OK",
+            "rows": [],
+            "row_count": 0,
+            "sql_sent": "SELECT vehicle_number, incident_type, stolen_flag, recovered_flag, reported_date, case_status FROM CRIME_RECORDS WHERE vehicle_number = 'dl 01 ab 1234' ORDER BY reported_date DESC",
+            "fetched_at": "2026-09-12T12:06:03.708709Z",
+            "elapsed_ms": 4,
+            "error": null
+          },
+          {
+            "source_id": "CAM",
+            "status": "OK",
+            "rows": [
+              {
+                "plate_id": "DL01AB1234",
+                "location_name": "NH-48 Toll Plaza, Gurugram",
+                "captured_at": "2026-09-02 08:03:51+05:30",
+                "observed_make": "MARUTI SUZUKI",
+                "observed_model": "SWIFT",
+                "observed_colour": "red"
+              },
+              {
+                "plate_id": "DLOIAB1234",
+                "location_name": "Ring Road, Lajpat Nagar, Delhi",
+                "captured_at": "2026-08-30 21:14:05+05:30",
+                "observed_make": "MARUTI SUZUKI",
+                "observed_model": "SWIFT",
+                "observed_colour": "red"
+              }
+            ],
+            "row_count": 2,
+            "sql_sent": "SELECT PLATE_CAPTURES.plate_id, CAMERAS.location_name, PLATE_CAPTURES.captured_at, PLATE_CAPTURES.observed_make, PLATE_CAPTURES.observed_model, PLATE_CAPTURES.observed_colour FROM PLATE_CAPTURES LEFT JOIN CAMERAS ON PLATE_CAPTURES.camera_id = CAMERAS.camera_id WHERE PLATE_CAPTURES.plate_id IN ('DL01AB1234', 'DLO1AB1234', 'DL0IAB1234', 'DL01ABI234', 'DLOIAB1234', 'DLO1ABI234', 'DL0IABI234', 'DLOIABI234') ORDER BY PLATE_CAPTURES.captured_at DESC",
+            "fetched_at": "2026-09-12T12:06:03.709699Z",
+            "elapsed_ms": 4,
+            "error": null
+          }
+        ],
+        "trace": {
+          "plate_raw": "dl 01 ab 1234",
+          "plate_normalized": "DL01AB1234",
+          "requested_attrs": [
+            "plate_number",
+            "owner_name",
+            "vehicle_make",
+            "vehicle_model",
+            "vehicle_colour",
+            "registration_date",
+            "registration_status",
+            "insurer_name",
+            "policy_type",
+            "insurance_start",
+            "insurance_expiry",
+            "stolen_status",
+            "last_incident_date",
+            "case_status",
+            "last_seen_location",
+            "last_seen_time",
+            "observed_make",
+            "observed_model",
+            "observed_colour",
+            "insurance_status"
+          ],
+          "sources_selected": [
+            "REG",
+            "INS",
+            "THEFT",
+            "CAM"
+          ],
+          "sources_skipped": {},
+          "total_elapsed_ms": 8
+        }
+      }
+    },
+    {
+      "id": "expired",
+      "plate_entered": "DL-05-CD-9876",
+      "story": "Policy expired on 12/07/2026.",
+      "look_at": [
+        "INS returns two policies with no ORDER BY: latest-by insurance_expiry is yours to apply after parse_ddmmyyyy.",
+        "Trap: policy_until is DD/MM/YYYY text, so a string sort picks '19/07/2025' over '12/07/2026'.",
+        "The later policy is THIRD_PARTY and the earlier COMPREHENSIVE: policy_type can change between renewals."
+      ],
+      "response": {
+        "results": [
+          {
+            "source_id": "REG",
+            "status": "OK",
+            "rows": [
+              {
+                "registration_no": "DL05CD9876",
+                "full_name": "Priya Mehta",
+                "make": "Honda",
+                "model": "City",
+                "colour": "Silver",
+                "registered_on": "2018-07-12",
+                "reg_status": "ACTIVE"
+              }
+            ],
+            "row_count": 1,
+            "sql_sent": "SELECT VEHICLE_REGISTRATION.registration_no, OWNERS.full_name, VEHICLE_REGISTRATION.make, VEHICLE_REGISTRATION.model, VEHICLE_REGISTRATION.colour, VEHICLE_REGISTRATION.registered_on, VEHICLE_REGISTRATION.reg_status FROM VEHICLE_REGISTRATION LEFT JOIN OWNERS ON VEHICLE_REGISTRATION.owner_id = OWNERS.owner_id WHERE VEHICLE_REGISTRATION.registration_no = 'DL05CD9876'",
+            "fetched_at": "2026-09-12T12:06:03.716961Z",
+            "elapsed_ms": 3,
+            "error": null
+          },
+          {
+            "source_id": "INS",
+            "status": "OK",
+            "rows": [
+              {
+                "vehicle_reg": "DL-05-CD-9876",
+                "insurer_name": "HDFC ERGO",
+                "policy_type": "COMPREHENSIVE",
+                "policy_start": "20/07/2024",
+                "policy_until": "19/07/2025"
+              },
+              {
+                "vehicle_reg": "DL-05-CD-9876",
+                "insurer_name": "HDFC ERGO",
+                "policy_type": "THIRD_PARTY",
+                "policy_start": "13/07/2025",
+                "policy_until": "12/07/2026"
+              }
+            ],
+            "row_count": 2,
+            "sql_sent": "SELECT POLICY_RECORDS.vehicle_reg, INSURERS.insurer_name, POLICY_RECORDS.policy_type, POLICY_RECORDS.policy_start, POLICY_RECORDS.policy_until FROM POLICY_RECORDS LEFT JOIN INSURERS ON POLICY_RECORDS.insurer_id = INSURERS.insurer_id WHERE POLICY_RECORDS.vehicle_reg = 'DL-05-CD-9876'",
+            "fetched_at": "2026-09-12T12:06:03.716960Z",
+            "elapsed_ms": 4,
+            "error": null
+          },
+          {
+            "source_id": "THEFT",
+            "status": "OK",
+            "rows": [],
+            "row_count": 0,
+            "sql_sent": "SELECT vehicle_number, incident_type, stolen_flag, recovered_flag, reported_date, case_status FROM CRIME_RECORDS WHERE vehicle_number = 'dl 05 cd 9876' ORDER BY reported_date DESC",
+            "fetched_at": "2026-09-12T12:06:03.717474Z",
+            "elapsed_ms": 4,
+            "error": null
+          },
+          {
+            "source_id": "CAM",
+            "status": "OK",
+            "rows": [
+              {
+                "plate_id": "DL05CD9876",
+                "location_name": "ITO Crossing, Delhi",
+                "captured_at": "2026-09-05 18:22:10+05:30",
+                "observed_make": "HONDA",
+                "observed_model": "CITY",
+                "observed_colour": "silver"
+              }
+            ],
+            "row_count": 1,
+            "sql_sent": "SELECT PLATE_CAPTURES.plate_id, CAMERAS.location_name, PLATE_CAPTURES.captured_at, PLATE_CAPTURES.observed_make, PLATE_CAPTURES.observed_model, PLATE_CAPTURES.observed_colour FROM PLATE_CAPTURES LEFT JOIN CAMERAS ON PLATE_CAPTURES.camera_id = CAMERAS.camera_id WHERE PLATE_CAPTURES.plate_id IN ('DL05CD9876', 'DLO5CD9876') ORDER BY PLATE_CAPTURES.captured_at DESC",
+            "fetched_at": "2026-09-12T12:06:03.717927Z",
+            "elapsed_ms": 3,
+            "error": null
+          }
+        ],
+        "trace": {
+          "plate_raw": "DL-05-CD-9876",
+          "plate_normalized": "DL05CD9876",
+          "requested_attrs": [
+            "plate_number",
+            "owner_name",
+            "vehicle_make",
+            "vehicle_model",
+            "vehicle_colour",
+            "registration_date",
+            "registration_status",
+            "insurer_name",
+            "policy_type",
+            "insurance_start",
+            "insurance_expiry",
+            "stolen_status",
+            "last_incident_date",
+            "case_status",
+            "last_seen_location",
+            "last_seen_time",
+            "observed_make",
+            "observed_model",
+            "observed_colour",
+            "insurance_status"
+          ],
+          "sources_selected": [
+            "REG",
+            "INS",
+            "THEFT",
+            "CAM"
+          ],
+          "sources_skipped": {},
+          "total_elapsed_ms": 6
+        }
+      }
+    },
+    {
+      "id": "no_policy",
+      "plate_entered": "DL09KL3321",
+      "story": "Registered and on the road, but no insurance policy row exists at all: the uninsured vehicle.",
+      "look_at": [
+        "INS is OK with rows [] and error null. The insurer answered and holds no policy: insurance_status NONE.",
+        "Compare with case 'ins_down': identical rows, opposite meaning.",
+        "CAM captured it as 'DLO9KL3321' (0 read as O)."
+      ],
+      "response": {
+        "results": [
+          {
+            "source_id": "REG",
+            "status": "OK",
+            "rows": [
+              {
+                "registration_no": "DL09KL3321",
+                "full_name": "Rohan Verma",
+                "make": "Tata",
+                "model": "Nexon",
+                "colour": "Blue",
+                "registered_on": "2021-11-02",
+                "reg_status": "ACTIVE"
+              }
+            ],
+            "row_count": 1,
+            "sql_sent": "SELECT VEHICLE_REGISTRATION.registration_no, OWNERS.full_name, VEHICLE_REGISTRATION.make, VEHICLE_REGISTRATION.model, VEHICLE_REGISTRATION.colour, VEHICLE_REGISTRATION.registered_on, VEHICLE_REGISTRATION.reg_status FROM VEHICLE_REGISTRATION LEFT JOIN OWNERS ON VEHICLE_REGISTRATION.owner_id = OWNERS.owner_id WHERE VEHICLE_REGISTRATION.registration_no = 'DL09KL3321'",
+            "fetched_at": "2026-09-12T12:06:03.723294Z",
+            "elapsed_ms": 4,
+            "error": null
+          },
+          {
+            "source_id": "INS",
+            "status": "OK",
+            "rows": [],
+            "row_count": 0,
+            "sql_sent": "SELECT POLICY_RECORDS.vehicle_reg, INSURERS.insurer_name, POLICY_RECORDS.policy_type, POLICY_RECORDS.policy_start, POLICY_RECORDS.policy_until FROM POLICY_RECORDS LEFT JOIN INSURERS ON POLICY_RECORDS.insurer_id = INSURERS.insurer_id WHERE POLICY_RECORDS.vehicle_reg = 'DL-09-KL-3321'",
+            "fetched_at": "2026-09-12T12:06:03.722367Z",
+            "elapsed_ms": 2,
+            "error": null
+          },
+          {
+            "source_id": "THEFT",
+            "status": "OK",
+            "rows": [],
+            "row_count": 0,
+            "sql_sent": "SELECT vehicle_number, incident_type, stolen_flag, recovered_flag, reported_date, case_status FROM CRIME_RECORDS WHERE vehicle_number = 'dl 09 kl 3321' ORDER BY reported_date DESC",
+            "fetched_at": "2026-09-12T12:06:03.723064Z",
+            "elapsed_ms": 3,
+            "error": null
+          },
+          {
+            "source_id": "CAM",
+            "status": "OK",
+            "rows": [
+              {
+                "plate_id": "DLO9KL3321",
+                "location_name": "Mathura Road, Delhi",
+                "captured_at": "2026-09-06 07:45:33+05:30",
+                "observed_make": "TATA",
+                "observed_model": "NEXON",
+                "observed_colour": "blue"
+              }
+            ],
+            "row_count": 1,
+            "sql_sent": "SELECT PLATE_CAPTURES.plate_id, CAMERAS.location_name, PLATE_CAPTURES.captured_at, PLATE_CAPTURES.observed_make, PLATE_CAPTURES.observed_model, PLATE_CAPTURES.observed_colour FROM PLATE_CAPTURES LEFT JOIN CAMERAS ON PLATE_CAPTURES.camera_id = CAMERAS.camera_id WHERE PLATE_CAPTURES.plate_id IN ('DL09KL3321', 'DLO9KL3321', 'DL09KL332I', 'DLO9KL332I') ORDER BY PLATE_CAPTURES.captured_at DESC",
+            "fetched_at": "2026-09-12T12:06:03.723632Z",
+            "elapsed_ms": 2,
+            "error": null
+          }
+        ],
+        "trace": {
+          "plate_raw": "DL09KL3321",
+          "plate_normalized": "DL09KL3321",
+          "requested_attrs": [
+            "plate_number",
+            "owner_name",
+            "vehicle_make",
+            "vehicle_model",
+            "vehicle_colour",
+            "registration_date",
+            "registration_status",
+            "insurer_name",
+            "policy_type",
+            "insurance_start",
+            "insurance_expiry",
+            "stolen_status",
+            "last_incident_date",
+            "case_status",
+            "last_seen_location",
+            "last_seen_time",
+            "observed_make",
+            "observed_model",
+            "observed_colour",
+            "insurance_status"
+          ],
+          "sources_selected": [
+            "REG",
+            "INS",
+            "THEFT",
+            "CAM"
+          ],
+          "sources_skipped": {},
+          "total_elapsed_ms": 5
+        }
+      }
+    },
+    {
+      "id": "stolen",
+      "plate_entered": "hr 26 ef 4455",
+      "story": "Reported stolen and the police case is still open. It is also insured and still being seen on camera.",
+      "look_at": [
+        "THEFT rows arrive newest first (ORDER BY reported_date DESC, pushed down because it is an integer). rows[0] is the current state: incident_type THEFT, stolen_flag Y, recovered_flag N, case_status OPEN.",
+        "reported_date is Unix seconds (an integer), not a date string.",
+        "CAM saw it twice after the theft; last_seen_location (CAMERAS.location_name) matters for the Ministry report.",
+        "The live contract test uses this plate because every source holds at least one row for it."
+      ],
+      "response": {
+        "results": [
+          {
+            "source_id": "REG",
+            "status": "OK",
+            "rows": [
+              {
+                "registration_no": "HR26EF4455",
+                "full_name": "Neha Gupta",
+                "make": "Toyota",
+                "model": "Fortuner",
+                "colour": "White",
+                "registered_on": "2022-01-20",
+                "reg_status": "ACTIVE"
+              }
+            ],
+            "row_count": 1,
+            "sql_sent": "SELECT VEHICLE_REGISTRATION.registration_no, OWNERS.full_name, VEHICLE_REGISTRATION.make, VEHICLE_REGISTRATION.model, VEHICLE_REGISTRATION.colour, VEHICLE_REGISTRATION.registered_on, VEHICLE_REGISTRATION.reg_status FROM VEHICLE_REGISTRATION LEFT JOIN OWNERS ON VEHICLE_REGISTRATION.owner_id = OWNERS.owner_id WHERE VEHICLE_REGISTRATION.registration_no = 'HR26EF4455'",
+            "fetched_at": "2026-09-12T12:06:03.728461Z",
+            "elapsed_ms": 4,
+            "error": null
+          },
+          {
+            "source_id": "INS",
+            "status": "OK",
+            "rows": [
+              {
+                "vehicle_reg": "HR-26-EF-4455",
+                "insurer_name": "Bajaj Allianz",
+                "policy_type": "COMPREHENSIVE",
+                "policy_start": "20/01/2026",
+                "policy_until": "19/01/2027"
+              }
+            ],
+            "row_count": 1,
+            "sql_sent": "SELECT POLICY_RECORDS.vehicle_reg, INSURERS.insurer_name, POLICY_RECORDS.policy_type, POLICY_RECORDS.policy_start, POLICY_RECORDS.policy_until FROM POLICY_RECORDS LEFT JOIN INSURERS ON POLICY_RECORDS.insurer_id = INSURERS.insurer_id WHERE POLICY_RECORDS.vehicle_reg = 'HR-26-EF-4455'",
+            "fetched_at": "2026-09-12T12:06:03.728030Z",
+            "elapsed_ms": 4,
+            "error": null
+          },
+          {
+            "source_id": "THEFT",
+            "status": "OK",
+            "rows": [
+              {
+                "vehicle_number": "hr 26 ef 4455",
+                "incident_type": "THEFT",
+                "stolen_flag": "Y",
+                "recovered_flag": "N",
+                "reported_date": 1787937000,
+                "case_status": "OPEN"
+              }
+            ],
+            "row_count": 1,
+            "sql_sent": "SELECT vehicle_number, incident_type, stolen_flag, recovered_flag, reported_date, case_status FROM CRIME_RECORDS WHERE vehicle_number = 'hr 26 ef 4455' ORDER BY reported_date DESC",
+            "fetched_at": "2026-09-12T12:06:03.728274Z",
+            "elapsed_ms": 3,
+            "error": null
+          },
+          {
+            "source_id": "CAM",
+            "status": "OK",
+            "rows": [
+              {
+                "plate_id": "HR26EF4455",
+                "location_name": "Kundli Border, Sonipat",
+                "captured_at": "2026-09-08 02:31:47+05:30",
+                "observed_make": "TOYOTA",
+                "observed_model": "FORTUNER",
+                "observed_colour": "white"
+              },
+              {
+                "plate_id": "HR26EF4455",
+                "location_name": "Sohna Road, Gurugram",
+                "captured_at": "2026-09-07 23:10:02+05:30",
+                "observed_make": "TOYOTA",
+                "observed_model": "FORTUNER",
+                "observed_colour": "white"
+              }
+            ],
+            "row_count": 2,
+            "sql_sent": "SELECT PLATE_CAPTURES.plate_id, CAMERAS.location_name, PLATE_CAPTURES.captured_at, PLATE_CAPTURES.observed_make, PLATE_CAPTURES.observed_model, PLATE_CAPTURES.observed_colour FROM PLATE_CAPTURES LEFT JOIN CAMERAS ON PLATE_CAPTURES.camera_id = CAMERAS.camera_id WHERE PLATE_CAPTURES.plate_id IN ('HR26EF4455') ORDER BY PLATE_CAPTURES.captured_at DESC",
+            "fetched_at": "2026-09-12T12:06:03.729356Z",
+            "elapsed_ms": 3,
+            "error": null
+          }
+        ],
+        "trace": {
+          "plate_raw": "hr 26 ef 4455",
+          "plate_normalized": "HR26EF4455",
+          "requested_attrs": [
+            "plate_number",
+            "owner_name",
+            "vehicle_make",
+            "vehicle_model",
+            "vehicle_colour",
+            "registration_date",
+            "registration_status",
+            "insurer_name",
+            "policy_type",
+            "insurance_start",
+            "insurance_expiry",
+            "stolen_status",
+            "last_incident_date",
+            "case_status",
+            "last_seen_location",
+            "last_seen_time",
+            "observed_make",
+            "observed_model",
+            "observed_colour",
+            "insurance_status"
+          ],
+          "sources_selected": [
+            "REG",
+            "INS",
+            "THEFT",
+            "CAM"
+          ],
+          "sources_skipped": {},
+          "total_elapsed_ms": 5
+        }
+      }
+    },
+    {
+      "id": "cloned",
+      "plate_entered": "UP-16-GH-1122",
+      "story": "Possible cloned plate: REG registers a white Hyundai Creta, the cameras keep seeing a silver Hyundai Venue.",
+      "look_at": [
+        "The conflict is passed through untouched: REG model 'Creta' / colour 'White' against CAM observed_model 'VENUE' / observed_colour 'silver'.",
+        "REG is authoritative (trust 0.95) and CAM observational (0.60), but CAM is consistent across two sightings, one of them misread as 'UPI6GH1122'.",
+        "Do not merge REG and CAM rows into one vehicle on plate alone (INTEGRATION_REPORT B4)."
+      ],
+      "response": {
+        "results": [
+          {
+            "source_id": "REG",
+            "status": "OK",
+            "rows": [
+              {
+                "registration_no": "UP16GH1122",
+                "full_name": "Vikram Singh",
+                "make": "Hyundai",
+                "model": "Creta",
+                "colour": "White",
+                "registered_on": "2020-05-09",
+                "reg_status": "ACTIVE"
+              }
+            ],
+            "row_count": 1,
+            "sql_sent": "SELECT VEHICLE_REGISTRATION.registration_no, OWNERS.full_name, VEHICLE_REGISTRATION.make, VEHICLE_REGISTRATION.model, VEHICLE_REGISTRATION.colour, VEHICLE_REGISTRATION.registered_on, VEHICLE_REGISTRATION.reg_status FROM VEHICLE_REGISTRATION LEFT JOIN OWNERS ON VEHICLE_REGISTRATION.owner_id = OWNERS.owner_id WHERE VEHICLE_REGISTRATION.registration_no = 'UP16GH1122'",
+            "fetched_at": "2026-09-12T12:06:03.741699Z",
+            "elapsed_ms": 11,
+            "error": null
+          },
+          {
+            "source_id": "INS",
+            "status": "OK",
+            "rows": [
+              {
+                "vehicle_reg": "UP-16-GH-1122",
+                "insurer_name": "New India Assurance",
+                "policy_type": "COMPREHENSIVE",
+                "policy_start": "09/05/2026",
+                "policy_until": "08/05/2027"
+              }
+            ],
+            "row_count": 1,
+            "sql_sent": "SELECT POLICY_RECORDS.vehicle_reg, INSURERS.insurer_name, POLICY_RECORDS.policy_type, POLICY_RECORDS.policy_start, POLICY_RECORDS.policy_until FROM POLICY_RECORDS LEFT JOIN INSURERS ON POLICY_RECORDS.insurer_id = INSURERS.insurer_id WHERE POLICY_RECORDS.vehicle_reg = 'UP-16-GH-1122'",
+            "fetched_at": "2026-09-12T12:06:03.734329Z",
+            "elapsed_ms": 9,
+            "error": null
+          },
+          {
+            "source_id": "THEFT",
+            "status": "OK",
+            "rows": [],
+            "row_count": 0,
+            "sql_sent": "SELECT vehicle_number, incident_type, stolen_flag, recovered_flag, reported_date, case_status FROM CRIME_RECORDS WHERE vehicle_number = 'up 16 gh 1122' ORDER BY reported_date DESC",
+            "fetched_at": "2026-09-12T12:06:03.741960Z",
+            "elapsed_ms": 11,
+            "error": null
+          },
+          {
+            "source_id": "CAM",
+            "status": "OK",
+            "rows": [
+              {
+                "plate_id": "UPI6GH1122",
+                "location_name": "DND Flyway, Noida",
+                "captured_at": "2026-09-09 09:12:44+05:30",
+                "observed_make": "HYUNDAI",
+                "observed_model": "VENUE",
+                "observed_colour": "silver"
+              },
+              {
+                "plate_id": "UP16GH1122",
+                "location_name": "Sector 18, Noida",
+                "captured_at": "2026-09-04 13:55:20+05:30",
+                "observed_make": "HYUNDAI",
+                "observed_model": "VENUE",
+                "observed_colour": "silver"
+              }
+            ],
+            "row_count": 2,
+            "sql_sent": "SELECT PLATE_CAPTURES.plate_id, CAMERAS.location_name, PLATE_CAPTURES.captured_at, PLATE_CAPTURES.observed_make, PLATE_CAPTURES.observed_model, PLATE_CAPTURES.observed_colour FROM PLATE_CAPTURES LEFT JOIN CAMERAS ON PLATE_CAPTURES.camera_id = CAMERAS.camera_id WHERE PLATE_CAPTURES.plate_id IN ('UP16GH1122', 'UPI6GH1122', 'UP16GHI122', 'UP16GH1I22', 'UPI6GHI122', 'UPI6GH1I22', 'UP16GHII22', 'UPI6GHII22') ORDER BY PLATE_CAPTURES.captured_at DESC",
+            "fetched_at": "2026-09-12T12:06:03.742070Z",
+            "elapsed_ms": 10,
+            "error": null
+          }
+        ],
+        "trace": {
+          "plate_raw": "UP-16-GH-1122",
+          "plate_normalized": "UP16GH1122",
+          "requested_attrs": [
+            "plate_number",
+            "owner_name",
+            "vehicle_make",
+            "vehicle_model",
+            "vehicle_colour",
+            "registration_date",
+            "registration_status",
+            "insurer_name",
+            "policy_type",
+            "insurance_start",
+            "insurance_expiry",
+            "stolen_status",
+            "last_incident_date",
+            "case_status",
+            "last_seen_location",
+            "last_seen_time",
+            "observed_make",
+            "observed_model",
+            "observed_colour",
+            "insurance_status"
+          ],
+          "sources_selected": [
+            "REG",
+            "INS",
+            "THEFT",
+            "CAM"
+          ],
+          "sources_skipped": {},
+          "total_elapsed_ms": 13
+        }
+      }
+    },
+    {
+      "id": "unregistered",
+      "plate_entered": "MH12IJ7788",
+      "story": "Seen by a camera, absent from registration and from insurance.",
+      "look_at": [
+        "REG is OK with zero rows: the RTO answered and has never registered this plate.",
+        "CAM also matched 'MH121J7788': the letter I read as the digit 1. The OCR error model runs both ways.",
+        "The only evidence is one observational source (trust 0.60)."
+      ],
+      "response": {
+        "results": [
+          {
+            "source_id": "REG",
+            "status": "OK",
+            "rows": [],
+            "row_count": 0,
+            "sql_sent": "SELECT VEHICLE_REGISTRATION.registration_no, OWNERS.full_name, VEHICLE_REGISTRATION.make, VEHICLE_REGISTRATION.model, VEHICLE_REGISTRATION.colour, VEHICLE_REGISTRATION.registered_on, VEHICLE_REGISTRATION.reg_status FROM VEHICLE_REGISTRATION LEFT JOIN OWNERS ON VEHICLE_REGISTRATION.owner_id = OWNERS.owner_id WHERE VEHICLE_REGISTRATION.registration_no = 'MH12IJ7788'",
+            "fetched_at": "2026-09-12T12:06:03.747326Z",
+            "elapsed_ms": 3,
+            "error": null
+          },
+          {
+            "source_id": "INS",
+            "status": "OK",
+            "rows": [],
+            "row_count": 0,
+            "sql_sent": "SELECT POLICY_RECORDS.vehicle_reg, INSURERS.insurer_name, POLICY_RECORDS.policy_type, POLICY_RECORDS.policy_start, POLICY_RECORDS.policy_until FROM POLICY_RECORDS LEFT JOIN INSURERS ON POLICY_RECORDS.insurer_id = INSURERS.insurer_id WHERE POLICY_RECORDS.vehicle_reg = 'MH-12-IJ-7788'",
+            "fetched_at": "2026-09-12T12:06:03.748306Z",
+            "elapsed_ms": 4,
+            "error": null
+          },
+          {
+            "source_id": "THEFT",
+            "status": "OK",
+            "rows": [],
+            "row_count": 0,
+            "sql_sent": "SELECT vehicle_number, incident_type, stolen_flag, recovered_flag, reported_date, case_status FROM CRIME_RECORDS WHERE vehicle_number = 'mh 12 ij 7788' ORDER BY reported_date DESC",
+            "fetched_at": "2026-09-12T12:06:03.748050Z",
+            "elapsed_ms": 3,
+            "error": null
+          },
+          {
+            "source_id": "CAM",
+            "status": "OK",
+            "rows": [
+              {
+                "plate_id": "MH121J7788",
+                "location_name": "Western Express Highway, Andheri",
+                "captured_at": "2026-09-10 19:05:31+05:30",
+                "observed_make": "MAHINDRA",
+                "observed_model": "SCORPIO",
+                "observed_colour": "black"
+              },
+              {
+                "plate_id": "MH12IJ7788",
+                "location_name": "Mumbai-Pune Expressway, Khalapur",
+                "captured_at": "2026-09-03 16:40:09+05:30",
+                "observed_make": "MAHINDRA",
+                "observed_model": "SCORPIO",
+                "observed_colour": "black"
+              }
+            ],
+            "row_count": 2,
+            "sql_sent": "SELECT PLATE_CAPTURES.plate_id, CAMERAS.location_name, PLATE_CAPTURES.captured_at, PLATE_CAPTURES.observed_make, PLATE_CAPTURES.observed_model, PLATE_CAPTURES.observed_colour FROM PLATE_CAPTURES LEFT JOIN CAMERAS ON PLATE_CAPTURES.camera_id = CAMERAS.camera_id WHERE PLATE_CAPTURES.plate_id IN ('MH12IJ7788', 'MHI2IJ7788', 'MH121J7788', 'MHI21J7788') ORDER BY PLATE_CAPTURES.captured_at DESC",
+            "fetched_at": "2026-09-12T12:06:03.749073Z",
+            "elapsed_ms": 2,
+            "error": null
+          }
+        ],
+        "trace": {
+          "plate_raw": "MH12IJ7788",
+          "plate_normalized": "MH12IJ7788",
+          "requested_attrs": [
+            "plate_number",
+            "owner_name",
+            "vehicle_make",
+            "vehicle_model",
+            "vehicle_colour",
+            "registration_date",
+            "registration_status",
+            "insurer_name",
+            "policy_type",
+            "insurance_start",
+            "insurance_expiry",
+            "stolen_status",
+            "last_incident_date",
+            "case_status",
+            "last_seen_location",
+            "last_seen_time",
+            "observed_make",
+            "observed_model",
+            "observed_colour",
+            "insurance_status"
+          ],
+          "sources_selected": [
+            "REG",
+            "INS",
+            "THEFT",
+            "CAM"
+          ],
+          "sources_skipped": {},
+          "total_elapsed_ms": 6
+        }
+      }
+    },
+    {
+      "id": "insured_query",
+      "plate_entered": "DL05CD9876",
+      "attrs": [
+        "insurance_status"
+      ],
+      "story": "UC1, 'is this vehicle insured?': a narrow request for the derived attribute insurance_status.",
+      "look_at": [
+        "insurance_status is never stored. The planner expanded it to insurance_expiry, so INS was asked for vehicle_reg and policy_until only.",
+        "REG was asked as well, but only for registration_no: its single row confirms the plate is registered.",
+        "THEFT and CAM were skipped; trace.sources_skipped says why. The plan trace shows 2 sources, as in the demo script."
+      ],
+      "response": {
+        "results": [
+          {
+            "source_id": "REG",
+            "status": "OK",
+            "rows": [
+              {
+                "registration_no": "DL05CD9876"
+              }
+            ],
+            "row_count": 1,
+            "sql_sent": "SELECT registration_no FROM VEHICLE_REGISTRATION WHERE registration_no = 'DL05CD9876'",
+            "fetched_at": "2026-09-12T12:06:03.766423Z",
+            "elapsed_ms": 16,
+            "error": null
+          },
+          {
+            "source_id": "INS",
+            "status": "OK",
+            "rows": [
+              {
+                "vehicle_reg": "DL-05-CD-9876",
+                "policy_until": "19/07/2025"
+              },
+              {
+                "vehicle_reg": "DL-05-CD-9876",
+                "policy_until": "12/07/2026"
+              }
+            ],
+            "row_count": 2,
+            "sql_sent": "SELECT vehicle_reg, policy_until FROM POLICY_RECORDS WHERE vehicle_reg = 'DL-05-CD-9876'",
+            "fetched_at": "2026-09-12T12:06:03.766405Z",
+            "elapsed_ms": 16,
+            "error": null
+          }
+        ],
+        "trace": {
+          "plate_raw": "DL05CD9876",
+          "plate_normalized": "DL05CD9876",
+          "requested_attrs": [
+            "insurance_status"
+          ],
+          "sources_selected": [
+            "REG",
+            "INS"
+          ],
+          "sources_skipped": {
+            "THEFT": "covers none of the requested attributes (insurance_expiry)",
+            "CAM": "covers none of the requested attributes (insurance_expiry)"
+          },
+          "total_elapsed_ms": 17
+        }
+      }
+    },
+    {
+      "id": "ins_down",
+      "plate_entered": "DL09KL3321",
+      "story": "Same vehicle as 'no_policy', but the insurer's laptop has dropped off the network when the query runs.",
+      "look_at": [
+        "INS is DOWN with rows [] and an error message. The rows look exactly like 'no_policy'; only status and error differ.",
+        "The only defensible insurance decision is 'undetermined'. Never read DOWN as 'no policy'.",
+        "The other three sources still answered: a dead source degrades the answer, it does not crash the query.",
+        "INS failed fast (no TCP connection), so the whole query still returned well under 2 s."
+      ],
+      "response": {
+        "results": [
+          {
+            "source_id": "REG",
+            "status": "OK",
+            "rows": [
+              {
+                "registration_no": "DL09KL3321",
+                "full_name": "Rohan Verma",
+                "make": "Tata",
+                "model": "Nexon",
+                "colour": "Blue",
+                "registered_on": "2021-11-02",
+                "reg_status": "ACTIVE"
+              }
+            ],
+            "row_count": 1,
+            "sql_sent": "SELECT VEHICLE_REGISTRATION.registration_no, OWNERS.full_name, VEHICLE_REGISTRATION.make, VEHICLE_REGISTRATION.model, VEHICLE_REGISTRATION.colour, VEHICLE_REGISTRATION.registered_on, VEHICLE_REGISTRATION.reg_status FROM VEHICLE_REGISTRATION LEFT JOIN OWNERS ON VEHICLE_REGISTRATION.owner_id = OWNERS.owner_id WHERE VEHICLE_REGISTRATION.registration_no = 'DL09KL3321'",
+            "fetched_at": "2026-09-12T12:06:03.780584Z",
+            "elapsed_ms": 3,
+            "error": null
+          },
+          {
+            "source_id": "INS",
+            "status": "DOWN",
+            "rows": [],
+            "row_count": 0,
+            "sql_sent": "SELECT POLICY_RECORDS.vehicle_reg, INSURERS.insurer_name, POLICY_RECORDS.policy_type, POLICY_RECORDS.policy_start, POLICY_RECORDS.policy_until FROM POLICY_RECORDS LEFT JOIN INSURERS ON POLICY_RECORDS.insurer_id = INSURERS.insurer_id WHERE POLICY_RECORDS.vehicle_reg = 'DL-09-KL-3321'",
+            "fetched_at": null,
+            "elapsed_ms": 511,
+            "error": "no TCP connection to http://127.0.0.1:17002 within 500 ms"
+          },
+          {
+            "source_id": "THEFT",
+            "status": "OK",
+            "rows": [],
+            "row_count": 0,
+            "sql_sent": "SELECT vehicle_number, incident_type, stolen_flag, recovered_flag, reported_date, case_status FROM CRIME_RECORDS WHERE vehicle_number = 'dl 09 kl 3321' ORDER BY reported_date DESC",
+            "fetched_at": "2026-09-12T12:06:03.781370Z",
+            "elapsed_ms": 3,
+            "error": null
+          },
+          {
+            "source_id": "CAM",
+            "status": "OK",
+            "rows": [
+              {
+                "plate_id": "DLO9KL3321",
+                "location_name": "Mathura Road, Delhi",
+                "captured_at": "2026-09-06 07:45:33+05:30",
+                "observed_make": "TATA",
+                "observed_model": "NEXON",
+                "observed_colour": "blue"
+              }
+            ],
+            "row_count": 1,
+            "sql_sent": "SELECT PLATE_CAPTURES.plate_id, CAMERAS.location_name, PLATE_CAPTURES.captured_at, PLATE_CAPTURES.observed_make, PLATE_CAPTURES.observed_model, PLATE_CAPTURES.observed_colour FROM PLATE_CAPTURES LEFT JOIN CAMERAS ON PLATE_CAPTURES.camera_id = CAMERAS.camera_id WHERE PLATE_CAPTURES.plate_id IN ('DL09KL3321', 'DLO9KL3321', 'DL09KL332I', 'DLO9KL332I') ORDER BY PLATE_CAPTURES.captured_at DESC",
+            "fetched_at": "2026-09-12T12:06:03.781891Z",
+            "elapsed_ms": 3,
+            "error": null
+          }
+        ],
+        "trace": {
+          "plate_raw": "DL09KL3321",
+          "plate_normalized": "DL09KL3321",
+          "requested_attrs": [
+            "plate_number",
+            "owner_name",
+            "vehicle_make",
+            "vehicle_model",
+            "vehicle_colour",
+            "registration_date",
+            "registration_status",
+            "insurer_name",
+            "policy_type",
+            "insurance_start",
+            "insurance_expiry",
+            "stolen_status",
+            "last_incident_date",
+            "case_status",
+            "last_seen_location",
+            "last_seen_time",
+            "observed_make",
+            "observed_model",
+            "observed_colour",
+            "insurance_status"
+          ],
+          "sources_selected": [
+            "REG",
+            "INS",
+            "THEFT",
+            "CAM"
+          ],
+          "sources_skipped": {},
+          "total_elapsed_ms": 513
+        }
+      }
+    }
+  ]
+}
