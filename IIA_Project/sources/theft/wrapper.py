@@ -1,16 +1,12 @@
-import os
-from sources.base_wrapper import create_source_wrapper
+"""THEFT wrapper: Police crime records. SQLite on laptop 3, API on :8003."""
+from sources.wrapper_template import from_env, serve
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "theft.db")
-WHITELIST = ["CRIME_RECORDS"]
-
-app = create_source_wrapper(
-    source_id="THEFT",
-    dbms_name="SQLite",
-    db_path=DB_PATH,
-    whitelisted_tables=WHITELIST
+app = from_env(
+    "THEFT",
+    default_url="sqlite:///data/theft.db",
+    default_dbms="sqlite",
+    default_tables=["CRIME_RECORDS"],  # design PDF section 3.3
 )
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8003)
+    serve(app, default_port=8003)

@@ -1,16 +1,12 @@
-import os
-from sources.base_wrapper import create_source_wrapper
+"""REG wrapper: Regional Transport Office. PostgreSQL on laptop 1, API on :8001."""
+from sources.wrapper_template import from_env, serve
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "reg.db")
-WHITELIST = ["OWNERS", "VEHICLE_REGISTRATION"]
-
-app = create_source_wrapper(
-    source_id="REG",
-    dbms_name="PostgreSQL",
-    db_path=DB_PATH,
-    whitelisted_tables=WHITELIST
+app = from_env(
+    "REG",
+    default_url="postgresql+psycopg2://iia:iia@127.0.0.1:5432/regdb",
+    default_dbms="postgresql",
+    default_tables=["VEHICLE_REGISTRATION", "OWNERS"],  # design PDF section 3.1
 )
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    serve(app, default_port=8001)

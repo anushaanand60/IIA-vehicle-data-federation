@@ -1,16 +1,12 @@
-import os
-from sources.base_wrapper import create_source_wrapper
+"""INS wrapper: Insurance provider. MySQL on laptop 2, API on :8002."""
+from sources.wrapper_template import from_env, serve
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "ins.db")
-WHITELIST = ["INSURERS", "POLICY_RECORDS"]
-
-app = create_source_wrapper(
-    source_id="INS",
-    dbms_name="MySQL",
-    db_path=DB_PATH,
-    whitelisted_tables=WHITELIST
+app = from_env(
+    "INS",
+    default_url="mysql+pymysql://iia:iia@127.0.0.1:3306/insdb",
+    default_dbms="mysql",
+    default_tables=["POLICY_RECORDS", "INSURERS"],  # design PDF section 3.2
 )
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8002)
+    serve(app, default_port=8002)

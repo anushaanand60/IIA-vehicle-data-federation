@@ -1,0 +1,106 @@
+{
+  "sources": [
+    {
+      "source_id": "REG",
+      "display_name": "Regional Transport Office",
+      "dbms": "postgresql",
+      "base_url": "http://127.0.0.1:8001",
+      "authority": "authoritative",
+      "trust": 0.95,
+      "timeout_ms": 1500,
+      "identity_authority": true,
+      "covers": ["plate_number", "owner_name", "vehicle_make", "vehicle_model", "vehicle_colour", "registration_date", "registration_status"],
+      "table": "VEHICLE_REGISTRATION",
+      "joins": [{"table": "OWNERS", "left": "VEHICLE_REGISTRATION.owner_id", "right": "OWNERS.owner_id"}],
+      "key_predicate": {"column": "registration_no", "match": "exact", "render": {"groups": [], "separator": "", "case": "upper"}},
+      "query_template": "SELECT {columns} FROM {table}{joins} WHERE {predicate}{order_by}",
+      "aggregate": {"strategy": "all"},
+      "notes": "identity_authority: asked on every query to confirm the plate is registered (design PDF UC1), even when none of its attributes were requested.",
+      "attribute_map": [
+        {"source_table": "VEHICLE_REGISTRATION", "source_attr": "registration_no", "global_attr": "plate_number",        "transform": "norm_plate", "score": 1.0},
+        {"source_table": "OWNERS",               "source_attr": "full_name",       "global_attr": "owner_name",          "transform": null,         "score": 0.84},
+        {"source_table": "VEHICLE_REGISTRATION", "source_attr": "make",            "global_attr": "vehicle_make",        "transform": "fix_make",   "score": 0.93},
+        {"source_table": "VEHICLE_REGISTRATION", "source_attr": "model",           "global_attr": "vehicle_model",       "transform": "title_case", "score": 0.95},
+        {"source_table": "VEHICLE_REGISTRATION", "source_attr": "colour",          "global_attr": "vehicle_colour",      "transform": "title_case", "score": 0.97},
+        {"source_table": "VEHICLE_REGISTRATION", "source_attr": "registered_on",   "global_attr": "registration_date",   "transform": null,         "score": 0.81},
+        {"source_table": "VEHICLE_REGISTRATION", "source_attr": "reg_status",      "global_attr": "registration_status", "transform": "status_map", "score": 0.77}
+      ]
+    },
+    {
+      "source_id": "INS",
+      "display_name": "Insurance provider",
+      "dbms": "mysql",
+      "base_url": "http://127.0.0.1:8002",
+      "authority": "authoritative",
+      "trust": 0.90,
+      "timeout_ms": 1500,
+      "covers": ["plate_number", "insurer_name", "policy_type", "insurance_start", "insurance_expiry"],
+      "table": "POLICY_RECORDS",
+      "joins": [{"table": "INSURERS", "left": "POLICY_RECORDS.insurer_id", "right": "INSURERS.insurer_id"}],
+      "key_predicate": {"column": "vehicle_reg", "match": "exact", "render": {"groups": [2, 2, 2, 4], "separator": "-", "case": "upper"}},
+      "query_template": "SELECT {columns} FROM {table}{joins} WHERE {predicate}{order_by}",
+      "aggregate": {"strategy": "latest", "global_attr": "insurance_expiry", "pushdown": false},
+      "notes": "latest-by insurance_expiry is applied downstream after parse_ddmmyyyy. policy_until is DD/MM/YYYY text, so an ORDER BY pushed to MySQL would sort it lexically and pick the wrong policy.",
+      "attribute_map": [
+        {"source_table": "POLICY_RECORDS", "source_attr": "vehicle_reg",  "global_attr": "plate_number",     "transform": "norm_plate",     "score": 1.0},
+        {"source_table": "INSURERS",       "source_attr": "insurer_name", "global_attr": "insurer_name",     "transform": null,             "score": 1.0},
+        {"source_table": "POLICY_RECORDS", "source_attr": "policy_type",  "global_attr": "policy_type",      "transform": "status_map",     "score": 1.0},
+        {"source_table": "POLICY_RECORDS", "source_attr": "policy_start", "global_attr": "insurance_start",  "transform": "parse_ddmmyyyy", "score": 0.78},
+        {"source_table": "POLICY_RECORDS", "source_attr": "policy_until", "global_attr": "insurance_expiry", "transform": "parse_ddmmyyyy", "score": 0.83}
+      ]
+    },
+    {
+      "source_id": "THEFT",
+      "display_name": "Police crime records",
+      "dbms": "sqlite",
+      "base_url": "http://127.0.0.1:8003",
+      "authority": "authoritative",
+      "trust": 0.90,
+      "timeout_ms": 1500,
+      "covers": ["plate_number", "stolen_status", "last_incident_date", "case_status"],
+      "table": "CRIME_RECORDS",
+      "key_predicate": {"column": "vehicle_number", "match": "exact", "render": {"groups": [2, 2, 2, 4], "separator": " ", "case": "lower"}},
+      "query_template": "SELECT {columns} FROM {table}{joins} WHERE {predicate}{order_by}",
+      "aggregate": {"strategy": "latest", "global_attr": "last_incident_date", "pushdown": true},
+      "notes": "stolen_status is built from three columns (incident_type, stolen_flag, recovered_flag), so all three map to it. reported_date is an epoch integer, so ORDER BY can be pushed down.",
+      "attribute_map": [
+        {"source_table": "CRIME_RECORDS", "source_attr": "vehicle_number", "global_attr": "plate_number",       "transform": "norm_plate",    "score": 1.0},
+        {"source_table": "CRIME_RECORDS", "source_attr": "incident_type",  "global_attr": "stolen_status",      "transform": "status_map",    "score": 0.62},
+        {"source_table": "CRIME_RECORDS", "source_attr": "stolen_flag",    "global_attr": "stolen_status",      "transform": "yn_to_bool",    "score": 0.74},
+        {"source_table": "CRIME_RECORDS", "source_attr": "recovered_flag", "global_attr": "stolen_status",      "transform": "yn_to_bool",    "score": 0.66},
+        {"source_table": "CRIME_RECORDS", "source_attr": "reported_date",  "global_attr": "last_incident_date", "transform": "epoch_to_date", "score": 0.71},
+        {"source_table": "CRIME_RECORDS", "source_attr": "case_status",    "global_attr": "case_status",        "transform": "status_map",    "score": 1.0}
+      ]
+    },
+    {
+      "source_id": "CAM",
+      "display_name": "Road camera network",
+      "dbms": "postgresql",
+      "base_url": "http://127.0.0.1:8004",
+      "authority": "observational",
+      "trust": 0.60,
+      "timeout_ms": 1500,
+      "covers": ["plate_number", "last_seen_location", "last_seen_time", "observed_make", "observed_model", "observed_colour"],
+      "table": "PLATE_CAPTURES",
+      "joins": [{"table": "CAMERAS", "left": "PLATE_CAPTURES.camera_id", "right": "CAMERAS.camera_id"}],
+      "key_predicate": {
+        "column": "plate_id",
+        "match": "in_variants",
+        "render": {"groups": [], "separator": "", "case": "upper"},
+        "variant_map": {"0": ["O"], "O": ["0"], "1": ["I"], "I": ["1"]},
+        "max_variants": 64
+      },
+      "query_template": "SELECT {columns} FROM {table}{joins} WHERE {predicate}{order_by}",
+      "aggregate": {"strategy": "latest", "global_attr": "last_seen_time", "pushdown": true},
+      "notes": "variant_map is the camera network's OCR error model from design PDF §3.4 (O<->0, I<->1). ocr_confidence has no global attribute yet (Part B) and is not projected.",
+      "attribute_map": [
+        {"source_table": "PLATE_CAPTURES", "source_attr": "plate_id",        "global_attr": "plate_number",       "transform": "norm_plate", "score": 0.86},
+        {"source_table": "CAMERAS",        "source_attr": "location_name",   "global_attr": "last_seen_location", "transform": null,         "score": 0.72},
+        {"source_table": "PLATE_CAPTURES", "source_attr": "captured_at",     "global_attr": "last_seen_time",     "transform": null,         "score": 0.79},
+        {"source_table": "PLATE_CAPTURES", "source_attr": "observed_make",   "global_attr": "observed_make",      "transform": "fix_make",   "score": 1.0},
+        {"source_table": "PLATE_CAPTURES", "source_attr": "observed_model",  "global_attr": "observed_model",     "transform": "title_case", "score": 1.0},
+        {"source_table": "PLATE_CAPTURES", "source_attr": "observed_colour", "global_attr": "observed_colour",    "transform": "title_case", "score": 1.0}
+      ]
+    }
+  ]
+}
