@@ -5,6 +5,7 @@
                                               THEFT=192.168.1.13 CAM=192.168.1.14
     python scripts/configure_cluster.py --local          # put every source back on 127.0.0.1
     python scripts/configure_cluster.py --probe          # GET /health on each, report up/down
+    python scripts/configure_cluster.py --remove PUC     # un-register a source (resets the UC6 demo)
 
 A value may be a bare host (192.168.1.11), host:port (192.168.1.11:8001) or a full base URL. With no
 port, the source's conventional port is used. Only base_url changes; trust, authority, covers and
@@ -22,9 +23,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # runnable as a plain script
 
+import sqlite3  # noqa: E402
+
 import httpx  # noqa: E402
 
-from mediator.catalog import get_source_catalog, register_source  # noqa: E402
+from mediator.catalog import META_DB_PATH, get_source_catalog, register_source  # noqa: E402
 
 DEFAULT_PORTS = {"REG": 8001, "INS": 8002, "THEFT": 8003, "CAM": 8004, "PUC": 8005}
 PROBE_TIMEOUT_S = 2.0
@@ -58,6 +61,23 @@ def apply(assignments: dict[str, str]) -> None:
                         authority=meta["authority"], trust_score=meta["trust_score"],
                         covers=meta.get("covers", []), timeout_ms=meta.get("timeout_ms", 1500))
         print("  " + source_id.ljust(6) + " -> " + base_url)
+
+
+def remove(source_ids: list[str]) -> None:
+    """Un-register a source: drop its catalog row and its mappings.
+
+    Mainly for resetting the UC6 demo, which registers PUC live. Doing it in SQL from a shell means
+    fighting nested quotes, so it lives here instead.
+    """
+    with sqlite3.connect(META_DB_PATH) as con:
+        for source_id in source_ids:
+            rows = con.execute("DELETE FROM SOURCE_CATALOG WHERE source_id = ?", (source_id,)).rowcount
+            maps = con.execute("DELETE FROM MAPPING_REGISTRY WHERE source_id = ?", (source_id,)).rowcount
+            if rows or maps:
+                print("  " + source_id.ljust(6) + " removed (" + str(rows) + " catalog row, "
+                      + str(maps) + " mapping(s))")
+            else:
+                print("  " + source_id.ljust(6) + " was not registered")
 
 
 def show() -> None:
@@ -107,6 +127,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--local", action="store_true", help="reset every source to 127.0.0.1")
     parser.add_argument("--show", action="store_true", help="print the catalog and exit")
     parser.add_argument("--probe", action="store_true", help="health-check every catalogued source")
+    parser.add_argument("--remove", nargs="+", metavar="SRC",
+                        help="un-register these sources and delete their mappings")
     args = parser.parse_args(argv)
 
     if args.local:
@@ -121,9 +143,12 @@ def main(argv: list[str] | None = None) -> int:
             assignments[source_id.strip().upper()] = value
         print("updating source addresses:")
         apply(assignments)
+    if args.remove:
+        print("un-registering:")
+        remove([s.strip().upper() for s in args.remove])
     if args.probe:
         return probe()
-    if args.show or not (args.set or args.local):
+    if args.show or not (args.set or args.local or args.remove):
         show()
     return 0
 
