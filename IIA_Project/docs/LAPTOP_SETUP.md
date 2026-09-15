@@ -1,20 +1,20 @@
 # Install and bring-up, machine by machine
 
 From a blank laptop to a serving source. `NETWORK.md` explains the topology, the environment
-variables, the latency budget and what to do when a source is not `OK`; this file is the install
-runbook that comes before it.
+variables, the latency budget and what to do when a source is not `OK`; this file is the runbook.
 
-Two modes:
+Target deployment: **four laptops, one database each**, three DBMS engines.
 
-| | Mode A — one machine | Mode B — four laptops |
-|---|---|---|
-| When | developing, and the day before the demo | the demo itself |
-| Sources | all four on `127.0.0.1:8001-8004` | one per laptop, over a hotspot |
-| Databases | A1 SQLite mocks / A2 the real three engines | PostgreSQL, MySQL, SQLite |
-| Installs | A1 Python only / A2 + PostgreSQL + MySQL | one engine per laptop |
+| Laptop | Source | Engine | Wrapper port | Also runs |
+|---|---|---|---|---|
+| 1 | `REG` — Regional Transport Office | PostgreSQL | 8001 | mediator + Streamlit GUI |
+| 2 | `INS` — Insurance provider | MySQL | 8002 | |
+| 3 | `THEFT` — Police crime records | SQLite | 8003 | |
+| 4 | `CAM` — Road camera network | PostgreSQL | 8004 | |
 
-Mode A1 works **today** and needs no database software. A2 and B additionally need
-`sources/*/schema.sql` and `data/generate.py`, which are still teammate deliverables (§5).
+The database listens on `127.0.0.1` only. The **wrapper port is the only thing published** — each
+agency publishes an API, not a database. That is the source-autonomy argument, and the professor
+will ask about it.
 
 ---
 
@@ -25,8 +25,8 @@ Python 3.11 or newer, git, and the repository.
 ```powershell
 # Windows
 winget install Python.Python.3.12 Git.Git
-git clone <repo-url> "iia proj1"
-cd "iia proj1"
+git clone https://github.com/anushaanand60/IIA-vehicle-data-federation.git
+cd IIA-vehicle-data-federation\IIA_Project
 py -3.12 -m venv .venv
 .venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
@@ -34,59 +34,64 @@ python -m pip install -r requirements.txt
 
 ```bash
 # Linux / macOS
-sudo apt install -y python3-venv git          # macOS: brew install python git
-git clone <repo-url> iia-proj1 && cd iia-proj1
+git clone https://github.com/anushaanand60/IIA-vehicle-data-federation.git
+cd IIA-vehicle-data-federation/IIA_Project
 python3 -m venv .venv && source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-`requirements.txt` lists both database drivers. A source laptop only needs its own
-(`psycopg2-binary` for REG and CAM, `pymysql` for INS, nothing for THEFT); installing all of it is
-simpler and harmless. Check the install:
+Check the install — no database software needed yet:
 
 ```bash
-pytest -q            # 252 passed, 1 skipped, 3 deselected — no database needed
+pytest -q            # 267 passed, 3 deselected
 ```
 
 If that is green, the transport layer on this machine is sound before any DBMS enters the picture.
 
----
+### The data is already in the repository
 
-## 2. Mode A — everything on this laptop
+`reg_*.csv`, `ins_*.csv`, `theft_*.csv`, `cam_*.csv` and `puc_records.csv` are committed, so every
+laptop loads **identical** data and the cross-source stories line up. Do not regenerate them per
+laptop — `reg.py` and friends use a fixed seed, but a different Faker version would still produce
+different owners and the sources would stop agreeing.
 
-### A1. Mock federation (no database software)
-
-```bash
-python scripts/run_local.py          # four sources on :8001-8004 + the GUI on :8501
-```
-
-One process per source, so killing a printed PID is exactly what a laptop dropping off the network
-looks like. In a second terminal:
+<details>
+<summary>Regenerating the data (one machine only, then commit the CSVs)</summary>
 
 ```bash
-python -m mediator.executor DL05CD9876      # the six story plates all work
-python -m mediator.executor HR26EF4455      # after killing :8002 → INS DOWN, the rest OK
+python reg.py && python ins.py && python theft.py && python cam.py && python puc.py
+python data/inject_demo_fixtures.py     # appends the five demo vehicles
+git add -f *.csv && git commit -m "Regenerate synthetic data"
 ```
-
-Variants: `--no-gui`, `--only REG,CAM`, `--with-puc` (the fifth agency on :8005 for the
-add-a-source demo). The mocks run the **real** wrapper modules over the real schema shapes — same
-guard, same `/health`, `/schema`, `/query`, same executor, same GUI. Only the database URL differs.
-
-### A2. The three real engines on one laptop
-
-Same as Mode B below, except every `base_url` stays `http://127.0.0.1:<port>` and the two PostgreSQL
-databases (`regdb`, `camdb`) share one server on 5432. Do §3.1–§3.4 on this one machine, skipping
-every firewall step. Worth doing as a dress rehearsal: it proves the SQL the registry generates runs
-on PostgreSQL and MySQL, which the SQLite mocks cannot prove.
+</details>
 
 ---
 
-## 3. Mode B — four laptops
+## 2. Rehearsal mode — the whole federation on one laptop
+
+Do this first. It is the same wrappers, registry, executor, integrator and GUI as the four-laptop
+deployment; only the database URLs differ.
+
+```bash
+python scripts/load_source.py REG      # each writes sources/<id>/<id>.db (SQLite)
+python scripts/load_source.py INS
+python scripts/load_source.py THEFT
+python scripts/load_source.py CAM
+python scripts/seed_mappings.py        # fill MAPPING_REGISTRY (see section 4)
+python run_system.py                   # four wrappers + the GUI on :8501
+```
+
+Keep this working. If the hotspot dies mid-demo, this is the fallback — say out loud that it is the
+rehearsal mode.
+
+---
+
+## 3. Four laptops
 
 ### 3.0 Network first
 
-Campus Wi-Fi isolates clients from each other; use a phone hotspot. Connect all four laptops, then on
-each one note its address and write the four down in one place:
+Campus Wi-Fi usually isolates clients from each other. Use a phone hotspot. Connect all four
+laptops, then note each address:
 
 ```powershell
 ipconfig | Select-String IPv4          # Windows
@@ -96,25 +101,36 @@ ip addr show | grep 'inet '            # Linux
 ipconfig getifaddr en0                 # macOS
 ```
 
-Hotspot addresses can change when a laptop reconnects, so re-check them on demo day before blaming
-the code. Every `base_url` in the registry has to match.
+Write the four addresses in one place. Hotspot addresses change when a laptop reconnects, so
+re-check them on demo day before blaming the code.
 
-### 3.1 Laptop 1 — REG, PostgreSQL, port 8001 (also runs the mediator and GUI)
+### A note on two accounts
 
-**Install.** Windows: the EDB installer from postgresql.org, or `winget install PostgreSQL.PostgreSQL.17`.
-Linux: `sudo apt install postgresql`. macOS: `brew install postgresql@17 && brew services start postgresql@17`.
-Remember the `postgres` superuser password you set.
+Loading needs to create tables; serving must not. So each source laptop uses **two** URLs:
 
-**Create the database, load the schema and the data.**
+* an **owner** account for `scripts/load_source.py` (one-off), and
+* a **read-only** account in `<SOURCE>_DB_URL` for the wrapper (what runs during the demo).
+
+---
+
+### 3.1 Laptop 1 — REG, PostgreSQL, port 8001
+
+**Install.** Windows: `winget install PostgreSQL.PostgreSQL.17` or the EDB installer from
+postgresql.org. Linux: `sudo apt install postgresql`. macOS:
+`brew install postgresql@17 && brew services start postgresql@17`. Remember the `postgres` password.
+
+**Create the database and load it.** `load_source.py` runs `sources/reg/schema.sql` itself — that
+file is plain ANSI SQL and needs no PostgreSQL-specific edits.
 
 ```bash
 psql -U postgres -c "CREATE DATABASE regdb;"
-psql -U postgres -d regdb -f sources/reg/schema.sql
-python data/generate.py --source REG          # teammate deliverable; their flags win, see §5
+python scripts/load_source.py REG --url "postgresql+psycopg2://postgres:<pw>@127.0.0.1:5432/regdb" --verify
 ```
 
-**A read-only account** — the wrapper opens read-only connections, but the account should not be able
-to write either:
+`--verify` must report 1 row for `DL01AB1234`, `DL05CD9876`, `HR26EF4455`, `UP16GH1122` and
+**0 for `MH12IJ7788`** — that vehicle is deliberately unregistered.
+
+**A read-only account for the wrapper:**
 
 ```sql
 -- psql -U postgres -d regdb
@@ -124,21 +140,18 @@ GRANT USAGE ON SCHEMA public TO iia_reader;
 GRANT SELECT ON vehicle_registration, owners TO iia_reader;
 ```
 
-**Keep the database off the LAN.** In `postgresql.conf`: `listen_addresses = 'localhost'`, then
-restart the service. Only the wrapper port is published — that is the source-autonomy argument, and
-the professor will ask about it.
+**Keep the database off the LAN.** In `postgresql.conf` set `listen_addresses = 'localhost'`, then
+restart the service.
 
 **Start the wrapper.**
 
 ```powershell
 $env:REG_DB_URL = "postgresql+psycopg2://iia_reader:secret@127.0.0.1:5432/regdb"
-$env:REG_TABLES = "VEHICLE_REGISTRATION,OWNERS"
-python -m uvicorn sources.reg.wrapper:app --host 0.0.0.0 --port 8001
+python -m sources.reg.wrapper
 ```
 ```bash
 export REG_DB_URL="postgresql+psycopg2://iia_reader:secret@127.0.0.1:5432/regdb"
-export REG_TABLES="VEHICLE_REGISTRATION,OWNERS"
-python -m uvicorn sources.reg.wrapper:app --host 0.0.0.0 --port 8001
+python -m sources.reg.wrapper
 ```
 
 **Open the port.**
@@ -150,20 +163,20 @@ netsh advfirewall firewall add rule name="IIA REG wrapper" dir=in action=allow p
 sudo ufw allow 8001/tcp                 # macOS: allow Python when it first asks
 ```
 
-**Verify.** `curl http://127.0.0.1:8001/health` → `{"up":true,…}`, and
-`curl http://127.0.0.1:8001/schema` should list both tables with sample values — that response is
-what the teammates' schema matcher consumes, so an empty `samples` array means the data did not load.
+**Verify.** `curl http://127.0.0.1:8001/health` must report `"up":true` **and
+`"dbms":"PostgreSQL"`**. If it says `SQLite`, `REG_DB_URL` did not reach the process — the wrapper
+falls back to the local file rather than failing, and `/health` is how you catch that.
+
+---
 
 ### 3.2 Laptop 2 — INS, MySQL, port 8002
 
-**Install.** Windows: MySQL Installer from mysql.com (choose *Server only*), or
-`winget install Oracle.MySQL`. Linux: `sudo apt install mysql-server`.
-macOS: `brew install mysql && brew services start mysql`.
+**Install.** Windows: MySQL Installer from mysql.com (*Server only*) or `winget install Oracle.MySQL`.
+Linux: `sudo apt install mysql-server`. macOS: `brew install mysql && brew services start mysql`.
 
 ```bash
 mysql -u root -p -e "CREATE DATABASE insdb;"
-mysql -u root -p insdb < sources/ins/schema.sql
-python data/generate.py --source INS
+python scripts/load_source.py INS --url "mysql+pymysql://root:<pw>@127.0.0.1:3306/insdb" --verify
 ```
 
 ```sql
@@ -172,103 +185,149 @@ GRANT SELECT ON insdb.POLICY_RECORDS TO 'iia_reader'@'localhost';
 GRANT SELECT ON insdb.INSURERS TO 'iia_reader'@'localhost';
 ```
 
-`bind-address = 127.0.0.1` in `my.ini` (Windows: `C:\ProgramData\MySQL\MySQL Server 8.0\my.ini`) or
-`my.cnf`, then restart the service.
+Set `bind-address = 127.0.0.1` in `my.ini` (Windows:
+`C:\ProgramData\MySQL\MySQL Server 8.0\my.ini`) or `my.cnf`, then restart the service.
 
 ```bash
 export INS_DB_URL="mysql+pymysql://iia_reader:secret@127.0.0.1:3306/insdb"
-export INS_TABLES="POLICY_RECORDS,INSURERS"
-python -m uvicorn sources.ins.wrapper:app --host 0.0.0.0 --port 8002
+python -m sources.ins.wrapper
 ```
 
-> **MySQL on Linux and macOS is case-sensitive about table names.** `INS_TABLES` and the registry's
-> `source_table` must use the exact `CREATE TABLE` spelling, or every query comes back
-> `ERROR · table doesn't exist`. Windows MySQL folds case and will hide the problem until demo day.
+> **MySQL on Linux and macOS is case-sensitive about table names.** The tables are created as
+> `POLICY_RECORDS` / `INSURERS`, and `MAPPING_REGISTRY.source_table` must use that exact spelling or
+> every query returns `ERROR - table doesn't exist`. Windows MySQL folds case and hides this until
+> demo day.
 
-Firewall: port 8002.
+Firewall: port 8002. `/health` must say `"dbms":"MySQL"`.
+
+---
 
 ### 3.3 Laptop 3 — THEFT, SQLite, port 8003
 
 Nothing to install beyond Python — the database is a file.
 
 ```bash
-mkdir -p data
-sqlite3 data/theft.db < sources/theft/schema.sql
-python data/generate.py --source THEFT
-export THEFT_DB_URL="sqlite:///data/theft.db"     # relative to the directory uvicorn starts in
-export THEFT_TABLES="CRIME_RECORDS"
-python -m uvicorn sources.theft.wrapper:app --host 0.0.0.0 --port 8003
+python scripts/load_source.py THEFT --verify        # writes sources/theft/theft.db
+python -m sources.theft.wrapper
 ```
 
-Make the file read-only for the account running the wrapper if you want belt and braces; the wrapper
-already sets `PRAGMA query_only = ON`. Firewall: port 8003.
+`THEFT_DB_URL` can be left unset: SQLite is this source's real engine, so the default is correct
+here. The wrapper sets `PRAGMA query_only = ON`; mark the file read-only for the serving account if
+you want belt and braces. Firewall: port 8003.
+
+---
 
 ### 3.4 Laptop 4 — CAM, PostgreSQL, port 8004
 
-Exactly §3.1 with `camdb`, `PLATE_CAPTURES` / `CAMERAS`, and port 8004:
+Exactly section 3.1 with `camdb`, `PLATE_CAPTURES` / `CAMERAS` and port 8004:
 
 ```bash
 psql -U postgres -c "CREATE DATABASE camdb;"
-psql -U postgres -d camdb -f sources/cam/schema.sql
-python data/generate.py --source CAM
+python scripts/load_source.py CAM --url "postgresql+psycopg2://postgres:<pw>@127.0.0.1:5432/camdb" --verify
 export CAM_DB_URL="postgresql+psycopg2://iia_reader:secret@127.0.0.1:5432/camdb"
-export CAM_TABLES="PLATE_CAPTURES,CAMERAS"
-python -m uvicorn sources.cam.wrapper:app --host 0.0.0.0 --port 8004
+python -m sources.cam.wrapper
 ```
 
 CAM is the observational source: plates are OCR output and are meant to be noisy. Do not "fix" them
-in the database — the mediator's plate matching and the cloned-plate story both depend on it.
-
-### 3.5 Back on the mediator laptop
-
-1. Put the four addresses into the registry's `base_url` (`SOURCE_CATALOG.base_url` in `meta.db`, or
-   the `base_url` field per source in `mappings.json`) — e.g. `http://192.168.43.12:8002` for INS.
-2. Validate the registry and read the coverage matrix:
-   ```bash
-   python scripts/validate_registry.py mediator/meta.db
-   ```
-3. Prove the integration end to end:
-   ```bash
-   pytest -q -m live                  # IIA_LIVE_PLATE=DL01AB1234 for another plate
-   python -m mediator.executor DL05CD9876
-   streamlit run app/app.py           # until that exists: streamlit run app/tabs/plan_trace.py
-   ```
-
-`pytest -m live` is the contract test: it checks each source is healthy, that every column the
-registry names really exists in that source's `/schema`, and that a known plate returns rows. Run it
-first whenever something looks wrong — it names the missing column instead of making you guess.
+in the database — the plate matching and the cloned-plate story both depend on it.
 
 ---
 
-## 4. Demo-day checklist
+## 4. Back on the mediator laptop (laptop 1)
 
-1. All four laptops on the hotspot; addresses re-checked and matching the registry.
-2. Each source: wrapper started, `curl http://<ip>:<port>/health` answers **from the mediator laptop**,
-   not just locally.
-3. `python scripts/validate_registry.py <registry>` clean.
-4. `pytest -q -m live` green.
-5. Six story plates queried once each to warm the processes (the first query in a fresh process pays
-   a one-time ~0.3 s warm-up).
-6. Rehearse the failure story: close the INS wrapper's terminal, query `DL05CD9876`, show INS `DOWN`
-   and the decision refusing to conclude. That degradation is the part worth marks.
-7. Fallback if the hotspot dies mid-demo: `python scripts/run_local.py` on one laptop runs the whole
-   federation locally. Say out loud that it is the rehearsal mode.
+**1. Fill the mapping registry.** On a fresh clone `MAPPING_REGISTRY` is empty, and an empty registry
+means the decomposer emits `SELECT * WHERE 1=0` and every profile comes back blank:
 
-Anything not `OK` → `NETWORK.md` §6, which maps each status and error message to its cause.
+```bash
+python scripts/seed_mappings.py
+python scripts/seed_mappings.py --show     # 31 mappings across REG, INS, THEFT, CAM
+```
+
+This writes the transforms and join paths that the schema matcher cannot infer — the human
+validation step, scripted so it is identical on every laptop. The Schema Matching tab still
+demonstrates discovery live; this only means the demo does not depend on clicking it first.
+
+**2. Point the mediator at the other laptops:**
+
+```bash
+python scripts/configure_cluster.py --set REG=127.0.0.1 INS=192.168.43.12 \
+                                          THEFT=192.168.43.13 CAM=192.168.43.14
+python scripts/configure_cluster.py --probe
+```
+
+`--probe` must report 4/4 reachable, each with the engine it should be running. This is the moment
+that catches a firewall rule or a stale address, and it takes two seconds.
+
+**3. Validate the registry and read the coverage matrix:**
+
+```bash
+python scripts/validate_registry.py
+```
+
+**4. Prove the integration end to end:**
+
+```bash
+python -m mediator.executor DL05CD9876     # raw rows per source + the plan trace
+pytest -q -m live                          # the contract test against the real four laptops
+streamlit run app/app.py                   # or: python run_system.py
+```
 
 ---
 
-## 5. What is still blocked on teammates
+## 5. Demo-day checklist
 
-Modes A2 and B need files that do not exist in the repository yet:
+1. All four laptops on the hotspot; `configure_cluster.py --probe` reports **4/4**.
+2. `scripts/seed_mappings.py --show` lists 31 mappings.
+3. `validate_registry.py` clean.
+4. Query the five story plates once each to warm the processes (the first query in a fresh process
+   pays a one-time ~0.3 s warm-up):
 
-| Needed | Owner | Used by |
+   | Plate | Expected decision |
+   |---|---|
+   | `DL01AB1234` | CLEAR |
+   | `DL05CD9876` | UNINSURED — REPORT |
+   | `HR26EF4455` | STOLEN — ALERT POLICE |
+   | `UP16GH1122` | SUSPICIOUS — POSSIBLE CLONED PLATE |
+   | `MH12IJ7788` | UNREGISTERED / SUSPICIOUS |
+
+5. Show the same vehicle found through three spellings — `DL01AB1234`, `DL-01-AB-1234`,
+   `dl 01 ab 1234` — which is the plate-heterogeneity point.
+6. **Rehearse the failure story.** Close the INS wrapper's terminal, query `DL05CD9876`, and show
+   INS `DOWN` with the decision refusing to conclude:
+   *"Insurance records source is currently DOWN; cannot verify insurance status safely."* That
+   refusal is the part worth marks — the mediator does not guess when a source is unreachable.
+7. Fallback if the hotspot dies: `python run_system.py` on one laptop runs the whole federation
+   locally.
+
+---
+
+## 6. Troubleshooting
+
+| Symptom | Cause | Fix |
 |---|---|---|
-| `sources/{reg,ins,theft,cam}/schema.sql` | Teammates A & B | §3.1–§3.4 schema load |
-| `data/generate.py`, `data/ground_truth.csv` | Teammates A & B | the data load on each laptop |
-| `mediator/meta.db` or `mediator/mappings.json` | Teammates A & B | §3.5; until then the loader falls back to `sources/_mock/mock_mappings.json` |
-| `mediator/transforms.py`, `integrator.py`, `decide.py`, `report.py` | Teammate C | everything downstream of the executor |
-| `app/app.py` and `app/tabs/{investigate,reports}.py` | Teammate C | the full GUI; `app/tabs/plan_trace.py` runs standalone meanwhile |
+| `/health` says `"dbms":"SQLite"` on laptop 1/2/4 | `<SOURCE>_DB_URL` not set in *that* shell | export it, restart the wrapper |
+| Every profile field is `None` | `MAPPING_REGISTRY` empty | `python scripts/seed_mappings.py` |
+| Source `DOWN` from the mediator, `OK` locally | firewall, or the port is closed | open the port; the wrapper binds `0.0.0.0` by default |
+| Source `DOWN` after a reconnect | hotspot reassigned the address | `configure_cluster.py --set ...` again |
+| `table doesn't exist` on MySQL/Linux | table-name case | match the `CREATE TABLE` spelling exactly |
+| `--verify` shows 0 rows everywhere | CSVs missing, or wrong working directory | run from `IIA_Project/` |
+| `MH12IJ7788` shows 0 rows in REG | correct — it is the unregistered vehicle | nothing to fix |
 
-Until they land, Mode A1 is the whole demo that exists: the transport layer, the registry-driven SQL,
-parallel execution, per-source status and the plan trace are all real and testable.
+Anything else not `OK` → `NETWORK.md` section 6, which maps each status and error message to its
+cause.
+
+---
+
+## 7. What has been verified, and what has not
+
+Verified end to end on one machine with all four sources on SQLite: the five demo decisions, the
+plate-format variants, latest-wins policy selection on renewal pairs, the join-backed fields
+(`owner_name`, `insurer_name`, `last_seen_location`), the DD/MM/YYYY and epoch date transforms, and
+the INS-down degradation to `UNDETERMINED`. Full suite: 267 passed.
+
+**Not yet verified against live PostgreSQL or MySQL** — neither engine was usable on the machine
+this was integrated on. The schemas are plain ANSI SQL and the loader reads column types back from
+the live database, so they are expected to work unchanged, but laptops 1, 2 and 4 should each run
+`scripts/load_source.py <SRC> --verify` and confirm `/health` reports the right engine *before* demo
+day rather than on it. `pytest -q -m live` from the mediator laptop is the contract test that proves
+the whole federation over the network.

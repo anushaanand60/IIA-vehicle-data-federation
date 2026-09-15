@@ -14,6 +14,8 @@ import ssl
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, wait
+from datetime import datetime, timezone
+from typing import Any, NamedTuple
 
 import httpx
 from pydantic import ValidationError
@@ -26,6 +28,13 @@ KEY_ATTR = "plate_number"
 CONNECT_TIMEOUT_S = 0.5  # a live wrapper accepts TCP in milliseconds; waiting longer only delays a DOWN verdict
 GRACE_S = 0.25           # backstop on top of the slowest source's own timeout
 SqlBuilder = Callable[[SourceSpec, str, "list[str] | None"], str]
+
+
+class Endpoint(NamedTuple):
+    """All the transport layer needs about a source. Keeps dispatch usable from both public APIs."""
+    source_id: str
+    base_url: str
+    timeout_ms: int
 
 
 def select_sources(registry: Registry, requested: list[str] | None) -> tuple[list[SourceSpec], dict[str, str]]:
@@ -120,10 +129,11 @@ def execute(registry: Registry, plate_raw: str, requested_attrs: list[str] | Non
     selected, skipped = select_sources(registry, requested_attrs)
     stored = None if requested_attrs is None else registry.resolve(requested_attrs)
     results: dict[str, SourceResult] = {}
-    calls: dict[str, tuple[SourceSpec, str]] = {}
+    calls: dict[str, tuple[Endpoint, str]] = {}
     for spec in selected:
         try:
-            calls[spec.source_id] = (spec, sql_builder(spec, plate, stored))
+            endpoint = Endpoint(spec.source_id, spec.base_url, spec.timeout_ms)
+            calls[spec.source_id] = (endpoint, sql_builder(spec, plate, stored))
         except Exception as exc:  # a registry entry we cannot turn into SQL is our bug, reported per source
             results[spec.source_id] = SourceResult(source_id=spec.source_id, status="ERROR", elapsed_ms=0,
                                                    error=f"could not build SQL: {exc}")
@@ -174,40 +184,40 @@ def _select_list(pairs: list[tuple[str, str]], col: Callable[[str, str], str]) -
 _TLS = ssl.create_default_context()
 
 
-def _call_all(calls: dict[str, tuple[SourceSpec, str]]) -> dict[str, SourceResult]:
+def _call_all(calls: dict[str, tuple[Endpoint, str]]) -> dict[str, SourceResult]:
     client = httpx.Client(trust_env=False, verify=_TLS)  # never route LAN wrappers through a system proxy
     pool = ThreadPoolExecutor(max_workers=len(calls))
-    futures = {pool.submit(_call, client, spec, sql): source_id for source_id, (spec, sql) in calls.items()}
-    deadline = max(spec.timeout_ms for spec, _ in calls.values()) / 1000 + GRACE_S
+    futures = {pool.submit(_call, client, ep, sql): source_id for source_id, (ep, sql) in calls.items()}
+    deadline = max(ep.timeout_ms for ep, _ in calls.values()) / 1000 + GRACE_S
     done, _ = wait(futures, timeout=deadline)
     results = {}
     for future, source_id in futures.items():
-        spec, sql = calls[source_id]
+        ep, sql = calls[source_id]
         results[source_id] = future.result() if future in done else SourceResult(
             source_id=source_id, status="TIMEOUT", sql_sent=sql, elapsed_ms=int(deadline * 1000),
-            error=f"no response within {spec.timeout_ms} ms (hard deadline)")
+            error=f"no response within {ep.timeout_ms} ms (hard deadline)")
     pool.shutdown(wait=False, cancel_futures=True)  # a hung call must not hold the caller hostage
     if len(done) == len(futures):
         client.close()
     return results
 
 
-def _call(client: httpx.Client, spec: SourceSpec, sql: str) -> SourceResult:
-    started, budget = time.perf_counter(), spec.timeout_ms / 1000
+def _call(client: httpx.Client, ep: Endpoint, sql: str) -> SourceResult:
+    started, budget = time.perf_counter(), ep.timeout_ms / 1000
     connect = min(budget, CONNECT_TIMEOUT_S)
 
     def result(status: Status, error: str | None = None, body: QueryResponse | None = None) -> SourceResult:
         rows = body.rows if body else []
-        return SourceResult(source_id=spec.source_id, status=status, rows=rows, row_count=len(rows), sql_sent=sql,
+        return SourceResult(source_id=ep.source_id, status=status, rows=rows, row_count=len(rows), sql_sent=sql,
                             fetched_at=body.fetched_at if body else None, error=error,
                             elapsed_ms=int((time.perf_counter() - started) * 1000))
 
     try:
-        response = client.post(f"{spec.base_url}/query", json={"sql": sql}, timeout=httpx.Timeout(budget, connect=connect))
+        response = client.post(f"{ep.base_url}/query", json={"sql": sql}, timeout=httpx.Timeout(budget, connect=connect))
     except httpx.ConnectTimeout:
-        return result("DOWN", f"no TCP connection to {spec.base_url} within {connect * 1000:.0f} ms")
+        return result("DOWN", f"no TCP connection to {ep.base_url} within {connect * 1000:.0f} ms")
     except httpx.TimeoutException:
-        return result("TIMEOUT", f"no response within {spec.timeout_ms} ms")
+        return result("TIMEOUT", f"no response within {ep.timeout_ms} ms")
     except httpx.TransportError as exc:  # refused, unreachable, reset mid-response
         return result("DOWN", f"{type(exc).__name__}: {exc}")
     except Exception as exc:  # anything else is still a status, never an exception for the caller
@@ -248,6 +258,81 @@ def _print_human(resp: FederationResponse) -> None:
             print(f"  error {r.error}")
         for row in r.rows:
             print(f"  row   {json.dumps(row)}")
+
+
+# --- Dict-shaped API used by mediator.core and app/app.py ---------------------
+# Their pipeline predates SourceResult. Rather than duplicate the transport layer, these two adapt
+# it: source metadata still comes from SOURCE_CATALOG and SQL still comes from the decomposer, so
+# no source-specific table, column or SQL fragment enters this module (CLAUDE.md §8).
+
+LEGACY_TIMEOUT_MS = 1500
+HEALTH_TIMEOUT_S = 1.0
+
+
+def execute_federated_plan(sources: list[str], canonical_plate: str) -> dict[str, Any]:
+    """Execute a plan built by mediator.planner. Unknown source ids are skipped, never raised."""
+    # Imported here, not at module scope: execute() must stay usable without the catalog/decomposer.
+    from mediator.catalog import get_source_catalog
+    from mediator.decomposer import decompose_query
+
+    catalog = get_source_catalog()
+    calls: dict[str, tuple[Endpoint, str]] = {}
+    sqls: dict[str, str] = {}
+    for source_id in sources:
+        meta = catalog.get(source_id)
+        if meta is None:
+            continue
+        sqls[source_id] = sql = decompose_query(source_id, canonical_plate)
+        calls[source_id] = (Endpoint(source_id, str(meta.get("base_url") or "").rstrip("/"),
+                                     int(meta.get("timeout_ms") or LEGACY_TIMEOUT_MS)), sql)
+    started = time.perf_counter()
+    results = _call_all(calls) if calls else {}
+    return {
+        "sources_executed": {source_id: _as_dict(r) for source_id, r in results.items()},
+        "total_elapsed_ms": round((time.perf_counter() - started) * 1000, 2),
+        "sqls": sqls,
+    }
+
+
+def check_all_sources_health() -> dict[str, dict[str, Any]]:
+    """Probe /health per catalogued source. GUI badges only: never an input to a decision (CLAUDE.md §8)."""
+    from mediator.catalog import get_source_catalog
+
+    catalog = get_source_catalog()
+    if not catalog:
+        return {}
+
+    def probe(source_id: str, base_url: str) -> dict[str, Any]:
+        started = time.perf_counter()
+        try:
+            with httpx.Client(trust_env=False, verify=_TLS, timeout=HEALTH_TIMEOUT_S) as client:
+                response = client.get(f"{str(base_url).rstrip('/')}/health")
+            body = response.json() if response.status_code == 200 else {"source_id": source_id, "up": False}
+        except Exception as exc:  # a health probe that raises would take the whole GUI down with it
+            body = {"source_id": source_id, "up": False, "error": f"{type(exc).__name__}: {exc}"}
+        if not isinstance(body, dict):
+            body = {"source_id": source_id, "up": False, "error": "health response was not a JSON object"}
+        body["latency_ms"] = round((time.perf_counter() - started) * 1000, 2)
+        return body
+
+    with ThreadPoolExecutor(max_workers=len(catalog)) as pool:
+        futures = {pool.submit(probe, sid, meta.get("base_url", "")): sid for sid, meta in catalog.items()}
+        return {sid: future.result() for future, sid in futures.items()}
+
+
+def _as_dict(r: SourceResult) -> dict[str, Any]:
+    """SourceResult -> the key names mediator.integrator and app/app.py already read."""
+    return {
+        "source_id": r.source_id,
+        "status": r.status,
+        "rows": r.rows,
+        "row_count": r.row_count,
+        "sql": r.sql_sent or "",
+        # Integrator stamps provenance from this, so never leave it absent.
+        "fetched_at": (r.fetched_at or datetime.now(timezone.utc)).isoformat(),
+        "elapsed_ms": r.elapsed_ms,
+        "error": r.error,
+    }
 
 
 def main(argv: list[str] | None = None) -> int:

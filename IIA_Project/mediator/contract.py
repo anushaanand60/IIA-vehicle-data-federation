@@ -48,22 +48,47 @@ class HealthResponse(BaseModel):
 
 
 class ColumnInfo(BaseModel):
+    """One column as /schema publishes it.
+
+    The matcher (mediator/matcher.py) reads is_pk / is_fk / sample_values; CLAUDE.md §5.1 names the
+    same facts pk / fk / samples. Rather than force one consumer to change, the wire format carries
+    both and _mirror keeps them in step, so a column can never report two different stories.
+    """
     name: str
     type: str
     nullable: bool
     pk: bool
     fk: str | None = None  # "table.column" this column references, if any
     samples: list[Any] = Field(default_factory=list, max_length=20)
+    is_pk: bool = False
+    is_fk: bool = False
+    fk_target: str | None = None
+    sample_values: list[Any] = Field(default_factory=list, max_length=20)
+
+    @model_validator(mode="after")
+    def _mirror(self) -> ColumnInfo:
+        self.is_pk = self.pk
+        self.is_fk = self.fk is not None
+        self.fk_target = self.fk.split(".")[0] if self.fk else None
+        self.sample_values = self.samples
+        return self
 
 
 class TableInfo(BaseModel):
     table: str
+    table_name: str = ""  # the matcher's spelling of `table`; filled by _mirror
     columns: list[ColumnInfo]
+
+    @model_validator(mode="after")
+    def _mirror(self) -> TableInfo:
+        self.table_name = self.table
+        return self
 
 
 class SchemaResponse(BaseModel):
     source_id: str
-    tables: list[TableInfo]
+    # Keyed by table name, because mediator/matcher.py iterates source_schema["tables"].items().
+    tables: dict[str, TableInfo]
 
 
 class QueryRequest(BaseModel):
@@ -154,6 +179,7 @@ class SourceSpec(BaseModel):
     aggregate: Aggregate = Field(default_factory=Aggregate)
     attribute_map: list[AttributeMapping] = Field(min_length=1)
     extra: dict[str, Any] = Field(default_factory=dict)  # registry keys we don't understand: kept, not dropped
+    covers_unmapped: list[str] = Field(default_factory=list)  # covered but derived downstream; set in _consistent
 
     @field_validator("query_template")
     @classmethod
@@ -165,8 +191,13 @@ class SourceSpec(BaseModel):
     @model_validator(mode="after")
     def _consistent(self) -> SourceSpec:
         mapped = {m.global_attr for m in self.attribute_map}
-        if missing := [a for a in self.covers if a not in mapped]:
-            raise ValueError(f"{self.source_id}: covers {missing[0]!r} but attribute_map has no mapping for it")
+        # covers[] declares what the source can contribute; attribute_map records column-level
+        # correspondences only. THEFT covers stolen_status, which the integrator derives from
+        # stolen_flag + recovered_flag + case_status, so no single column maps to it. Such entries
+        # are kept (they must still drive source selection) and listed for the coverage report
+        # rather than rejected. A covers[] typo therefore surfaces in
+        # scripts/validate_registry.py as an attribute with no mapping, not as a hard failure.
+        self.covers_unmapped = [a for a in self.covers if a not in mapped]
         if (agg := self.aggregate.global_attr) and agg not in mapped:
             raise ValueError(f"{self.source_id}: aggregate orders by unmapped attribute {agg!r}")
         reachable = {self.table.lower(), *(j.table.lower() for j in self.joins)}

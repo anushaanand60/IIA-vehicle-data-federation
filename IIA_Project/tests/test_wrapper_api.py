@@ -64,20 +64,29 @@ def test_health_reports_503_when_database_is_unreachable(dead_client):
 # --- /schema ---------------------------------------------------------------------
 
 def test_schema_exposes_only_whitelisted_tables(client):
-    tables = {t["table"] for t in client.get("/schema").json()["tables"]}
-    assert tables == {"crime_records", "case_notes"}
+    # Keyed by table name: mediator/matcher.py iterates source_schema["tables"].items().
+    assert set(client.get("/schema").json()["tables"]) == {"crime_records", "case_notes"}
 
 
 def test_schema_describes_columns_keys_and_samples(client):
     body = client.get("/schema").json()
-    crimes = next(t for t in body["tables"] if t["table"] == "crime_records")
+    crimes = body["tables"]["crime_records"]
+    assert crimes["table"] == crimes["table_name"] == "crime_records"
     cols = {c["name"]: c for c in crimes["columns"]}
     assert list(cols) == ["case_no", "regn_mark", "incident_epoch", "stolen_flag"]
     assert cols["case_no"]["pk"] is True and cols["regn_mark"]["nullable"] is False
     assert 0 < len(cols["regn_mark"]["samples"]) <= 20
     assert "dl 01 ab 0000" in cols["regn_mark"]["samples"]  # raw source format, untouched
-    notes = next(t for t in body["tables"] if t["table"] == "case_notes")
+    notes = body["tables"]["case_notes"]
     assert next(c for c in notes["columns"] if c["name"] == "case_no")["fk"] == "crime_records.case_no"
+
+
+def test_schema_publishes_both_spellings_the_matcher_and_the_contract_use(client):
+    cols = {c["name"]: c for c in client.get("/schema").json()["tables"]["case_notes"]["columns"]}
+    case_no = cols["case_no"]
+    assert (case_no["pk"], case_no["is_pk"]) == (False, False)
+    assert case_no["is_fk"] is True and case_no["fk_target"] == "crime_records"
+    assert case_no["sample_values"] == case_no["samples"]
 
 
 def test_schema_reports_503_when_database_is_unreachable(dead_client):

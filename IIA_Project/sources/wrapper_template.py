@@ -117,7 +117,8 @@ def create_app(db_url: str, *, source_id: str, dbms: str, tables: Iterable[str],
         try:
             eng = engine()
             present = {name.lower(): name for name in inspect(eng).get_table_names()}
-            described = [_describe_table(eng, present[t.lower()]) for t in whitelist if t.lower() in present]
+            described = {present[t.lower()]: _describe_table(eng, present[t.lower()])
+                         for t in whitelist if t.lower() in present}
         except SQLAlchemyError as exc:
             return _error(503, f"database unreachable: {_short(exc)}")
         return JSONResponse(content={"source_id": source_id, "tables": described})
@@ -151,8 +152,17 @@ def from_env(source_id: str, *, default_url: str, default_dbms: str, default_tab
     def env(key: str, default: str) -> str:
         return os.environ.get(f"{source_id}_{key}", default)
     tables = [t.strip() for t in env("TABLES", ",".join(default_tables)).split(",") if t.strip()]
-    return create_app(env("DB_URL", default_url), source_id=source_id, dbms=env("DBMS", default_dbms),
+    url = env("DB_URL", default_url)
+    # /health must not claim PostgreSQL while serving the SQLite fallback, so the label follows
+    # the URL unless the agency overrides it explicitly.
+    return create_app(url, source_id=source_id, dbms=env("DBMS", _engine_label(url) or default_dbms),
                       tables=tables, statement_timeout_s=float(os.environ.get("WRAPPER_STATEMENT_TIMEOUT_S", "3")))
+
+
+def _engine_label(url: str) -> str:
+    scheme = url.split(":", 1)[0].split("+", 1)[0].lower()
+    return {"sqlite": "SQLite", "postgresql": "PostgreSQL", "postgres": "PostgreSQL",
+            "mysql": "MySQL", "mariadb": "MariaDB"}.get(scheme, scheme)
 
 
 def serve(app: FastAPI, default_port: int) -> None:
@@ -176,6 +186,9 @@ def _make_engine(url: str, timeout_s: float) -> Engine:
         def _limits(dbapi: Any, _: Any) -> None:
             with dbapi.cursor() as cur:
                 cur.execute(f"SET SESSION MAX_EXECUTION_TIME = {ms}")
+                # MySQL alone reads || as logical OR. Without this the decomposer's portable
+                # substr()||substr() date ordering would silently evaluate to 0 or 1.
+                cur.execute("SET SESSION sql_mode = CONCAT(@@sql_mode, ',PIPES_AS_CONCAT')")
                 cur.execute("SET SESSION TRANSACTION READ ONLY")
         event.listen(eng, "connect", _limits)
     return eng
@@ -206,9 +219,14 @@ def _describe_table(eng: Engine, table: str) -> dict[str, Any]:
             name = col["name"]
             samples = conn.execute(text(f"SELECT DISTINCT {q(name)} FROM {q(table)} "
                                         f"WHERE {q(name)} IS NOT NULL LIMIT {SAMPLE_SIZE}")).scalars().all()
+            values = [_wire(v) for v in samples]
+            fk = fks.get(name)
             columns.append({"name": name, "type": str(col["type"]), "nullable": bool(col.get("nullable", True)),
-                            "pk": name in pk, "fk": fks.get(name), "samples": [_wire(v) for v in samples]})
-    return {"table": table, "columns": columns}
+                            "pk": name in pk, "fk": fk, "samples": values,
+                            "is_pk": name in pk, "is_fk": fk is not None,
+                            "fk_target": fk.split(".")[0] if fk else None, "sample_values": values})
+    # Both spellings of every fact, so the matcher and CLAUDE.md §5.1 read the same response.
+    return {"table": table, "table_name": table, "columns": columns}
 
 
 def _reachable(eng: Engine | None) -> bool:

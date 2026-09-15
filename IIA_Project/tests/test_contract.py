@@ -154,9 +154,13 @@ def test_non_positive_timeout_is_rejected():
         SourceSpec(**spec_dict(timeout_ms=0))
 
 
-def test_covering_an_attribute_with_no_mapping_is_rejected():
-    with pytest.raises(ValidationError, match="owner_name"):
-        SourceSpec(**spec_dict(covers=["plate_number", "owner_name"]))
+def test_covering_an_attribute_with_no_mapping_is_recorded_not_rejected():
+    # THEFT covers stolen_status, which the integrator derives from three of its columns, so no
+    # single column maps to it. Such an entry stays in covers[] (it must still drive source
+    # selection) and is listed for the coverage report instead of failing validation.
+    spec = SourceSpec(**spec_dict(covers=["plate_number", "owner_name"]))
+    assert spec.covers_unmapped == ["owner_name"]
+    assert "owner_name" in spec.covers
 
 
 @pytest.mark.parametrize("tpl", ["DELETE FROM x", "  update x set a=1", "WITH x AS (SELECT 1) DELETE FROM y"])

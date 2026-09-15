@@ -1,13 +1,26 @@
-# Transport layer (mediator + wrappers)
+# One file for the whole project. A source laptop only strictly needs its own driver, but
+# installing everything is simpler and harmless.
+
+# --- Transport layer: mediator + the four wrappers ---
 pydantic>=2.6
 fastapi>=0.110
 uvicorn>=0.29
 sqlalchemy>=2.0
 httpx>=0.27
-# DB drivers — each laptop only needs its own
+
+# --- Database drivers (SQLite needs none; it is in the standard library) ---
 psycopg2-binary>=2.9   # REG, CAM (PostgreSQL)
 pymysql>=1.1           # INS (MySQL)
-# THEFT (SQLite) needs no driver
-# GUI + tests
+
+# --- Mediator pipeline, GUI and reports ---
 streamlit>=1.35
+pandas>=2.0
+plotly>=5.20
+altair>=5.0
+reportlab>=4.0         # Ministry report PDFs (mediator/report.py)
+
+# --- Synthetic data generation (run once, then the CSVs are committed) ---
+faker>=25.0
+
+# --- Tests ---
 pytest>=8.0

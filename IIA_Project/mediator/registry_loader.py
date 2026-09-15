@@ -75,11 +75,24 @@ def _read_meta_db(path: Path) -> dict[str, Any]:
             if missing := [t for t in ("SOURCE_CATALOG", "MAPPING_REGISTRY") if t not in tables]:
                 raise RegistryError(f"{path} has no {' or '.join(missing)} table (design PDF §7.1)")
             sources = {r["source_id"]: dict(r) for r in con.execute(f"SELECT * FROM {tables['SOURCE_CATALOG']}")}
+            declared: list[str] = []
+            orphans: set[str] = set()
             for m in con.execute(f"SELECT * FROM {tables['MAPPING_REGISTRY']}"):
                 if m["source_id"] not in sources:
-                    raise RegistryError(f"MAPPING_REGISTRY has rows for {m['source_id']!r}, which is not in SOURCE_CATALOG")
+                    # Mappings can be prepared before a source is registered (that is the order the
+                    # UC6 demo and tests/fixtures.py use for PUC). An orphan row is inert, not an
+                    # error: it starts describing a source the moment that source is catalogued.
+                    orphans.add(m["source_id"])
+                    continue
                 sources[m["source_id"]].setdefault("attribute_map", []).append(dict(m))
-            schema = {"attributes": [], "derived": {}}
+                if m["global_attr"]:
+                    declared.append(m["global_attr"])
+            # In meta.db the registry is the authority on the global schema, so a mapping row that
+            # names a new attribute (UC6's puc_expiry, or a source's own extras like rto_code)
+            # declares it rather than failing validation. Trade-off: a typo becomes a real attribute
+            # with one source instead of an error -- scripts/validate_registry.py shows it as a
+            # single-source row in the coverage matrix.
+            schema = {"attributes": declared, "derived": {}}
             if "GLOBAL_SCHEMA" in tables:  # optional: how a new attribute is declared for UC6
                 for row in map(dict, con.execute(f"SELECT * FROM {tables['GLOBAL_SCHEMA']}")):
                     if row.get("derived_from"):
@@ -124,7 +137,15 @@ def _normalize_source(key: str | None, entry: Any, vocabulary: list[str]) -> Sou
             authority=_authority(entry.get("authority")),
             trust=_unit(_first(entry, "trust", "trust_score")),
             timeout_ms=entry.get("timeout_ms") or DEFAULT_TIMEOUT_MS,
-            covers=_list(entry.get("covers")) or _dedupe(m["global_attr"] for m in mappings),
+            # SOURCE_CATALOG lists insurance_status under INS.covers, but a derived attribute has
+            # no source column to map. Dropping it here keeps covers[] a claim about stored data;
+            # Registry.resolve() still routes a request for it to this source via its inputs.
+            # covers[] is the hand-maintained claim; the attribute_map is ground truth. Their union
+            # keeps a source that maps an extension column (rto_code, ocr_confidence) selectable,
+            # while a derived attribute is dropped because no source stores it.
+            covers=[a for a in _dedupe([*_list(entry.get("covers")),
+                                        *(m["global_attr"] for m in mappings)])
+                    if a not in DERIVED_ATTRIBUTES],
             key_predicate=key_predicate,
             query_template=entry.get("query_template") or DEFAULT_TEMPLATE,
             table=table,

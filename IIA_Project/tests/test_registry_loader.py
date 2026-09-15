@@ -153,14 +153,16 @@ def test_meta_db_without_the_catalog_tables_fails_loudly(tmp_path):
         load_registry(path)
 
 
-def test_mapping_for_a_source_missing_from_the_catalog_fails_naming_it(tmp_path):
+def test_mapping_for_a_source_missing_from_the_catalog_is_ignored(tmp_path):
+    # Mappings may be written before their source is registered: tests/fixtures.py seeds PUC that
+    # way, and the UC6 demo registers the source afterwards. The orphan row is inert until then.
     path = make_meta_db(tmp_path / "meta.db")
     with closing(sqlite3.connect(path)) as con:
         con.execute("INSERT INTO MAPPING_REGISTRY (source_id, source_table, source_attr, global_attr) "
                     "VALUES ('GHOST', 'T', 'c', 'plate_number')")
         con.commit()
-    with pytest.raises(RegistryError, match="GHOST"):
-        load_registry(path)
+    registry = load_registry(path)
+    assert "GHOST" not in {s.source_id for s in registry.sources}
 
 
 def test_missing_meta_db_is_not_silently_created(tmp_path):
