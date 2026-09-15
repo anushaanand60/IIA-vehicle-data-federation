@@ -40,3 +40,4 @@ incident_id,vehicle_number,fir_no,reported_date,incident_type,stolen_flag,recove
 39,dl 01 gh 0134,FIR00039/2025,1755887400,THEFT,Y,Y,CLOSED,Karol Bagh PS
 40,up 16 ab 0529,FIR00040/2025,1762626600,THEFT,Y,Y,CLOSED,Connaught Place PS
 41,hr 26 ef 4455,FIR00999/2026,1786768200,THEFT,Y,N,OPEN,Connaught Place PS
+42,dl 03 sc 5566,SCR00042/2024,1721041200,SHREDDING,N,N,CLOSED,Lajpat Nagar PS

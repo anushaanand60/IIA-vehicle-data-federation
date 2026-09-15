@@ -603,3 +603,4 @@ registration_id,registration_no,owner_id,make,model,colour,fuel_type,registered_
 602,DL05CD9876,602,Maruti Suzuki,Swift,Silver,PETROL,2021-05-10,ACTIVE,DL05
 603,HR26EF4455,603,Mahindra,XUV700,Black,DIESEL,2022-08-20,ACTIVE,HR26
 604,UP16GH1122,604,Hyundai,Creta,Red,CNG,2023-11-05,ACTIVE,UP16
+605,DL03SC5566,605,Hyundai,i20,Silver,PETROL,2011-04-18,CANCELLED,DL03

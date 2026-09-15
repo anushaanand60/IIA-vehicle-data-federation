@@ -39,6 +39,28 @@ def evaluate_vehicle_decision(profile: Dict[str, Any], requested_sources: List[s
         reasons.append(f"Vehicle reported STOLEN on {inc_date} and police case status is OPEN.")
         return ("STOLEN — ALERT POLICE", "HIGH", reasons)
 
+    # Rule 2b: officially scrapped/shredded. A shredded vehicle legally no longer exists, so a
+    # sighting means the plate is being reused. Ordered above the registration and insurance
+    # rules because "this vehicle was destroyed" outranks "its paperwork lapsed" -- otherwise a
+    # scrapped car would be reported as merely UNINSURED.
+    scrapped = (profile.get("incident_type") or "").strip().upper() == "SHREDDING"
+    if scrapped:
+        scrapped_on = profile.get("last_incident_date", "an earlier date")
+        if profile.get("last_seen_time") is not None:
+            loc = profile.get("last_seen_location", "a road camera")
+            ts = profile.get("last_seen_time", "")
+            reasons.append(
+                f"Vehicle was officially scrapped/shredded on {scrapped_on} (police case CLOSED), "
+                f"but its plate was sighted at {loc} ({ts}). A scrapped vehicle cannot lawfully be "
+                f"on the road, so the plate is being reused."
+            )
+            return ("SCRAPPED — ALERT POLICE", "HIGH", reasons)
+        reasons.append(
+            f"Vehicle was officially scrapped/shredded on {scrapped_on}; its registration should "
+            f"be void and it must not be driven."
+        )
+        return ("SCRAPPED — REGISTRATION VOID", "HIGH", reasons)
+
     # Rule 3: Plate seen by CAM but absent in REG
     cam_seen = profile.get("last_seen_time") is not None
     reg_present = profile.get("registration_status") is not None
