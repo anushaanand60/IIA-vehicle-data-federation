@@ -9,7 +9,10 @@ The DDL is each source's own sources/<id>/schema.sql, unchanged: it is plain ANS
 file creates the tables on SQLite, PostgreSQL and MySQL. Column types are read back from the live
 database and CSV text is coerced to them, which is why no per-column type list appears here.
 
-Destructive: the source's tables are dropped and rebuilt, so the load is repeatable.
+Destructive: the source's tables are dropped and rebuilt, so the load is repeatable. On PostgreSQL
+and MySQL that also discards any GRANTs on those tables, so the wrapper's read-only account loses
+access and every query returns "permission denied" while /health still reports up. Pass
+--grant <role> to re-apply SELECT after loading.
 """
 from __future__ import annotations
 
@@ -123,6 +126,24 @@ def load_table(engine: Engine, table: str, csv_path: Path) -> int:
     return len(rows)
 
 
+def grant_select(engine: Engine, tables: list[str], role: str) -> None:
+    """Re-apply read access, because DROP TABLE took the old grants with it."""
+    dialect = engine.dialect.name
+    if dialect == "sqlite":
+        print("  (sqlite has no roles - nothing to grant)")
+        return
+    with engine.begin() as conn:
+        for table in tables:
+            if dialect == "postgresql":
+                conn.execute(text("GRANT USAGE ON SCHEMA public TO " + role))
+                conn.execute(text("GRANT SELECT ON " + table + " TO " + role))
+            else:  # mysql / mariadb
+                db = conn.execute(text("SELECT DATABASE()")).scalar()
+                conn.execute(text("GRANT SELECT ON " + str(db) + "." + table
+                                  + " TO '" + role + "'@'localhost'"))
+    print("  granted SELECT on " + ", ".join(tables) + " to " + role)
+
+
 def verify(engine: Engine, source_id: str) -> None:
     table, column = PLATE_COLUMN[source_id]
     print("\ndemo plates in " + table + "." + column + ":")
@@ -142,6 +163,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--url", help="SQLAlchemy URL (default: <SOURCE>_DB_URL, else a local SQLite file)")
     parser.add_argument("--sqlite", action="store_true", help="ignore <SOURCE>_DB_URL, use the SQLite file")
     parser.add_argument("--verify", action="store_true", help="after loading, count the demo plates")
+    parser.add_argument("--grant", metavar="ROLE",
+                        help="re-grant SELECT to this read-only role after loading (e.g. iia_reader)")
     args = parser.parse_args(argv)
 
     source_id = args.source.upper()
@@ -165,6 +188,11 @@ def main(argv: list[str] | None = None) -> int:
         total += loaded
         print("  " + table.ljust(22) + str(loaded).rjust(6) + " row(s) from " + csv_name)
     print(source_id + " loaded: " + str(total) + " row(s)")
+    if args.grant:
+        grant_select(engine, tables, args.grant)
+    elif engine.dialect.name != "sqlite":
+        print("  note: DROP TABLE discarded any GRANTs - re-run with --grant <role>, or the "
+              "wrapper's read-only account will get 'permission denied' while /health still says up")
     if args.verify:
         verify(engine, source_id)
     return 0
