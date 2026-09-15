@@ -1,0 +1,15 @@
+# The GUI's custom CSS in app/app.py hardcodes light-theme colours: dark slate text
+# (#1e293b) for the headings and pale backgrounds (#dcfce7, #fee2e2, #fef3c7) for the
+# decision banners. In dark mode Streamlit paints its own text near-white, so the
+# banner text turns white-on-pale and the title turns dark-on-dark — both unreadable.
+#
+# Pinning the theme keeps the page identical on every laptop and on the projector,
+# whatever each machine's Windows dark-mode setting happens to be.
+[theme]
+base = "light"
+
+[server]
+headless = true
+
+[browser]
+gatherUsageStats = false
