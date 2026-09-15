@@ -1,6 +1,12 @@
 """Wrapper template: each agency publishes an API, not a database (CLAUDE.md §5.1).
 
 GET /health, GET /schema, POST /query — identical on all four sources; only the URL and whitelist differ.
+
+Optional: POST /admin/mutate — a fixed, named set of writes (renew a policy, log a sighting, ...),
+never arbitrary SQL. Disabled unless the wrapper is given a *second*, writable connection via
+<SOURCE_ID>_ADMIN_URL. /query's connection stays read-only regardless: this does not reopen that
+door, it adds a second, narrower one for the agency's own operator console. Returns 404 when no
+admin URL was configured, so a laptop that never sets the env var behaves exactly as before.
 """
 from __future__ import annotations
 
@@ -20,7 +26,15 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import Connection, Engine, create_engine, event, inspect, text
 from sqlalchemy.exc import SQLAlchemyError
 
+from pydantic import BaseModel
+
 from mediator.contract import QueryRequest
+
+
+class MutateRequest(BaseModel):
+    action: str
+    plate: str
+    params: dict[str, Any] = {}
 
 MAX_SQL_CHARS = 10_000
 SAMPLE_SIZE = 20
@@ -84,7 +98,8 @@ def _referenced_tables(sql: str) -> list[str]:
 
 
 def create_app(db_url: str, *, source_id: str, dbms: str, tables: Iterable[str],
-               statement_timeout_s: float = 3.0, row_limit: int = 200) -> FastAPI:
+               statement_timeout_s: float = 3.0, row_limit: int = 200,
+               admin_url: str | None = None) -> FastAPI:
     whitelist = list(tables)
     app = FastAPI(title=f"{source_id} wrapper")
     app.state.source_id = source_id
@@ -97,6 +112,17 @@ def create_app(db_url: str, *, source_id: str, dbms: str, tables: Iterable[str],
         if app.state.engine is None:
             raise SQLAlchemyError(app.state.engine_error)
         return app.state.engine
+
+    # A second, writable engine, entirely separate from the one /query uses. /query's connection
+    # keeps its read-only pragma/session regardless of whether this exists (see _make_engine): an
+    # agency choosing to enable its own admin console never widens what the mediator can do.
+    admin_engine: Engine | None = None
+    if admin_url:
+        try:
+            admin_engine = create_engine(admin_url, pool_pre_ping=True)
+        except Exception as exc:
+            app.state.admin_engine_error = _short(exc)
+    actions = ADMIN_ACTIONS.get(source_id, {})
 
     @app.exception_handler(RequestValidationError)
     async def _bad_body(_: Request, exc: RequestValidationError) -> JSONResponse:
@@ -144,11 +170,31 @@ def create_app(db_url: str, *, source_id: str, dbms: str, tables: Iterable[str],
         elapsed = int((time.perf_counter() - started) * 1000)
         return JSONResponse(content={"rows": rows, "row_count": len(rows), "fetched_at": _now(), "elapsed_ms": elapsed})
 
+    @app.post("/admin/mutate")
+    def admin_mutate(req: MutateRequest) -> JSONResponse:
+        if admin_engine is None:
+            return _error(404, f"{source_id} has no admin URL configured "
+                               f"({source_id}_ADMIN_URL) — this wrapper is read-only")
+        fn = actions.get(req.action)
+        if fn is None:
+            return _error(400, f"{source_id} supports no admin action {req.action!r}; "
+                               f"has: {', '.join(actions) or '(none)'}")
+        try:
+            result = fn(admin_engine, req.plate, req.params)
+        except Exception as exc:
+            return _error(400, f"mutation failed: {_short(exc)}")
+        return JSONResponse(content={"source_id": source_id, "action": req.action,
+                                     "fetched_at": _now(), **result})
+
     return app
 
 
 def from_env(source_id: str, *, default_url: str, default_dbms: str, default_tables: list[str]) -> FastAPI:
-    """Build a wrapper configured by <SOURCE_ID>_DB_URL, <SOURCE_ID>_DBMS and <SOURCE_ID>_TABLES."""
+    """Build a wrapper configured by <SOURCE_ID>_DB_URL, <SOURCE_ID>_DBMS and <SOURCE_ID>_TABLES.
+
+    <SOURCE_ID>_ADMIN_URL is optional and separate: it opens /admin/mutate with a writable
+    connection. Omit it (the default) and the wrapper behaves exactly as it always has.
+    """
     def env(key: str, default: str) -> str:
         return os.environ.get(f"{source_id}_{key}", default)
     tables = [t.strip() for t in env("TABLES", ",".join(default_tables)).split(",") if t.strip()]
@@ -156,7 +202,8 @@ def from_env(source_id: str, *, default_url: str, default_dbms: str, default_tab
     # /health must not claim PostgreSQL while serving the SQLite fallback, so the label follows
     # the URL unless the agency overrides it explicitly.
     return create_app(url, source_id=source_id, dbms=env("DBMS", _engine_label(url) or default_dbms),
-                      tables=tables, statement_timeout_s=float(os.environ.get("WRAPPER_STATEMENT_TIMEOUT_S", "3")))
+                      tables=tables, statement_timeout_s=float(os.environ.get("WRAPPER_STATEMENT_TIMEOUT_S", "3")),
+                      admin_url=os.environ.get(f"{source_id}_ADMIN_URL"))
 
 
 def _engine_label(url: str) -> str:
@@ -261,3 +308,95 @@ def _now() -> str:
 
 def _error(status: int, message: str) -> JSONResponse:
     return JSONResponse(status_code=status, content={"error": message})
+
+
+# --- Admin mutations: a fixed, named menu per source, never arbitrary SQL --------------------
+# Mirrors scripts/mutate_source.py's logic exactly, so the CLI and the GUI change data the same
+# way; the CLI stays the fallback for a source that has no ADMIN_URL set.
+
+def _canon(plate: str) -> str:
+    return re.sub(r"[^A-Za-z0-9]", "", plate).upper()
+
+
+def _where_plate(column: str) -> str:
+    return f"UPPER(REPLACE(REPLACE({column}, '-', ''), ' ', '')) = :plate"
+
+
+def _ins_renew(engine: Engine, plate: str, params: dict[str, Any]) -> dict[str, Any]:
+    until = params.get("until", "31/12/2027")
+    with engine.begin() as conn:
+        n = conn.execute(text(f"UPDATE POLICY_RECORDS SET policy_until = :u, is_active = 1 "
+                              f"WHERE {_where_plate('vehicle_reg')}"),
+                         {"u": until, "plate": _canon(plate)}).rowcount
+    return {"rows_affected": n, "detail": f"policy_until = {until}, is_active = 1"}
+
+
+def _ins_expire(engine: Engine, plate: str, params: dict[str, Any]) -> dict[str, Any]:
+    until = params.get("until", "10/01/2026")
+    with engine.begin() as conn:
+        n = conn.execute(text(f"UPDATE POLICY_RECORDS SET policy_until = :u, is_active = 0 "
+                              f"WHERE {_where_plate('vehicle_reg')}"),
+                         {"u": until, "plate": _canon(plate)}).rowcount
+    return {"rows_affected": n, "detail": f"policy_until = {until}, is_active = 0"}
+
+
+def _theft_steal(engine: Engine, plate: str, params: dict[str, Any]) -> dict[str, Any]:
+    p = _canon(plate)
+    spaced = f"{p[0:2]} {p[2:4]} {p[4:6]} {p[6:]}".lower() if len(p) == 10 else plate.lower()
+    with engine.begin() as conn:
+        next_id = (conn.execute(text("SELECT MAX(incident_id) FROM CRIME_RECORDS")).scalar() or 0) + 1
+        conn.execute(text(
+            "INSERT INTO CRIME_RECORDS (incident_id, vehicle_number, fir_no, reported_date, "
+            "incident_type, stolen_flag, recovered_flag, case_status, police_station) "
+            "VALUES (:i, :p, :f, :d, 'THEFT', 'Y', 'N', 'OPEN', :ps)"),
+            {"i": next_id, "p": spaced, "f": params.get("fir_no", f"FIR{next_id:05d}/2026"),
+             "d": int(time.time()), "ps": params.get("police_station", "Live Demo PS")})
+    return {"rows_affected": 1, "detail": f"incident {next_id}: {spaced!r} STOLEN, case OPEN"}
+
+
+def _theft_clear(engine: Engine, plate: str, params: dict[str, Any]) -> dict[str, Any]:
+    with engine.begin() as conn:
+        n = conn.execute(text(f"DELETE FROM CRIME_RECORDS WHERE {_where_plate('vehicle_number')} "
+                              f"AND police_station = 'Live Demo PS'"),
+                         {"plate": _canon(plate)}).rowcount
+    return {"rows_affected": n, "detail": "demo incident row(s) removed"}
+
+
+def _cam_sight(engine: Engine, plate: str, params: dict[str, Any]) -> dict[str, Any]:
+    with engine.begin() as conn:
+        next_id = (conn.execute(text("SELECT MAX(capture_id) FROM PLATE_CAPTURES")).scalar() or 0) + 1
+        camera = conn.execute(text("SELECT camera_id FROM CAMERAS")).scalar()
+        conn.execute(text(
+            "INSERT INTO PLATE_CAPTURES (capture_id, plate_id, camera_id, captured_at, "
+            "observed_make, observed_model, observed_colour, ocr_confidence) "
+            "VALUES (:i, :p, :c, :t, :mk, :md, :cl, 0.95)"),
+            {"i": next_id, "p": _canon(plate), "c": camera, "t": _now()[:19],
+             "mk": params.get("make", "Maruti Suzuki"), "md": params.get("model", "Swift"),
+             "cl": params.get("colour", "White")})
+    return {"rows_affected": 1, "detail": f"capture {next_id}: seen just now"}
+
+
+def _reg_register(engine: Engine, plate: str, params: dict[str, Any]) -> dict[str, Any]:
+    from datetime import date
+    with engine.begin() as conn:
+        owner_id = (conn.execute(text("SELECT MAX(owner_id) FROM OWNERS")).scalar() or 0) + 1
+        reg_id = (conn.execute(text("SELECT MAX(registration_id) FROM VEHICLE_REGISTRATION")).scalar() or 0) + 1
+        owner = params.get("owner", "Rajesh Khanna")
+        conn.execute(text("INSERT INTO OWNERS (owner_id, full_name, address_line, city) "
+                          "VALUES (:i, :n, 'Live Demo Address', 'New Delhi')"), {"i": owner_id, "n": owner})
+        conn.execute(text(
+            "INSERT INTO VEHICLE_REGISTRATION (registration_id, registration_no, owner_id, make, "
+            "model, colour, fuel_type, registered_on, reg_status, rto_code) "
+            "VALUES (:r, :p, :o, :mk, :md, :cl, 'PETROL', :d, 'ACTIVE', :rto)"),
+            {"r": reg_id, "p": _canon(plate), "o": owner_id, "mk": params.get("make", "Maruti Suzuki"),
+             "md": params.get("model", "Swift"), "cl": params.get("colour", "White"),
+             "d": date.today().isoformat(), "rto": _canon(plate)[:4]})
+    return {"rows_affected": 1, "detail": f"registered to {owner} (registration {reg_id})"}
+
+
+ADMIN_ACTIONS: dict[str, dict[str, Any]] = {
+    "INS": {"renew": _ins_renew, "expire": _ins_expire},
+    "THEFT": {"steal": _theft_steal, "clear": _theft_clear},
+    "CAM": {"sight": _cam_sight},
+    "REG": {"register": _reg_register},
+}
