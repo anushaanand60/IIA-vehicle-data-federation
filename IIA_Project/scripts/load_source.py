@@ -85,10 +85,24 @@ def rebuild_schema(engine: Engine, source_id: str) -> list[str]:
     return tables
 
 
+def actual_name(engine: Engine, table: str) -> str:
+    """The name the database really gave the table.
+
+    schema.sql says CREATE TABLE OWNERS, but PostgreSQL folds unquoted identifiers to lowercase,
+    so the table is 'owners'. SQL we write stays case-insensitive, but SQLAlchemy's reflection API
+    is not: get_columns('OWNERS') raises NoSuchTableError against PostgreSQL. Look the name up
+    instead of assuming the spelling survived.
+    """
+    for name in inspect(engine).get_table_names():
+        if name.lower() == table.lower():
+            return name
+    return table
+
+
 def coercers(engine: Engine, table: str) -> dict[str, Any]:
     """Map each column to a converter chosen from the type the database actually created."""
     out: dict[str, Any] = {}
-    for col in inspect(engine).get_columns(table):
+    for col in inspect(engine).get_columns(actual_name(engine, table)):
         kind = col["type"]
         if isinstance(kind, Integer):
             out[col["name"]] = int
