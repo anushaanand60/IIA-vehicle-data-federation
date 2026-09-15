@@ -40,13 +40,30 @@ python3 -m venv .venv && source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-Check the install — no database software needed yet:
+Now build the local SQLite copy of all four sources and fill the mapping registry. Every laptop
+does this, whatever station it ends up serving: it is the rehearsal federation, it is what the test
+suite runs against, and on a source laptop it stays as the fallback if the real engine misbehaves.
+
+```bash
+python scripts/load_source.py REG
+python scripts/load_source.py INS
+python scripts/load_source.py THEFT
+python scripts/load_source.py CAM
+python scripts/seed_mappings.py
+```
+
+Then check the install:
 
 ```bash
 pytest -q            # 267 passed, 3 deselected
 ```
 
-If that is green, the transport layer on this machine is sound before any DBMS enters the picture.
+**Run the loads before `pytest`, not after.** Four schema-matcher tests read sample values out of
+each source's `/schema`, so on a clone with no databases yet they fail with
+`AssertionError: None != 'plate_number'`. That is missing data, not broken code.
+
+If that is green, this machine can run the whole federation on its own before any DBMS enters the
+picture.
 
 ### The data is already in the repository
 
@@ -72,12 +89,9 @@ git add -f *.csv && git commit -m "Regenerate synthetic data"
 Do this first. It is the same wrappers, registry, executor, integrator and GUI as the four-laptop
 deployment; only the database URLs differ.
 
+Section 1 already loaded the four SQLite databases and seeded the registry, so this is one command:
+
 ```bash
-python scripts/load_source.py REG      # each writes sources/<id>/<id>.db (SQLite)
-python scripts/load_source.py INS
-python scripts/load_source.py THEFT
-python scripts/load_source.py CAM
-python scripts/seed_mappings.py        # fill MAPPING_REGISTRY (see section 4)
 python run_system.py                   # four wrappers + the GUI on :8501
 ```
 
