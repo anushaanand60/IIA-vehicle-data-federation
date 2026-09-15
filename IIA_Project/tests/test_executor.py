@@ -355,10 +355,15 @@ def black_hole() -> int:
 def garbage_server() -> int:
     class Handler(BaseHTTPRequestHandler):
         def do_POST(self) -> None:
+            body = b"<html>not json</html>"
             self.send_response(200)
             self.send_header("Content-Type", "text/html")
+            # Without Content-Length the body is delimited by connection close, and a loaded
+            # machine can surface that as a protocol error (DOWN) before the JSON is ever parsed.
+            # The case under test is a complete but unparseable response, so frame it properly.
+            self.send_header("Content-Length", str(len(body)))
             self.end_headers()
-            self.wfile.write(b"<html>not json</html>")
+            self.wfile.write(body)
 
         def log_message(self, *_: object) -> None:
             pass
