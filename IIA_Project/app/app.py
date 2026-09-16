@@ -69,13 +69,20 @@ st.markdown('<div class="sub-title">Global-As-View (GAV) virtual data integratio
 
 import live_update
 
+# `streamlit run app/app.py` puts app/ on sys.path, pytest puts the project root there: accept both.
+try:
+    from app.tabs.sql_console import render as render_sql_console
+except ModuleNotFoundError:
+    from tabs.sql_console import render as render_sql_console
+
 # Navigation tabs
-tab_investigate, tab_plantrace, tab_matcher, tab_catalog, tab_reports = st.tabs([
+tab_investigate, tab_plantrace, tab_matcher, tab_catalog, tab_reports, tab_sqlconsole = st.tabs([
     "🔍 1. Investigate",
     "🗺️ 2. Plan Trace",
     "🧬 3. Matcher & Heatmap",
     "📚 4. Catalog & Registry",
-    "📑 5. Ministry Reports"
+    "📑 5. Ministry Reports",
+    "🧪 6. SQL Console"
 ])
 
 # Each wrapper's /query connection is read-only by construction (CLAUDE.md §5.1) -- that boundary
@@ -522,3 +529,9 @@ with tab_reports:
                             mime="application/pdf",
                             key=f"dl_rep_{rep['report_id']}"
                         )
+
+# ==============================================================================
+# TAB 6: SQL CONSOLE
+# ==============================================================================
+with tab_sqlconsole:
+    render_sql_console()

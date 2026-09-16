@@ -7,6 +7,10 @@ never arbitrary SQL. Disabled unless the wrapper is given a *second*, writable c
 <SOURCE_ID>_ADMIN_URL. /query's connection stays read-only regardless: this does not reopen that
 door, it adds a second, narrower one for the agency's own operator console. Returns 404 when no
 admin URL was configured, so a laptop that never sets the env var behaves exactly as before.
+
+POST /admin/sql is the same door, one notch wider: the agency's own SQL console, accepting a single
+INSERT/UPDATE/DELETE against the tables this wrapper already publishes (see write_guard_sql). It
+shares /admin/mutate's writable engine and its 404, and never touches /query's read-only one.
 """
 from __future__ import annotations
 
@@ -82,6 +86,49 @@ def guard_sql(sql: str, whitelist: Iterable[str], row_limit: int = 200) -> str:
         if table.lower() not in allowed:
             raise QueryRejected(f"table {table!r} is not in the whitelist")
     return sql if _TRAILING_LIMIT.search(sql) else f"{sql} LIMIT {row_limit}"
+
+
+_WRITE_START = re.compile(r"^(INSERT|UPDATE|DELETE)\b", re.I)
+_WRITE_TARGET = re.compile(r"\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+"
+                           r"([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)?)", re.I)
+# Everything structural a write must never carry. INSERT/UPDATE/DELETE are absent on purpose:
+# exactly one of them is allowed, and only as the statement's first keyword.
+_FORBIDDEN_WRITE = re.compile(r"\b(DROP|CREATE|ALTER|TRUNCATE|RENAME|GRANT|REVOKE|ATTACH|DETACH|PRAGMA|"
+                              r"VACUUM|REINDEX|EXEC|EXECUTE|CALL|COPY|LOAD|OUTFILE|DUMPFILE|HANDLER|"
+                              r"MERGE|UPSERT|COMMIT|ROLLBACK|BEGIN|LOCK|UNLOCK|LOAD_FILE|LOAD_EXTENSION)\b", re.I)
+
+
+def write_guard_sql(sql: str, whitelist: Iterable[str]) -> str:
+    """Guard for /admin/sql: one INSERT/UPDATE/DELETE, whitelisted tables only, no DDL.
+
+    Same trade-off as guard_sql: textual, not a parser. It is the *second* lock — the first is that
+    this path exists at all only when the agency set <SOURCE_ID>_ADMIN_URL on its own laptop.
+    """
+    allowed = {t.lower() for t in whitelist}
+    sql = sql.strip()
+    checks = [
+        (not sql, "empty statement"),
+        (len(sql) > MAX_SQL_CHARS, f"statement longer than {MAX_SQL_CHARS} characters"),
+        ("\x00" in sql, "NUL byte in statement"),
+        (";" in sql, "multiple statements are not allowed (';')"),
+        (any(c in sql for c in ("--", "/*", "#")), "SQL comments are not allowed"),
+        (not _WRITE_START.match(sql), "statement must start with INSERT, UPDATE or DELETE "
+                                      "(reads belong on /query)"),
+    ]
+    for failed, reason in checks:
+        if failed:
+            raise QueryRejected(reason)
+    if m := _FORBIDDEN_WRITE.search(sql):
+        raise QueryRejected(f"forbidden keyword {m.group(1).upper()}")
+    targets = _WRITE_TARGET.findall(sql)
+    if not targets:
+        raise QueryRejected("statement names no target table")
+    # A write may still read (INSERT ... SELECT, UPDATE ... WHERE x IN (SELECT ...)): those tables
+    # go through the same whitelist, so the console can never exfiltrate a non-published table.
+    for table in [*targets, *(_referenced_tables(sql) if re.search(r"\bSELECT\b", sql, re.I) else [])]:
+        if table.lower() not in allowed:
+            raise QueryRejected(f"table {table!r} is not in the whitelist")
+    return sql
 
 
 def _referenced_tables(sql: str) -> list[str]:
@@ -185,6 +232,25 @@ def create_app(db_url: str, *, source_id: str, dbms: str, tables: Iterable[str],
             return _error(400, f"mutation failed: {_short(exc)}")
         return JSONResponse(content={"source_id": source_id, "action": req.action,
                                      "fetched_at": _now(), **result})
+
+    @app.post("/admin/sql")
+    def admin_sql(req: QueryRequest) -> JSONResponse:
+        # The agency's own SQL console: arbitrary *writes*, but only INSERT/UPDATE/DELETE against
+        # the tables this wrapper already publishes, and only on the separate writable engine.
+        if admin_engine is None:
+            return _error(404, f"{source_id} has no admin URL configured "
+                               f"({source_id}_ADMIN_URL) — this wrapper is read-only")
+        try:
+            sql = write_guard_sql(req.sql, whitelist)
+        except QueryRejected as exc:
+            return _error(400, str(exc))
+        try:
+            with admin_engine.begin() as conn:  # begin(): commit on success, roll back on error
+                affected = conn.execute(text(sql.replace(":", r"\:"))).rowcount
+        except SQLAlchemyError as exc:
+            return _error(400, f"database rejected the statement: {_short(exc)}")
+        return JSONResponse(content={"source_id": source_id, "rows_affected": max(affected, 0),
+                                     "sql": sql, "executed_at": _now()})
 
     return app
 
