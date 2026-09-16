@@ -185,6 +185,46 @@ def init_meta_db():
     );
     """)
 
+    # Challan Guard (verify-before-fine). A case is the mediator's *own* record of an ANPR
+    # allegation and what the federation said about it -- never a copy of a source row. The
+    # evidence bundle is a frozen snapshot kept for the dispute audit trail, which is why storing
+    # it here does not contradict the "no caching of source data" rule: it is the proof of what a
+    # source said at issue time, not a substitute for asking the source again (a dispute always
+    # re-queries live).
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS CHALLAN_CASES (
+        case_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        plate_read TEXT NOT NULL,
+        plate_resolved TEXT,
+        camera_id TEXT,
+        location TEXT,
+        lat REAL,
+        lon REAL,
+        captured_at TEXT NOT NULL,
+        observed_make TEXT,
+        observed_colour TEXT,
+        ocr_confidence REAL,
+        status TEXT NOT NULL,          -- CANDIDATE | HOLD | ISSUED | REJECTED | DISPUTED | UPHELD | CANCELLED
+        verdict TEXT,
+        reason TEXT,
+        amount_inr INTEGER,
+        evidence_json TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS CHALLAN_EVENTS (
+        event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        case_id INTEGER NOT NULL,
+        event TEXT NOT NULL,
+        actor TEXT NOT NULL,
+        at TEXT NOT NULL,
+        evidence_json TEXT
+    );
+    """)
+
     # Seed default sources if empty
     cur.execute("SELECT COUNT(*) FROM SOURCE_CATALOG;")
     if cur.fetchone()[0] == 0:
@@ -419,6 +459,134 @@ def get_query_log(limit: int = 100, plate: Optional[str] = None) -> List[Dict[st
         rows.append(d)
     conn.close()
     return rows
+
+
+# --------------------------------------------------------------- challan cases (Challan Guard)
+# Plain accessors only, exactly like the watchlist above: what a verdict *means* is policy and
+# lives in mediator/challan_guard.py. This module only stores rows.
+
+CHALLAN_COLUMNS = (
+    "plate_read", "plate_resolved", "camera_id", "location", "lat", "lon", "captured_at",
+    "observed_make", "observed_colour", "ocr_confidence", "status", "verdict", "reason",
+    "amount_inr", "evidence_json",
+)
+# A fine that has actually been raised against this plate. DISPUTED is excluded: a case under
+# dispute has not yet been confirmed, so it must not inflate the repeat-offender amount.
+CHALLAN_ISSUED_STATUSES = ("ISSUED", "UPHELD")
+
+
+def _challan_row(row: sqlite3.Row) -> Dict[str, Any]:
+    """Decode evidence_json once, at the edge, so no caller has to know it is stored as text."""
+    d = dict(row)
+    raw = d.pop("evidence_json", None)
+    try:
+        d["evidence"] = json.loads(raw) if raw else {}
+    except (ValueError, TypeError):
+        d["evidence"] = {}  # a corrupt bundle must not make the whole queue unreadable
+    return d
+
+
+def challan_insert(case: Dict[str, Any]) -> int:
+    init_meta_db()
+    now_ts = datetime.now(timezone.utc).isoformat()
+    values = dict(case)
+    if "evidence" in values:
+        values["evidence_json"] = json.dumps(values.pop("evidence"))
+    values.setdefault("status", "CANDIDATE")
+    columns = [c for c in CHALLAN_COLUMNS if c in values]
+    conn = sqlite3.connect(META_DB_PATH)
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO CHALLAN_CASES (" + ", ".join([*columns, "created_at", "updated_at"]) + ") "
+        "VALUES (" + ", ".join(["?"] * (len(columns) + 2)) + ");",
+        [values[c] for c in columns] + [now_ts, now_ts],
+    )
+    case_id = int(cur.lastrowid)
+    conn.commit()
+    conn.close()
+    return case_id
+
+
+def challan_get(case_id: int) -> Optional[Dict[str, Any]]:
+    init_meta_db()
+    conn = sqlite3.connect(META_DB_PATH)
+    conn.row_factory = sqlite3.Row
+    row = conn.execute("SELECT * FROM CHALLAN_CASES WHERE case_id = ?;", (int(case_id),)).fetchone()
+    conn.close()
+    return _challan_row(row) if row else None
+
+
+def challan_list(status: Optional[str] = None, limit: int = 200) -> List[Dict[str, Any]]:
+    """Oldest first: a work queue is worked from the top, unlike an audit log."""
+    init_meta_db()
+    conn = sqlite3.connect(META_DB_PATH)
+    conn.row_factory = sqlite3.Row
+    if status:
+        rows = conn.execute("SELECT * FROM CHALLAN_CASES WHERE status = ? ORDER BY case_id LIMIT ?;",
+                            (status, int(limit))).fetchall()
+    else:
+        rows = conn.execute("SELECT * FROM CHALLAN_CASES ORDER BY case_id LIMIT ?;",
+                            (int(limit),)).fetchall()
+    conn.close()
+    return [_challan_row(r) for r in rows]
+
+
+def challan_update(case_id: int, **fields: Any) -> None:
+    if "evidence" in fields:
+        fields["evidence_json"] = json.dumps(fields.pop("evidence"))
+    unknown = [k for k in fields if k not in CHALLAN_COLUMNS]
+    if unknown:  # fail loudly: a silently ignored field would mean a verdict that never persisted
+        raise ValueError(f"CHALLAN_CASES has no column(s): {', '.join(sorted(unknown))}")
+    if not fields:
+        return
+    init_meta_db()
+    conn = sqlite3.connect(META_DB_PATH)
+    assignments = ", ".join(f"{k} = ?" for k in fields) + ", updated_at = ?"
+    conn.execute(f"UPDATE CHALLAN_CASES SET {assignments} WHERE case_id = ?;",
+                 [*fields.values(), datetime.now(timezone.utc).isoformat(), int(case_id)])
+    conn.commit()
+    conn.close()
+
+
+def challan_event(case_id: int, event: str, actor: str,
+                  evidence: Optional[Dict[str, Any]] = None) -> int:
+    init_meta_db()
+    conn = sqlite3.connect(META_DB_PATH)
+    cur = conn.cursor()
+    cur.execute("INSERT INTO CHALLAN_EVENTS (case_id, event, actor, at, evidence_json) "
+                "VALUES (?, ?, ?, ?, ?);",
+                (int(case_id), event, actor, datetime.now(timezone.utc).isoformat(),
+                 json.dumps(evidence) if evidence is not None else None))
+    event_id = int(cur.lastrowid)
+    conn.commit()
+    conn.close()
+    return event_id
+
+
+def challan_events(case_id: int) -> List[Dict[str, Any]]:
+    init_meta_db()
+    conn = sqlite3.connect(META_DB_PATH)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute("SELECT * FROM CHALLAN_EVENTS WHERE case_id = ? ORDER BY event_id;",
+                        (int(case_id),)).fetchall()
+    conn.close()
+    return [_challan_row(r) for r in rows]
+
+
+def challan_prior_issued(plate: str, exclude_case_id: Optional[int] = None) -> int:
+    """How many fines this plate already carries — the repeat-offender test for MV Act §196."""
+    init_meta_db()
+    conn = sqlite3.connect(META_DB_PATH)
+    placeholders = ", ".join(["?"] * len(CHALLAN_ISSUED_STATUSES))
+    sql = (f"SELECT COUNT(*) FROM CHALLAN_CASES WHERE status IN ({placeholders}) "
+           f"AND COALESCE(plate_resolved, plate_read) = ?")
+    params: List[Any] = [*CHALLAN_ISSUED_STATUSES, plate]
+    if exclude_case_id is not None:
+        sql += " AND case_id != ?"
+        params.append(int(exclude_case_id))
+    count = int(conn.execute(sql + ";", params).fetchone()[0])
+    conn.close()
+    return count
 
 
 if __name__ == "__main__":
