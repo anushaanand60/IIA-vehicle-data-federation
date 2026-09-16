@@ -9,6 +9,10 @@ from datetime import date
 
 REFERENCE_TODAY = date(2026, 9, 4)
 
+# A plate no asked source has ever heard of. Exported so the GUI can offer the onboarding
+# wizard (app/tabs/onboarding.py) on exactly this decision, without matching on prose.
+UNKNOWN_VEHICLE = "UNKNOWN VEHICLE — NOT REGISTERED"
+
 def evaluate_vehicle_decision(profile: Dict[str, Any], requested_sources: List[str]) -> Tuple[str, str, List[str]]:
     """
     Evaluates vehicle profile against the 7 ordered rules (§10.2).
@@ -69,6 +73,20 @@ def evaluate_vehicle_decision(profile: Dict[str, Any], requested_sources: List[s
         ts = profile.get("last_seen_time", "")
         reasons.append(f"Vehicle plate sighted by camera at {loc} ({ts}) but has NO official registration record in REG authority.")
         return ("UNREGISTERED / SUSPICIOUS", "MEDIUM", reasons)
+
+    # Rule 3b: the plate is simply unknown -- no registration, no policy, no crime record and no
+    # sighting anywhere we asked. Ordered after the camera-only rule (a sighting makes it
+    # UNREGISTERED / SUSPICIOUS, not unknown) and before the insurance rule, because accusing a
+    # vehicle of being uninsured when no authority has ever heard of it is the wrong claim: the
+    # right answer is "we have nothing on this plate -- onboard it or check the spelling".
+    # Requires REG asked *and* OK: absence is only evidence when the source actually answered.
+    reg_asked_ok = "REG" in requested_sources and source_avail.get("REG") == "OK"
+    no_theft_record = profile.get("last_incident_date") is None and profile.get("case_status") is None
+    no_insurance_record = not profile.get("insurance_expiry") and not profile.get("insurer_name")
+    if reg_asked_ok and not reg_present and not cam_seen and no_theft_record and no_insurance_record:
+        reasons.append("No registration, insurance, crime or camera record exists for this "
+                       "plate in any asked source.")
+        return (UNKNOWN_VEHICLE, "MEDIUM", reasons)
 
     # Rule 4: REG make/model/colour != CAM observed (>= 2 attrs)
     mismatches = 0
