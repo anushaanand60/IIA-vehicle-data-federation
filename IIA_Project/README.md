@@ -24,7 +24,17 @@ python run_system.py
 ```
 This automatically boots all 5 source database wrappers and launches the Streamlit interface at **http://localhost:8501**.
 
-### 2. Run Automated Test Suite
+### 2. Bring Up One Source Laptop (no env-var juggling)
+```bash
+python scripts/serve.py INS --db-url "mysql+pymysql://iia:pw@127.0.0.1:3306/insdb"
+python scripts/serve.py INS                       # later runs: re-loads sources/ins/laptop.env
+python scripts/serve.py INS --check               # verify the demo plates, don't serve
+```
+Settings (`--db-url`, `--port`, `--readonly-admin`) are persisted to that source's gitignored
+`sources/<id>/laptop.env` and reloaded on the next run. The command prints this laptop's own IP(s)
+and the exact `python scripts/configure_cluster.py --set <ID>=<ip>` line to run on laptop 1.
+
+### 3. Run Automated Test Suite
 ```bash
 python -m pytest tests/ -v
 ```
