@@ -2,17 +2,17 @@ plate_number,expected_decision,expected_confidence,basis
 DL01AB0001,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-03-10, seen by camera 2026-09-02T20:00:00"
 DL01AB0002,UNINSURED — REPORT,HIGH,no insurance policy on record
 UP16CD0003,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-03-21, seen by camera 2026-08-23T02:00:00"
-DL05EF0004,UNINSURED — REPORT,HIGH,latest policy ended 2026-08-15
+DL05EF0004,UNINSURED — WARNING,HIGH,"latest policy ended 2026-08-15, lapsed 20 days (warning window)"
 DL05AB0005,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-09-01, seen by camera 2026-07-23T11:00:00"
 MH12EF0006,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-03-22, seen by camera 2026-08-31T23:00:00"
-MH12AB0007,UNINSURED — REPORT,HIGH,latest policy ended 2026-06-06
-UP16EF0008,UNINSURED — REPORT,HIGH,latest policy ended 2026-02-24
+MH12AB0007,UNINSURED — REPORT,HIGH,"latest policy ended 2026-06-06, lapsed 90 days"
+UP16EF0008,UNINSURED — REPORT,HIGH,"latest policy ended 2026-02-24, lapsed 192 days"
 MH12AB0009,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-04-09, seen by camera 2026-07-20T21:00:00"
 DL05GH0010,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-04-06, seen by camera 2026-09-01T18:00:00"
 UP16IJ0011,CLEAR,MEDIUM,"registration ACTIVE, policy valid until 2026-12-24, never seen by a camera"
 DL05AB0012,UNINSURED — REPORT,HIGH,no insurance policy on record
 UP16CD0013,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-09-03, seen by camera 2026-07-25T23:00:00"
-HR26EF0014,UNINSURED — REPORT,HIGH,latest policy ended 2026-04-08
+HR26EF0014,UNINSURED — REPORT,HIGH,"latest policy ended 2026-04-08, lapsed 149 days"
 HR26GH0015,UNINSURED — REPORT,HIGH,no insurance policy on record
 DL05IJ0016,CLEAR,MEDIUM,"registration ACTIVE, policy valid until 2027-08-24, never seen by a camera"
 UP16GH0017,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-07-30, seen by camera 2026-07-30T10:00:00"
@@ -22,12 +22,12 @@ HR26EF0020,CLEAR,HIGH,"registration ACTIVE, policy valid until 2026-11-07, seen 
 HR26CD0021,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-03-08, seen by camera 2026-08-07T07:00:00"
 UP16GH0022,CLEAR,HIGH,"registration ACTIVE, policy valid until 2026-12-19, seen by camera 2026-07-11T04:00:00"
 UP16CD0023,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-06-07, seen by camera 2026-08-11T09:00:00"
-UP16EF0024,UNINSURED — REPORT,HIGH,latest policy ended 2026-08-17
+UP16EF0024,UNINSURED — WARNING,HIGH,"latest policy ended 2026-08-17, lapsed 18 days (warning window)"
 DL05EF0025,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-06-15, seen by camera 2026-07-26T13:00:00"
 HR26CD0026,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-01-03, seen by camera 2026-07-22T11:00:00"
 DL05GH0027,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-06-08, seen by camera 2026-08-29T14:00:00"
 MH12EF0028,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-05-22, seen by camera 2026-08-08T09:00:00"
-DL05IJ0029,UNINSURED — REPORT,HIGH,latest policy ended 2026-03-14
+DL05IJ0029,UNINSURED — REPORT,HIGH,"latest policy ended 2026-03-14, lapsed 174 days"
 HR26EF0030,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-07-11, seen by camera 2026-07-27T06:00:00"
 UP16EF0031,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-01-14, seen by camera 2026-08-31T04:00:00"
 DL05CD0032,STOLEN — ALERT POLICE,HIGH,open theft case reported 2026-06-06
@@ -49,7 +49,7 @@ DL05CD0047,REGISTRATION INVALID — REPORT,HIGH,registration SUSPENDED
 DL05EF0048,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-03-27, seen by camera 2026-08-26T00:00:00"
 UP16GH0049,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-01-26, seen by camera 2026-07-22T23:00:00"
 DL01EF0050,CLEAR,HIGH,"registration ACTIVE, policy valid until 2026-11-24, seen by camera 2026-08-19T14:00:00"
-MH12GH0051,UNINSURED — REPORT,HIGH,latest policy ended 2026-06-10
+MH12GH0051,UNINSURED — REPORT,HIGH,"latest policy ended 2026-06-10, lapsed 86 days"
 MH12IJ0052,CLEAR,HIGH,"registration ACTIVE, policy valid until 2026-12-15, seen by camera 2026-08-17T12:00:00"
 DL01AB0053,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-07-21, seen by camera 2026-07-20T00:00:00"
 DL01AB0054,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-08-16, seen by camera 2026-08-22T01:00:00"
@@ -73,7 +73,7 @@ HR26EF0071,CLEAR,HIGH,"registration ACTIVE, policy valid until 2026-12-13, seen 
 DL01IJ0072,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-06-21, seen by camera 2026-07-16T05:00:00"
 HR26GH0073,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-07-31, seen by camera 2026-08-09T09:00:00"
 DL05AB0074,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-05-25, seen by camera 2026-08-27T01:00:00"
-DL01GH0075,UNINSURED — REPORT,HIGH,latest policy ended 2026-03-15
+DL01GH0075,UNINSURED — REPORT,HIGH,"latest policy ended 2026-03-15, lapsed 173 days"
 DL01GH0076,CLEAR,HIGH,"registration ACTIVE, policy valid until 2026-12-04, seen by camera 2026-09-01T18:00:00"
 MH12CD0077,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-03-08, seen by camera 2026-08-16T09:00:00"
 MH12IJ0078,REGISTRATION INVALID — REPORT,HIGH,registration CANCELLED
@@ -86,13 +86,13 @@ DL01CD0084,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-03-23, seen 
 HR26CD0085,CLEAR,HIGH,"registration ACTIVE, policy valid until 2026-11-19, seen by camera 2026-07-20T22:00:00"
 UP16EF0086,UNINSURED — REPORT,HIGH,no insurance policy on record
 MH12AB0087,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-03-02, seen by camera 2026-07-14T14:00:00"
-HR26IJ0088,UNINSURED — REPORT,HIGH,latest policy ended 2026-06-10
+HR26IJ0088,UNINSURED — REPORT,HIGH,"latest policy ended 2026-06-10, lapsed 86 days"
 DL01GH0089,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-05-11, seen by camera 2026-08-04T04:00:00"
 UP16AB0090,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-01-02, seen by camera 2026-08-21T15:00:00"
 HR26GH0091,UNINSURED — REPORT,HIGH,no insurance policy on record
 MH12AB0092,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-02-09, seen by camera 2026-09-02T22:00:00"
 MH12EF0093,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-06-09, seen by camera 2026-08-20T22:00:00"
-DL01CD0094,UNINSURED — REPORT,HIGH,latest policy ended 2026-06-21
+DL01CD0094,UNINSURED — REPORT,HIGH,"latest policy ended 2026-06-21, lapsed 75 days"
 MH12IJ0095,STOLEN — ALERT POLICE,HIGH,open theft case reported 2026-06-22
 HR26CD0096,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-01-13, seen by camera 2026-08-09T05:00:00"
 MH12CD0097,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-02-15, seen by camera 2026-07-20T15:00:00"
@@ -100,7 +100,7 @@ DL01EF0098,SUSPICIOUS — POSSIBLE CLONED PLATE,MEDIUM,"latest camera sighting d
 HR26GH0099,CLEAR,HIGH,"registration ACTIVE, policy valid until 2026-12-13, seen by camera 2026-08-06T05:00:00"
 HR26GH0100,CLEAR,HIGH,"registration ACTIVE, policy valid until 2026-11-13, seen by camera 2026-08-15T19:00:00"
 HR26EF0101,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-05-26, seen by camera 2026-08-11T02:00:00"
-DL01CD0102,UNINSURED — REPORT,HIGH,latest policy ended 2026-08-10
+DL01CD0102,UNINSURED — WARNING,HIGH,"latest policy ended 2026-08-10, lapsed 25 days (warning window)"
 DL05CD0103,CLEAR,HIGH,"registration ACTIVE, policy valid until 2026-12-11, seen by camera 2026-07-20T09:00:00"
 UP16GH0104,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-02-04, seen by camera 2026-08-13T04:00:00"
 UP16GH0105,UNINSURED — REPORT,HIGH,no insurance policy on record
@@ -127,7 +127,7 @@ UP16IJ0125,CLEAR,MEDIUM,"registration ACTIVE, policy valid until 2026-12-04, nev
 DL05AB0126,CLEAR,HIGH,"registration ACTIVE, policy valid until 2026-11-07, seen by camera 2026-08-11T08:00:00"
 DL05CD0127,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-05-11, seen by camera 2026-07-26T18:00:00"
 DL05IJ0128,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-07-10, seen by camera 2026-08-10T06:00:00"
-DL05AB0129,UNINSURED — REPORT,HIGH,latest policy ended 2026-03-31
+DL05AB0129,UNINSURED — REPORT,HIGH,"latest policy ended 2026-03-31, lapsed 157 days"
 DL05GH0130,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-03-04, seen by camera 2026-08-11T02:00:00"
 HR26AB0131,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-06-14, seen by camera 2026-07-08T00:00:00"
 DL05EF0132,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-07-20, seen by camera 2026-08-19T17:00:00"
@@ -147,7 +147,7 @@ DL05AB0145,UNINSURED — REPORT,HIGH,no insurance policy on record
 DL05EF0146,CLEAR,HIGH,"registration ACTIVE, policy valid until 2026-12-15, seen by camera 2026-09-01T15:00:00"
 DL01AB0147,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-04-23, seen by camera 2026-08-06T02:00:00"
 DL05EF0148,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-04-01, seen by camera 2026-08-15T02:00:00"
-HR26IJ0149,UNINSURED — REPORT,HIGH,latest policy ended 2026-05-01
+HR26IJ0149,UNINSURED — REPORT,HIGH,"latest policy ended 2026-05-01, lapsed 126 days"
 DL05IJ0150,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-08-04, seen by camera 2026-07-23T09:00:00"
 HR26EF0151,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-04-19, seen by camera 2026-08-20T19:00:00"
 HR26AB0152,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-07-04, seen by camera 2026-08-10T10:00:00"
@@ -162,7 +162,7 @@ DL05CD0160,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-06-13, seen 
 HR26GH0161,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-07-19, seen by camera 2026-07-12T10:00:00"
 UP16CD0162,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-02-05, seen by camera 2026-08-11T03:00:00"
 DL01CD0163,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-07-30, seen by camera 2026-08-02T13:00:00"
-DL01IJ0164,UNINSURED — REPORT,HIGH,latest policy ended 2026-05-23
+DL01IJ0164,UNINSURED — REPORT,HIGH,"latest policy ended 2026-05-23, lapsed 104 days"
 UP16GH0165,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-04-20, seen by camera 2026-09-01T08:00:00"
 DL05GH0166,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-02-20, seen by camera 2026-08-29T02:00:00"
 DL05AB0167,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-01-08, seen by camera 2026-07-23T11:00:00"
@@ -172,7 +172,7 @@ UP16CD0170,CLEAR,MEDIUM,"registration ACTIVE, policy valid until 2026-11-12, nev
 UP16AB0171,REGISTRATION INVALID — REPORT,HIGH,registration CANCELLED
 DL01CD0172,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-05-24, seen by camera 2026-09-04T04:00:00"
 UP16EF0173,CLEAR,HIGH,"registration ACTIVE, policy valid until 2026-12-15, seen by camera 2026-09-04T01:00:00"
-HR26AB0174,UNINSURED — REPORT,HIGH,latest policy ended 2026-06-24
+HR26AB0174,UNINSURED — REPORT,HIGH,"latest policy ended 2026-06-24, lapsed 72 days"
 HR26IJ0175,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-08-12, seen by camera 2026-07-09T01:00:00"
 DL01GH0176,CLEAR,HIGH,"registration ACTIVE, policy valid until 2026-12-01, seen by camera 2026-08-27T16:00:00"
 MH12AB0177,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-06-26, seen by camera 2026-07-23T20:00:00"
@@ -196,7 +196,7 @@ HR26IJ0194,STOLEN — ALERT POLICE,HIGH,open theft case reported 2026-07-20
 DL01CD0195,STOLEN — ALERT POLICE,HIGH,open theft case reported 2026-08-05
 MH12AB0196,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-05-03, seen by camera 2026-08-17T23:00:00"
 UP16EF0197,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-02-28, seen by camera 2026-08-07T21:00:00"
-MH12EF0198,UNINSURED — REPORT,HIGH,latest policy ended 2026-04-28
+MH12EF0198,UNINSURED — REPORT,HIGH,"latest policy ended 2026-04-28, lapsed 129 days"
 HR26GH0199,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-03-04, seen by camera 2026-07-30T15:00:00"
 HR26CD0200,UNINSURED — REPORT,HIGH,no insurance policy on record
 MH12EF0201,CLEAR,MEDIUM,"registration ACTIVE, policy valid until 2026-11-17, never seen by a camera"
@@ -251,7 +251,7 @@ HR26AB0249,CLEAR,MEDIUM,"registration ACTIVE, policy valid until 2027-09-02, nev
 DL05EF0250,CLEAR,HIGH,"registration ACTIVE, policy valid until 2026-11-07, seen by camera 2026-07-15T02:00:00"
 HR26AB0251,CLEAR,MEDIUM,"registration ACTIVE, policy valid until 2027-06-29, never seen by a camera"
 DL05IJ0252,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-06-10, seen by camera 2026-08-19T17:00:00"
-UP16EF0253,UNINSURED — REPORT,HIGH,latest policy ended 2026-03-28
+UP16EF0253,UNINSURED — REPORT,HIGH,"latest policy ended 2026-03-28, lapsed 160 days"
 UP16AB0254,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-08-21, seen by camera 2026-08-20T12:00:00"
 UP16EF0255,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-07-01, seen by camera 2026-08-29T21:00:00"
 HR26AB0256,REGISTRATION INVALID — REPORT,HIGH,registration SUSPENDED
@@ -269,19 +269,19 @@ HR26AB0267,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-03-02, seen 
 UP16AB0268,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-03-16, seen by camera 2026-07-13T11:00:00"
 HR26EF0269,CLEAR,MEDIUM,"registration ACTIVE, policy valid until 2027-07-19, never seen by a camera"
 DL01AB0270,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-05-13, seen by camera 2026-07-30T08:00:00"
-UP16EF0271,UNINSURED — REPORT,HIGH,latest policy ended 2026-07-10
+UP16EF0271,UNINSURED — REPORT,HIGH,"latest policy ended 2026-07-10, lapsed 56 days"
 DL01IJ0272,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-06-16, seen by camera 2026-08-27T01:00:00"
 DL05AB0273,CLEAR,HIGH,"registration ACTIVE, policy valid until 2026-12-26, seen by camera 2026-07-23T16:00:00"
 MH12GH0274,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-07-22, seen by camera 2026-07-28T19:00:00"
 MH12GH0275,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-05-05, seen by camera 2026-07-30T21:00:00"
 DL05CD0276,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-01-17, seen by camera 2026-08-13T06:00:00"
-MH12EF0277,UNINSURED — REPORT,HIGH,latest policy ended 2026-03-09
+MH12EF0277,UNINSURED — REPORT,HIGH,"latest policy ended 2026-03-09, lapsed 179 days"
 DL01EF0278,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-02-16, seen by camera 2026-08-21T18:00:00"
 MH12CD0279,SUSPICIOUS — POSSIBLE CLONED PLATE,MEDIUM,"latest camera sighting disagrees with the registration on make, model, colour"
 MH12AB0280,UNINSURED — REPORT,HIGH,no insurance policy on record
 UP16EF0281,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-03-06, seen by camera 2026-08-05T00:00:00"
 DL05CD0282,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-07-07, seen by camera 2026-08-05T02:00:00"
-HR26CD0283,UNINSURED — REPORT,HIGH,latest policy ended 2026-04-28
+HR26CD0283,UNINSURED — REPORT,HIGH,"latest policy ended 2026-04-28, lapsed 129 days"
 MH12GH0284,REGISTRATION INVALID — REPORT,HIGH,registration SUSPENDED
 DL01AB0285,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-08-24, seen by camera 2026-08-30T09:00:00"
 MH12GH0286,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-07-13, seen by camera 2026-08-19T18:00:00"
@@ -298,12 +298,12 @@ UP16CD0296,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-07-13, seen 
 DL01EF0297,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-02-03, seen by camera 2026-08-14T11:00:00"
 UP16IJ0298,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-08-12, seen by camera 2026-07-12T18:00:00"
 MH12EF0299,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-05-06, seen by camera 2026-08-27T12:00:00"
-HR26CD0300,UNINSURED — REPORT,HIGH,latest policy ended 2026-05-04
-UP16EF0301,UNINSURED — REPORT,HIGH,latest policy ended 2026-08-25
+HR26CD0300,UNINSURED — REPORT,HIGH,"latest policy ended 2026-05-04, lapsed 123 days"
+UP16EF0301,UNINSURED — ADVISORY,MEDIUM,"latest policy ended 2026-08-25, lapsed 10 days (advisory window)"
 HR26CD0302,SUSPICIOUS — POSSIBLE CLONED PLATE,MEDIUM,"latest camera sighting disagrees with the registration on make, model, colour"
 DL01EF0303,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-04-05, seen by camera 2026-08-23T19:00:00"
 UP16GH0304,SUSPICIOUS — POSSIBLE CLONED PLATE,MEDIUM,"latest camera sighting disagrees with the registration on make, model, colour"
-DL01IJ0305,UNINSURED — REPORT,HIGH,latest policy ended 2026-03-23
+DL01IJ0305,UNINSURED — REPORT,HIGH,"latest policy ended 2026-03-23, lapsed 165 days"
 DL05CD0306,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-01-02, seen by camera 2026-09-03T11:00:00"
 MH12CD0307,CLEAR,HIGH,"registration ACTIVE, policy valid until 2026-12-16, seen by camera 2026-08-13T00:00:00"
 DL05EF0308,CLEAR,MEDIUM,"registration ACTIVE, policy valid until 2027-02-11, never seen by a camera"
@@ -314,7 +314,7 @@ HR26CD0312,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-06-20, seen 
 MH12IJ0313,UNINSURED — REPORT,HIGH,no insurance policy on record
 MH12CD0314,SUSPICIOUS — POSSIBLE CLONED PLATE,MEDIUM,"latest camera sighting disagrees with the registration on make, model"
 HR26EF0315,UNINSURED — REPORT,HIGH,no insurance policy on record
-DL05EF0316,UNINSURED — REPORT,HIGH,latest policy ended 2026-04-23
+DL05EF0316,UNINSURED — REPORT,HIGH,"latest policy ended 2026-04-23, lapsed 134 days"
 UP16GH0317,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-02-16, seen by camera 2026-07-29T17:00:00"
 DL01AB0318,CLEAR,MEDIUM,"registration ACTIVE, policy valid until 2026-12-07, never seen by a camera"
 MH12CD0319,CLEAR,HIGH,"registration ACTIVE, policy valid until 2026-11-06, seen by camera 2026-08-12T09:00:00"
@@ -325,7 +325,7 @@ MH12AB0323,REGISTRATION INVALID — REPORT,HIGH,registration SUSPENDED
 MH12EF0324,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-05-06, seen by camera 2026-07-15T13:00:00"
 DL05AB0325,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-06-19, seen by camera 2026-07-25T11:00:00"
 DL01AB0326,CLEAR,MEDIUM,"registration ACTIVE, policy valid until 2027-05-13, never seen by a camera"
-DL05IJ0327,UNINSURED — REPORT,HIGH,latest policy ended 2026-03-25
+DL05IJ0327,UNINSURED — REPORT,HIGH,"latest policy ended 2026-03-25, lapsed 163 days"
 DL01CD0328,UNINSURED — REPORT,HIGH,no insurance policy on record
 HR26CD0329,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-04-15, seen by camera 2026-07-28T17:00:00"
 HR26AB0330,CLEAR,HIGH,"registration ACTIVE, policy valid until 2026-11-16, seen by camera 2026-08-04T00:00:00"
@@ -337,7 +337,7 @@ UP16AB0335,CLEAR,MEDIUM,"registration ACTIVE, policy valid until 2026-11-17, nev
 MH12IJ0336,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-02-05, seen by camera 2026-09-03T23:00:00"
 HR26CD0337,CLEAR,HIGH,"registration ACTIVE, policy valid until 2026-12-03, seen by camera 2026-09-04T12:00:00"
 DL05AB0338,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-05-03, seen by camera 2026-07-19T08:00:00"
-DL05AB0339,UNINSURED — REPORT,HIGH,latest policy ended 2026-06-27
+DL05AB0339,UNINSURED — REPORT,HIGH,"latest policy ended 2026-06-27, lapsed 69 days"
 UP16CD0340,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-02-12, seen by camera 2026-07-13T00:00:00"
 DL05IJ0341,CLEAR,HIGH,"registration ACTIVE, policy valid until 2026-11-06, seen by camera 2026-08-12T18:00:00"
 DL05AB0342,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-04-08, seen by camera 2026-08-18T21:00:00"
@@ -348,10 +348,10 @@ UP16EF0346,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-05-01, seen 
 DL05EF0347,REGISTRATION INVALID — REPORT,HIGH,registration SUSPENDED
 HR26EF0348,UNINSURED — REPORT,HIGH,no insurance policy on record
 DL01EF0349,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-07-10, seen by camera 2026-07-21T08:00:00"
-UP16IJ0350,UNINSURED — REPORT,HIGH,latest policy ended 2026-07-23
+UP16IJ0350,UNINSURED — REPORT,HIGH,"latest policy ended 2026-07-23, lapsed 43 days"
 UP16GH0351,CLEAR,HIGH,"registration ACTIVE, policy valid until 2026-11-19, seen by camera 2026-09-03T03:00:00"
 DL01CD0352,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-07-02, seen by camera 2026-08-25T21:00:00"
-UP16AB0353,UNINSURED — REPORT,HIGH,latest policy ended 2026-08-17
+UP16AB0353,UNINSURED — WARNING,HIGH,"latest policy ended 2026-08-17, lapsed 18 days (warning window)"
 DL01CD0354,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-05-10, seen by camera 2026-08-02T22:00:00"
 UP16CD0355,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-05-18, seen by camera 2026-07-24T00:00:00"
 MH12CD0356,CLEAR,MEDIUM,"registration ACTIVE, policy valid until 2027-01-28, never seen by a camera"
@@ -359,11 +359,11 @@ UP16EF0357,CLEAR,MEDIUM,"registration ACTIVE, policy valid until 2026-12-04, nev
 MH12GH0358,REGISTRATION INVALID — REPORT,HIGH,registration SUSPENDED
 DL01AB0359,STOLEN — ALERT POLICE,HIGH,open theft case reported 2026-08-04
 UP16IJ0360,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-08-30, seen by camera 2026-07-25T14:00:00"
-UP16AB0361,UNINSURED — REPORT,HIGH,latest policy ended 2026-04-06
+UP16AB0361,UNINSURED — REPORT,HIGH,"latest policy ended 2026-04-06, lapsed 151 days"
 DL05GH0362,CLEAR,MEDIUM,"registration ACTIVE, policy valid until 2027-08-28, never seen by a camera"
 UP16AB0363,CLEAR,HIGH,"registration ACTIVE, policy valid until 2026-11-23, seen by camera 2026-08-06T12:00:00"
 HR26EF0364,CLEAR,HIGH,"registration ACTIVE, policy valid until 2026-12-28, seen by camera 2026-09-01T08:00:00"
-UP16CD0365,UNINSURED — REPORT,HIGH,latest policy ended 2026-06-16
+UP16CD0365,UNINSURED — REPORT,HIGH,"latest policy ended 2026-06-16, lapsed 80 days"
 HR26CD0366,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-01-21, seen by camera 2026-08-28T03:00:00"
 DL05IJ0367,UNINSURED — REPORT,HIGH,no insurance policy on record
 UP16GH0368,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-04-20, seen by camera 2026-09-04T09:00:00"
@@ -398,17 +398,17 @@ MH12IJ0396,SUSPICIOUS — POSSIBLE CLONED PLATE,MEDIUM,"latest camera sighting d
 MH12EF0397,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-03-10, seen by camera 2026-07-20T19:00:00"
 DL01IJ0398,REGISTRATION INVALID — REPORT,HIGH,registration SUSPENDED
 HR26GH0399,STOLEN — ALERT POLICE,HIGH,open theft case reported 2026-06-14
-UP16EF0400,UNINSURED — REPORT,HIGH,latest policy ended 2026-04-16
+UP16EF0400,UNINSURED — REPORT,HIGH,"latest policy ended 2026-04-16, lapsed 141 days"
 HR26IJ0401,SUSPICIOUS — POSSIBLE CLONED PLATE,MEDIUM,"latest camera sighting disagrees with the registration on make, model, colour"
-UP16IJ0402,UNINSURED — REPORT,HIGH,latest policy ended 2026-06-07
+UP16IJ0402,UNINSURED — REPORT,HIGH,"latest policy ended 2026-06-07, lapsed 89 days"
 DL01CD0403,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-06-13, seen by camera 2026-08-16T00:00:00"
-DL05AB0404,UNINSURED — REPORT,HIGH,latest policy ended 2026-06-29
+DL05AB0404,UNINSURED — REPORT,HIGH,"latest policy ended 2026-06-29, lapsed 67 days"
 UP16AB0405,SUSPICIOUS — POSSIBLE CLONED PLATE,MEDIUM,"latest camera sighting disagrees with the registration on make, model, colour"
 DL01CD0406,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-07-19, seen by camera 2026-07-22T15:00:00"
 MH12GH0407,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-03-31, seen by camera 2026-08-12T12:00:00"
 MH12AB0408,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-02-16, seen by camera 2026-09-03T04:00:00"
 HR26AB0409,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-05-29, seen by camera 2026-09-01T17:00:00"
-MH12CD0410,UNINSURED — REPORT,HIGH,latest policy ended 2026-05-08
+MH12CD0410,UNINSURED — REPORT,HIGH,"latest policy ended 2026-05-08, lapsed 119 days"
 HR26GH0411,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-08-22, seen by camera 2026-09-01T19:00:00"
 DL05GH0412,UNINSURED — REPORT,HIGH,no insurance policy on record
 UP16AB0413,UNINSURED — REPORT,HIGH,no insurance policy on record
@@ -419,7 +419,7 @@ MH12IJ0417,SUSPICIOUS — POSSIBLE CLONED PLATE,MEDIUM,"latest camera sighting d
 UP16IJ0418,UNINSURED — REPORT,HIGH,no insurance policy on record
 DL01GH0419,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-05-31, seen by camera 2026-08-24T18:00:00"
 DL05AB0420,STOLEN — ALERT POLICE,HIGH,open theft case reported 2026-07-28
-DL05CD0421,UNINSURED — REPORT,HIGH,latest policy ended 2026-08-28
+DL05CD0421,UNINSURED — ADVISORY,MEDIUM,"latest policy ended 2026-08-28, lapsed 7 days (advisory window)"
 DL05AB0422,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-08-12, seen by camera 2026-08-15T14:00:00"
 MH12CD0423,REGISTRATION INVALID — REPORT,HIGH,registration SUSPENDED
 MH12AB0424,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-03-26, seen by camera 2026-08-29T17:00:00"
@@ -452,10 +452,10 @@ DL05CD0450,STOLEN — ALERT POLICE,HIGH,open theft case reported 2026-08-03
 UP16GH0451,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-02-17, seen by camera 2026-08-28T17:00:00"
 MH12EF0452,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-01-06, seen by camera 2026-08-26T03:00:00"
 UP16GH0453,REGISTRATION INVALID — REPORT,HIGH,registration CANCELLED
-HR26AB0454,UNINSURED — REPORT,HIGH,latest policy ended 2026-05-31
+HR26AB0454,UNINSURED — REPORT,HIGH,"latest policy ended 2026-05-31, lapsed 96 days"
 DL05EF0455,UNINSURED — REPORT,HIGH,no insurance policy on record
 MH12AB0456,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-02-20, seen by camera 2026-08-19T07:00:00"
-DL05GH0457,UNINSURED — REPORT,HIGH,latest policy ended 2026-04-15
+DL05GH0457,UNINSURED — REPORT,HIGH,"latest policy ended 2026-04-15, lapsed 142 days"
 MH12GH0458,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-01-31, seen by camera 2026-08-25T15:00:00"
 UP16AB0459,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-03-01, seen by camera 2026-08-31T07:00:00"
 DL01EF0460,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-08-06, seen by camera 2026-08-31T17:00:00"
@@ -476,7 +476,7 @@ DL01EF0474,CLEAR,MEDIUM,"registration ACTIVE, policy valid until 2027-06-15, nev
 HR26CD0475,REGISTRATION INVALID — REPORT,HIGH,registration SUSPENDED
 MH12CD0476,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-06-09, seen by camera 2026-07-25T06:00:00"
 HR26AB0477,CLEAR,HIGH,"registration ACTIVE, policy valid until 2026-11-28, seen by camera 2026-08-10T02:00:00"
-HR26CD0478,UNINSURED — REPORT,HIGH,latest policy ended 2026-06-18
+HR26CD0478,UNINSURED — REPORT,HIGH,"latest policy ended 2026-06-18, lapsed 78 days"
 HR26EF0479,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-07-27, seen by camera 2026-08-09T22:00:00"
 UP16IJ0480,REGISTRATION INVALID — REPORT,HIGH,registration CANCELLED
 MH12AB0481,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-03-31, seen by camera 2026-08-07T15:00:00"
@@ -488,11 +488,11 @@ UP16CD0486,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-05-09, seen 
 MH12CD0487,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-08-21, seen by camera 2026-08-04T11:00:00"
 UP16IJ0488,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-08-18, seen by camera 2026-08-03T16:00:00"
 HR26CD0489,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-01-20, seen by camera 2026-07-11T12:00:00"
-UP16IJ0490,UNINSURED — REPORT,HIGH,latest policy ended 2026-05-03
+UP16IJ0490,UNINSURED — REPORT,HIGH,"latest policy ended 2026-05-03, lapsed 124 days"
 MH12EF0491,UNINSURED — REPORT,HIGH,no insurance policy on record
 UP16GH0492,CLEAR,MEDIUM,"registration ACTIVE, policy valid until 2027-08-04, never seen by a camera"
 DL05EF0493,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-01-17, seen by camera 2026-07-25T07:00:00"
-UP16EF0494,UNINSURED — REPORT,HIGH,latest policy ended 2026-02-19
+UP16EF0494,UNINSURED — REPORT,HIGH,"latest policy ended 2026-02-19, lapsed 197 days"
 UP16CD0495,UNINSURED — REPORT,HIGH,no insurance policy on record
 HR26IJ0496,SUSPICIOUS — POSSIBLE CLONED PLATE,MEDIUM,"latest camera sighting disagrees with the registration on model, colour"
 DL05GH0497,CLEAR,HIGH,"registration ACTIVE, policy valid until 2026-12-13, seen by camera 2026-08-22T15:00:00"
@@ -508,8 +508,8 @@ UP16AB0506,CLEAR,HIGH,"registration ACTIVE, policy valid until 2026-12-21, seen 
 DL05GH0507,STOLEN — ALERT POLICE,HIGH,open theft case reported 2026-08-05
 UP16IJ0508,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-05-05, seen by camera 2026-08-23T19:00:00"
 DL05CD0509,CLEAR,HIGH,"registration ACTIVE, policy valid until 2026-12-08, seen by camera 2026-09-03T09:00:00"
-HR26IJ0510,UNINSURED — REPORT,HIGH,latest policy ended 2026-08-11
-DL01EF0511,UNINSURED — REPORT,HIGH,latest policy ended 2026-08-20
+HR26IJ0510,UNINSURED — WARNING,HIGH,"latest policy ended 2026-08-11, lapsed 24 days (warning window)"
+DL01EF0511,UNINSURED — ADVISORY,MEDIUM,"latest policy ended 2026-08-20, lapsed 15 days (advisory window)"
 UP16IJ0512,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-05-04, seen by camera 2026-08-29T03:00:00"
 DL01CD0513,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-04-22, seen by camera 2026-08-25T14:00:00"
 DL01AB0514,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-07-31, seen by camera 2026-08-11T20:00:00"
@@ -520,7 +520,7 @@ HR26AB0518,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-02-10, seen 
 UP16AB0519,CLEAR,HIGH,"registration ACTIVE, policy valid until 2026-11-07, seen by camera 2026-09-03T01:00:00"
 DL05IJ0520,CLEAR,MEDIUM,"registration ACTIVE, policy valid until 2027-08-04, never seen by a camera"
 UP16AB0521,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-03-07, seen by camera 2026-08-07T10:00:00"
-HR26GH0522,UNINSURED — REPORT,HIGH,latest policy ended 2026-07-11
+HR26GH0522,UNINSURED — REPORT,HIGH,"latest policy ended 2026-07-11, lapsed 55 days"
 MH12GH0523,REGISTRATION INVALID — REPORT,HIGH,registration SUSPENDED
 UP16AB0524,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-05-18, seen by camera 2026-09-04T04:00:00"
 MH12EF0525,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-03-14, seen by camera 2026-07-30T03:00:00"
@@ -532,7 +532,7 @@ HR26EF0530,UNINSURED — REPORT,HIGH,no insurance policy on record
 DL01AB0531,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-08-10, seen by camera 2026-07-07T09:00:00"
 HR26IJ0532,CLEAR,HIGH,"registration ACTIVE, policy valid until 2026-12-26, seen by camera 2026-08-12T14:00:00"
 DL01CD0533,CLEAR,MEDIUM,"registration ACTIVE, policy valid until 2026-12-05, never seen by a camera"
-HR26IJ0534,UNINSURED — REPORT,HIGH,latest policy ended 2026-07-01
+HR26IJ0534,UNINSURED — REPORT,HIGH,"latest policy ended 2026-07-01, lapsed 65 days"
 UP16IJ0535,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-03-05, seen by camera 2026-07-18T03:00:00"
 DL05CD0536,REGISTRATION INVALID — REPORT,HIGH,registration SUSPENDED
 MH12AB0537,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-03-28, seen by camera 2026-08-04T22:00:00"
@@ -565,14 +565,14 @@ DL05AB0563,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-05-03, seen 
 MH12AB0564,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-01-04, seen by camera 2026-08-12T13:00:00"
 DL01IJ0565,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-01-18, seen by camera 2026-08-29T04:00:00"
 DL01IJ0566,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-08-30, seen by camera 2026-08-01T04:00:00"
-DL01CD0567,UNINSURED — REPORT,HIGH,latest policy ended 2026-05-07
+DL01CD0567,UNINSURED — REPORT,HIGH,"latest policy ended 2026-05-07, lapsed 120 days"
 HR26GH0568,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-03-10, seen by camera 2026-09-01T10:00:00"
 MH12EF0569,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-07-27, seen by camera 2026-08-01T07:00:00"
 DL01AB0570,REGISTRATION INVALID — REPORT,HIGH,registration SUSPENDED
 HR26IJ0571,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-03-12, seen by camera 2026-08-22T20:00:00"
 UP16IJ0572,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-01-23, seen by camera 2026-07-31T17:00:00"
 MH12GH0573,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-05-28, seen by camera 2026-08-25T11:00:00"
-UP16GH0574,UNINSURED — REPORT,HIGH,latest policy ended 2026-07-25
+UP16GH0574,UNINSURED — REPORT,HIGH,"latest policy ended 2026-07-25, lapsed 41 days"
 DL01GH0575,STOLEN — ALERT POLICE,HIGH,open theft case reported 2026-06-11
 HR26EF0576,UNINSURED — REPORT,HIGH,no insurance policy on record
 DL05AB0577,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-03-29, seen by camera 2026-08-15T17:00:00"
@@ -594,13 +594,13 @@ UP16CD0592,REGISTRATION INVALID — REPORT,HIGH,registration SUSPENDED
 MH12GH0593,CLEAR,MEDIUM,"registration ACTIVE, policy valid until 2027-02-17, never seen by a camera"
 HR26EF0594,CLEAR,MEDIUM,"registration ACTIVE, policy valid until 2027-09-02, never seen by a camera"
 MH12GH0595,CLEAR,MEDIUM,"registration ACTIVE, policy valid until 2026-12-29, never seen by a camera"
-MH12GH0596,UNINSURED — REPORT,HIGH,latest policy ended 2026-05-14
+MH12GH0596,UNINSURED — REPORT,HIGH,"latest policy ended 2026-05-14, lapsed 113 days"
 HR26AB0597,STOLEN — ALERT POLICE,HIGH,open theft case reported 2026-08-31
 DL01CD0598,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-08-13, seen by camera 2026-07-23T13:00:00"
 DL01GH0599,STOLEN — ALERT POLICE,HIGH,open theft case reported 2026-08-25
 MH12EF0600,STOLEN — ALERT POLICE,HIGH,open theft case reported 2026-07-24
 DL01AB1234,CLEAR,HIGH,"registration ACTIVE, policy valid until 2027-01-14, seen by camera 2026-09-04T08:30:00"
-DL05CD9876,UNINSURED — REPORT,HIGH,latest policy ended 2026-06-10
+DL05CD9876,UNINSURED — REPORT,HIGH,"latest policy ended 2026-06-10, lapsed 86 days"
 HR26EF4455,STOLEN — ALERT POLICE,HIGH,open theft case reported 2026-08-15
 UP16GH1122,SUSPICIOUS — POSSIBLE CLONED PLATE,MEDIUM,"latest camera sighting disagrees with the registration on make, model, colour"
 DL03SC5566,SCRAPPED — ALERT POLICE,HIGH,scrapped 2024-07-15 but sighted again by a camera since

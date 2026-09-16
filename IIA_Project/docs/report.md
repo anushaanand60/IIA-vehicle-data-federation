@@ -60,7 +60,11 @@ $$\text{VEHICLE\_PROFILE} = \text{Vehicle} \ \tilde{\bowtie}_{p} \ \text{Insuran
 2. `stolen_status = STOLEN` and `case_status = OPEN` $\to$ `STOLEN — ALERT POLICE` (confidence: `HIGH`).
 3. Plate seen by CAM but absent in REG $\to$ `UNREGISTERED / SUSPICIOUS` (confidence: `MEDIUM`).
 4. REG make/model/colour $\ne$ CAM observed ($\ge 2$ mismatches) $\to$ `SUSPICIOUS — POSSIBLE CLONED PLATE` (confidence: `MEDIUM`).
-5. No policy or `insurance_expiry < today` $\to$ `UNINSURED — REPORT` (confidence: `HIGH`).
+5. No policy $\to$ `UNINSURED — REPORT` (confidence: `HIGH`). `insurance_expiry < today` escalates by
+   days lapsed (grace-period ladder, mirrors UK Continuous Insurance Enforcement's advisory $\to$
+   penalty $\to$ impound staging): 1–15 days $\to$ `UNINSURED — ADVISORY` (confidence: `MEDIUM`);
+   16–30 days $\to$ `UNINSURED — WARNING` (confidence: `HIGH`); $> 30$ days $\to$ `UNINSURED — REPORT`
+   (confidence: `HIGH`).
 6. `registration_status != ACTIVE` $\to$ `REGISTRATION INVALID — REPORT` (confidence: `HIGH`).
 7. Otherwise $\to$ `CLEAR` (confidence: `HIGH`).
 

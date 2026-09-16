@@ -82,6 +82,10 @@ def decision_class(decision: str) -> str:
         return "clear"
     if any(word in text for word in ("STOLEN", "SHREDDED", "SCRAPPED")):
         return "alert"
+    if "ADVISORY" in text:
+        return "suspicious"
+    if "WARNING" in text:
+        return "report"
     if "REPORT" in text:
         return "report"
     if "SUSPICIOUS" in text:

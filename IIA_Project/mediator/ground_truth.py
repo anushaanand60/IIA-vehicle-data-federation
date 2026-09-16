@@ -18,21 +18,29 @@ from itertools import zip_longest
 from pathlib import Path
 from typing import Callable, Iterable
 
-from mediator.decide import REFERENCE_TODAY
+from mediator.decide import (
+    REFERENCE_TODAY,
+    LAPSE_ADVISORY_DAYS,
+    LAPSE_WARNING_DAYS,
+    UNINSURED_ADVISORY,
+    UNINSURED_WARNING,
+    UNINSURED_REPORT,
+)
 
 TODAY = REFERENCE_TODAY  # the reference day of the generators and the decision engine
 
-# mediator/decide.py does not export these as module-level constants (only UNKNOWN_VEHICLE is
-# exported), so the exact strings are copied here from mediator/decide.py's return statements.
-# Whoever owns decide.py is expected to keep these in sync; a decision-string change without a
-# matching change here will show up immediately as ground-truth mismatches.
+# mediator/decide.py does not export most of these as module-level constants (only
+# UNKNOWN_VEHICLE and the lapsed-policy ladder -- UNINSURED_ADVISORY/WARNING/REPORT -- are
+# exported), so the remaining exact strings are copied here from mediator/decide.py's return
+# statements. Whoever owns decide.py is expected to keep these in sync; a decision-string change
+# without a matching change here will show up immediately as ground-truth mismatches.
 CLEAR = "CLEAR"
 STOLEN = "STOLEN — ALERT POLICE"
 SCRAPPED_SEEN = "SCRAPPED — ALERT POLICE"          # shredded, then sighted again by a camera
 SCRAPPED_UNSEEN = "SCRAPPED — REGISTRATION VOID"    # shredded, never sighted since
 UNREGISTERED = "UNREGISTERED / SUSPICIOUS"
 CLONED = "SUSPICIOUS — POSSIBLE CLONED PLATE"
-UNINSURED = "UNINSURED — REPORT"
+UNINSURED = UNINSURED_REPORT
 REGISTRATION_INVALID = "REGISTRATION INVALID — REPORT"
 
 FIELDS = ["plate_number", "expected_decision", "expected_confidence", "basis"]
@@ -113,7 +121,12 @@ def expected_decision(reg: dict | None, policies: list[dict], incidents: list[di
         return UNINSURED, "HIGH", "no insurance policy on record"
     policy_end = max(_policy_end(p) for p in policies)
     if policy_end < today:
-        return UNINSURED, "HIGH", f"latest policy ended {policy_end.isoformat()}"
+        days_lapsed = (today - policy_end).days
+        if 1 <= days_lapsed <= LAPSE_ADVISORY_DAYS:
+            return UNINSURED_ADVISORY, "MEDIUM", f"latest policy ended {policy_end.isoformat()}, lapsed {days_lapsed} days (advisory window)"
+        if LAPSE_ADVISORY_DAYS < days_lapsed <= LAPSE_WARNING_DAYS:
+            return UNINSURED_WARNING, "HIGH", f"latest policy ended {policy_end.isoformat()}, lapsed {days_lapsed} days (warning window)"
+        return UNINSURED, "HIGH", f"latest policy ended {policy_end.isoformat()}, lapsed {days_lapsed} days"
 
     status = str((reg or {}).get("reg_status") or "").strip().upper()
     if status and status != "ACTIVE":

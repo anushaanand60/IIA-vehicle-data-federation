@@ -130,3 +130,42 @@ DEMO_CASES = [
 @pytest.mark.parametrize("name,expected,over", DEMO_CASES, ids=[c[0] for c in DEMO_CASES])
 def test_demo_decisions_unchanged(name, expected, over):
     assert evaluate_vehicle_decision(demo_profile(**over), ALL)[:2] == expected
+
+
+# --- Task 2.5: grace-period / escalation ladder for lapsed insurance ---------------------------
+# REFERENCE_TODAY is 2026-09-04. Mirrors UK Continuous Insurance Enforcement's
+# advisory -> penalty -> impound staging (docs/FIELD_RESEARCH.md #6).
+
+LAPSE_CASES = [
+    ("10 days lapsed -> advisory", ("UNINSURED — ADVISORY", "MEDIUM"), dict(
+        registration_status="ACTIVE", insurance_status="EXPIRED", insurance_expiry="2026-08-25")),
+    ("25 days lapsed -> warning", ("UNINSURED — WARNING", "HIGH"), dict(
+        registration_status="ACTIVE", insurance_status="EXPIRED", insurance_expiry="2026-08-10")),
+    ("86 days lapsed -> report", ("UNINSURED — REPORT", "HIGH"), dict(
+        registration_status="ACTIVE", insurance_status="EXPIRED", insurance_expiry="2026-06-10")),
+    ("no policy at all -> report", ("UNINSURED — REPORT", "HIGH"), dict(
+        registration_status="ACTIVE", insurance_status="NONE")),
+]
+
+
+@pytest.mark.parametrize("name,expected,over", LAPSE_CASES, ids=[c[0] for c in LAPSE_CASES])
+def test_lapsed_insurance_escalation_ladder(name, expected, over):
+    assert evaluate_vehicle_decision(demo_profile(**over), ALL)[:2] == expected
+
+
+def test_lapse_advisory_reason_names_the_days_and_the_window():
+    profile = demo_profile(registration_status="ACTIVE", insurance_status="EXPIRED", insurance_expiry="2026-08-25")
+    _, _, reasons = evaluate_vehicle_decision(profile, ALL)
+    assert any("lapsed 10 days ago (advisory window" in r for r in reasons)
+
+
+def test_lapse_warning_reason_names_the_days_and_the_window():
+    profile = demo_profile(registration_status="ACTIVE", insurance_status="EXPIRED", insurance_expiry="2026-08-10")
+    _, _, reasons = evaluate_vehicle_decision(profile, ALL)
+    assert any("lapsed 25 days ago (warning window" in r for r in reasons)
+
+
+def test_demo_plate_dl05cd9876_still_reports_at_86_days_lapsed():
+    # DL05CD9876 expired 10/06/2026 -> 86 days before REFERENCE_TODAY 2026-09-04: still REPORT.
+    profile = demo_profile(registration_status="ACTIVE", insurance_status="EXPIRED", insurance_expiry="2026-06-10")
+    assert evaluate_vehicle_decision(profile, ALL)[:2] == ("UNINSURED — REPORT", "HIGH")

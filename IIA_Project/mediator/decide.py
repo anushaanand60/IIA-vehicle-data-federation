@@ -5,9 +5,21 @@ with confidence level and human-readable justification reasons.
 """
 
 from typing import Dict, Any, List, Tuple
-from datetime import date
+from datetime import date, datetime
 
 REFERENCE_TODAY = date(2026, 9, 4)
+
+# Grace-period / escalation ladder for a lapsed policy (Task 2.5, mirrors UK Continuous
+# Insurance Enforcement's advisory -> penalty -> impound staging: docs/FIELD_RESEARCH.md #6).
+# Thresholds are days lapsed since insurance_expiry, inclusive upper bounds.
+LAPSE_ADVISORY_DAYS = 15
+LAPSE_WARNING_DAYS = 30
+
+# Decision strings for the lapsed-policy ladder, exported so ground_truth.py and the GUI can
+# reference them instead of re-typing the literals.
+UNINSURED_ADVISORY = "UNINSURED — ADVISORY"
+UNINSURED_WARNING = "UNINSURED — WARNING"
+UNINSURED_REPORT = "UNINSURED — REPORT"
 
 # A plate no asked source has ever heard of. Exported so the GUI can offer the onboarding
 # wizard (app/tabs/onboarding.py) on exactly this decision, without matching on prose.
@@ -137,10 +149,33 @@ def evaluate_vehicle_decision(profile: Dict[str, Any], requested_sources: List[s
     expiry = profile.get("insurance_expiry")
     if ins_status == "NONE":
         reasons.append("No active or past insurance policy found on record for this vehicle in INS authority.")
-        return ("UNINSURED — REPORT", "HIGH", reasons)
+        return (UNINSURED_REPORT, "HIGH", reasons)
     elif ins_status == "EXPIRED":
-        reasons.append(f"Insurance policy has expired (expired on {expiry}, prior to reference evaluation date {REFERENCE_TODAY.isoformat()}).")
-        return ("UNINSURED — REPORT", "HIGH", reasons)
+        days_lapsed = None
+        if expiry:
+            try:
+                expiry_date = datetime.strptime(expiry, "%Y-%m-%d").date()
+                days_lapsed = (REFERENCE_TODAY - expiry_date).days
+            except ValueError:
+                days_lapsed = None
+        if days_lapsed is not None and 1 <= days_lapsed <= LAPSE_ADVISORY_DAYS:
+            reasons.append(
+                f"Policy lapsed {days_lapsed} days ago (advisory window: renew within "
+                f"{LAPSE_ADVISORY_DAYS} days of expiry)."
+            )
+            return (UNINSURED_ADVISORY, "MEDIUM", reasons)
+        if days_lapsed is not None and LAPSE_ADVISORY_DAYS < days_lapsed <= LAPSE_WARNING_DAYS:
+            reasons.append(
+                f"Policy lapsed {days_lapsed} days ago (warning window: renew within "
+                f"{LAPSE_WARNING_DAYS} days of expiry)."
+            )
+            return (UNINSURED_WARNING, "HIGH", reasons)
+        lapsed_note = f" — lapsed {days_lapsed} days" if days_lapsed is not None else ""
+        reasons.append(
+            f"Insurance policy has expired (expired on {expiry}, prior to reference evaluation "
+            f"date {REFERENCE_TODAY.isoformat()}){lapsed_note}."
+        )
+        return (UNINSURED_REPORT, "HIGH", reasons)
 
     # Rule 6: registration_status != ACTIVE
     reg_status = profile.get("registration_status")
