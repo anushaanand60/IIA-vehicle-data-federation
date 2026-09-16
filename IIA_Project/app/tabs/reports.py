@@ -13,8 +13,10 @@ _ROOT = Path(__file__).resolve().parents[2]
 if str(_ROOT) not in sys.path:  # `streamlit run` puts only this file's folder on sys.path
     sys.path.insert(0, str(_ROOT))
 
+import pandas as pd  # noqa: E402
 import streamlit as st  # noqa: E402
 
+from mediator.catalog import get_query_log  # noqa: E402
 from mediator.report import generate_report_pdf, list_reports  # noqa: E402
 
 
@@ -27,7 +29,6 @@ def render() -> None:
             "No audit reports have been filed yet. File a report from the Investigate tab to "
             "see it here."
         )
-        return
 
     for rep in reports:
         report_id = rep["report_id"]
@@ -55,6 +56,44 @@ def render() -> None:
                         mime="application/pdf",
                         key=f"rp_dl_{report_id}",
                     )
+
+    st.divider()
+    _render_audit_log()
+
+
+def _render_audit_log() -> None:
+    """Task 2.6: every federated query the mediator has run, not only the ones an operator chose
+    to file. `QUERY_LOG` (`mediator/catalog.py`) stores the decision and the plan trace metadata
+    only -- source_id/status pairs and the verdict -- never the raw rows a source returned."""
+    st.subheader("Query audit log")
+    st.caption(
+        "Decisions and traces only — no source rows are ever stored (virtual integration)."
+    )
+
+    plate_filter = st.text_input(
+        "Filter by plate", value="", key="rp_audit_plate"
+    ).strip().upper()
+
+    rows = get_query_log(limit=100, plate=plate_filter or None)
+    if not rows:
+        st.info("No queries have been run yet.")
+        return
+
+    table = pd.DataFrame([
+        {
+            "ts": r["ts"],
+            "plate": r["plate"],
+            "decision": r.get("decision"),
+            "confidence": r.get("confidence"),
+            "sources_asked": ", ".join(r.get("sources_asked") or []),
+            "statuses": ", ".join(
+                f"{sid}:{status}" for sid, status in (r.get("statuses") or {}).items()
+            ),
+            "elapsed_ms": r.get("elapsed_ms"),
+        }
+        for r in rows
+    ])
+    st.dataframe(table, width="stretch", hide_index=True, key="rp_audit_table")
 
 
 if __name__ == "__main__":

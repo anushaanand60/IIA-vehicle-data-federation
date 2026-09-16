@@ -167,6 +167,24 @@ def init_meta_db():
     );
     """)
 
+    # Task 2.6. The audit trail of every federated query: what was asked, which sources answered
+    # and how, and what the mediator decided. Deliberately narrow -- decisions and traces only,
+    # never the raw rows a source returned, so this table can never become the warehouse the
+    # federation thesis argues against (CLAUDE.md §8 "no caching of source data").
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS QUERY_LOG (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts TEXT,
+        plate TEXT,
+        requested_attrs TEXT, -- JSON array
+        sources_asked TEXT,   -- JSON array
+        statuses TEXT,        -- JSON object: source_id -> status
+        decision TEXT,
+        confidence TEXT,
+        elapsed_ms REAL
+    );
+    """)
+
     # Seed default sources if empty
     cur.execute("SELECT COUNT(*) FROM SOURCE_CATALOG;")
     if cur.fetchone()[0] == 0:
@@ -346,6 +364,59 @@ def get_alerts(limit: int = 50) -> List[Dict[str, Any]]:
     conn.row_factory = sqlite3.Row
     rows = [dict(r) for r in conn.execute(
         "SELECT * FROM ALERT_LOG ORDER BY alert_id DESC LIMIT ?;", (int(limit),)).fetchall()]
+    conn.close()
+    return rows
+
+
+# ------------------------------------------------------------------- query audit log (Task 2.6)
+
+def log_query(row: Dict[str, Any]) -> int:
+    """Append one row to QUERY_LOG. Never raises the caller's transaction: `mediator/core.py`
+    wraps the call in try/except so a broken meta.db degrades to "no audit entry", not a failed
+    query (the same refuse-don't-crash rule as watchlist/risk annotation)."""
+    init_meta_db()
+    conn = sqlite3.connect(META_DB_PATH)
+    cur = conn.cursor()
+    cur.execute("""
+    INSERT INTO QUERY_LOG
+    (ts, plate, requested_attrs, sources_asked, statuses, decision, confidence, elapsed_ms)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+    """, (
+        row.get("ts") or datetime.now(timezone.utc).isoformat(),
+        row.get("plate"),
+        json.dumps(row.get("requested_attrs") or []),
+        json.dumps(row.get("sources_asked") or []),
+        json.dumps(row.get("statuses") or {}),
+        row.get("decision"),
+        row.get("confidence"),
+        row.get("elapsed_ms"),
+    ))
+    log_id = int(cur.lastrowid)
+    conn.commit()
+    conn.close()
+    return log_id
+
+
+def get_query_log(limit: int = 100, plate: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Newest first — an audit log is read from the top. `plate` filters to one plate's history."""
+    init_meta_db()
+    conn = sqlite3.connect(META_DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    if plate:
+        cur.execute(
+            "SELECT * FROM QUERY_LOG WHERE plate = ? ORDER BY id DESC LIMIT ?;",
+            (plate, int(limit)),
+        )
+    else:
+        cur.execute("SELECT * FROM QUERY_LOG ORDER BY id DESC LIMIT ?;", (int(limit),))
+    rows = []
+    for r in cur.fetchall():
+        d = dict(r)
+        d["requested_attrs"] = json.loads(d["requested_attrs"]) if d["requested_attrs"] else []
+        d["sources_asked"] = json.loads(d["sources_asked"]) if d["sources_asked"] else []
+        d["statuses"] = json.loads(d["statuses"]) if d["statuses"] else {}
+        rows.append(d)
     conn.close()
     return rows
 

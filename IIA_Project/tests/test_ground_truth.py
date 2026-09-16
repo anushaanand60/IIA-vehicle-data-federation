@@ -13,7 +13,6 @@ from pathlib import Path
 import pytest
 
 from mediator.ground_truth import build_ground_truth, expected_decision
-from sources.server_manager import get_cluster
 from tests.fixtures import inject_test_mappings
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -131,13 +130,14 @@ def test_every_decision_class_appears_in_the_population(ground_truth):
 
 
 @pytest.fixture(scope="module")
-def team_cluster(ground_truth):
-    cluster = get_cluster()
-    cluster.start_all(include_puc=True)
+def team_cluster(ground_truth, local_cluster):
+    # The cluster itself is started/stopped once for the whole test session by the `local_cluster`
+    # fixture in tests/conftest.py (avoids the start/stop race between this module and
+    # test_e2e_groundtruth.py). This fixture keeps its old name and still injects the mappings the
+    # tests below depend on.
     inject_test_mappings()
     time.sleep(1)
-    yield cluster
-    cluster.stop_all()
+    yield local_cluster
 
 
 def test_federated_pipeline_matches_the_oracle_for_every_decision_class(ground_truth, team_cluster):

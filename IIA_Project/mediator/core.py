@@ -10,6 +10,7 @@ from mediator.planner import plan_query
 from mediator.executor import execute_federated_plan, check_all_sources_health
 from mediator.integrator import integrate_results
 from mediator import watchlist
+from mediator import catalog
 from mediator.risk import score as risk_score
 
 
@@ -46,6 +47,19 @@ def run_global_query(plate: str, requested_attrs: Optional[List[str]] = None) ->
     exec_res = execute_federated_plan(plan["sources"], plan["plate"])
     profile = integrate_results(exec_res, plan["plate"], plan["sources"])
     _annotate(profile)
+
+    try:
+        catalog.log_query({
+            "plate": plan["plate"],
+            "requested_attrs": plan["requested_attrs"],
+            "sources_asked": plan["sources"],
+            "statuses": profile.get("source_availability", {}),
+            "decision": profile.get("decision"),
+            "confidence": profile.get("confidence"),
+            "elapsed_ms": exec_res["total_elapsed_ms"],
+        })
+    except Exception as exc:  # pragma: no cover - defensive, mirrors _annotate above
+        print(f"[core] query audit log failed for {plan.get('plate')}: {exc}", file=sys.stderr)
 
     plan_trace = {
         "canonical_plate": plan["plate"],

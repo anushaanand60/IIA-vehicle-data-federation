@@ -2,23 +2,23 @@ import unittest
 import csv
 import os
 import time
-from sources.server_manager import get_cluster
+import pytest
 from mediator.core import run_global_query
 
 GROUND_TRUTH_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "mediator_test_cases.csv")
 from tests.fixtures import inject_test_mappings
 
+
+@pytest.mark.usefixtures("local_cluster")
 class TestE2EGroundTruth(unittest.TestCase):
+    # The cluster itself is started/stopped once for the whole test session by the `local_cluster`
+    # fixture in tests/conftest.py (`usefixtures` above), not by this class -- two test modules
+    # each starting/stopping the same process-wide sources.server_manager cluster independently is
+    # what caused the intermittent DL01AB1234 -> UNDETERMINED race this class used to hit.
     @classmethod
     def setUpClass(cls):
-        cls.cluster = get_cluster()
-        cls.cluster.start_all(include_puc=True)
         inject_test_mappings()
         time.sleep(1)
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.cluster.stop_all()
 
     def test_demo_ground_truth(self):
         self.assertTrue(os.path.exists(GROUND_TRUTH_PATH), "ground_truth.csv must exist")
