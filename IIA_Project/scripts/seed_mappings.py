@@ -43,6 +43,21 @@ VALIDATED_BY = "human_expert"
 # here used to hide the ordering from the integrator as well, which is not what was intended.
 NO_PUSHDOWN: set = set()
 
+# Human-validated mappings that the schema matcher is not expected to propose, and which therefore
+# deliberately do NOT appear in data/gold_mapping.json (adding them there would score the matcher
+# against correspondences nobody asked it to find). A camera's coordinates are the other half of a
+# GAV mapping in exactly the sense this script's docstring describes: a column whose *meaning* for
+# the global schema is a human decision. Challan Guard's impossible-travel check reads them through
+# the registry like any other global attribute, so no camera table name ever enters that module.
+EXTRA_MAPPINGS = [
+    {"source_id": "CAM", "source_table": "CAMERAS", "source_attr": "lat", "global_attr": "camera_lat",
+     "transform_fn": "none", "aggregate": None,
+     "join_path": "PLATE_CAPTURES.camera_id=CAMERAS.camera_id", "match_score": 1.0},
+    {"source_id": "CAM", "source_table": "CAMERAS", "source_attr": "lon", "global_attr": "camera_lon",
+     "transform_fn": "none", "aggregate": None,
+     "join_path": "PLATE_CAPTURES.camera_id=CAMERAS.camera_id", "match_score": 1.0},
+]
+
 
 def seed(reset: bool = False) -> int:
     init_meta_db()
@@ -54,7 +69,7 @@ def seed(reset: bool = False) -> int:
 
     written: dict[str, int] = {}
     skipped: dict[str, int] = {}
-    for m in APPROVED_MAPPINGS:
+    for m in [*APPROVED_MAPPINGS, *EXTRA_MAPPINGS]:
         source_id = m["source_id"]
         if source_id not in catalogued:
             skipped[source_id] = skipped.get(source_id, 0) + 1

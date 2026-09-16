@@ -323,6 +323,73 @@ def inject_puc():
             w = csv.DictWriter(f, fieldnames=pucs[0].keys())
             w.writerows(pucs)
 
+# ------------------------------------------------------------------ Challan Guard fixtures
+# Two extra cameras far enough from Delhi for an impossible-travel leg to be unambiguous, and
+# three captures that give the Challan Guard demo its stories. Unlike the functions above, these
+# are idempotent: they check the CSV first and append only what is missing, because the CSVs in
+# this repo already carry the demo rows and a second blind append would duplicate every vehicle.
+
+CHALLAN_CAMERAS = [
+    {"camera_id": "CAM006", "location_name": "Yamuna Expressway Toll, Agra",
+     "lat": "27.1767", "lon": "78.0081"},
+    {"camera_id": "CAM007", "location_name": "Jaipur Bypass", "lat": "26.9124", "lon": "75.7873"},
+]
+
+# plate_id is written exactly as the camera read it — a misread plate is *data*, not an error.
+CHALLAN_CAPTURES = [
+    # OCR read 8 as B: the fine belongs to DL05CD9876, whose policy expired 10/06/2026.
+    {"plate_id": "DL05CD9B76", "camera_id": "CAM004", "captured_at": "2026-09-04T11:00:00",
+     "observed_make": "Maruti Suzuki", "observed_model": "Swift", "observed_colour": "Silver",
+     "ocr_confidence": "0.71"},
+    # OCR read 0 as O on a fully insured vehicle: the wrongful-fine story.
+    {"plate_id": "DLO1AB1234", "camera_id": "CAM002", "captured_at": "2026-09-04T08:30:00",
+     "observed_make": "Hyundai", "observed_model": "Creta", "observed_colour": "White",
+     "ocr_confidence": "0.76"},
+    # Same plate, Gurgaon 11:00 then Agra 11:30 — no vehicle covers 170 km in 30 minutes.
+    {"plate_id": "UP16GH1122", "camera_id": "CAM006", "captured_at": "2026-09-04T11:30:00",
+     "observed_make": "Kia", "observed_model": "Seltos", "observed_colour": "Blue",
+     "ocr_confidence": "0.93"},
+]
+
+
+def _existing(filename, key):
+    if not os.path.exists(filename):
+        return set()
+    with open(filename, newline='', encoding='utf-8', errors='replace') as f:
+        return {tuple((r.get(k) or "").strip() for k in key) for r in csv.DictReader(f)}
+
+
+def _append(filename, rows, fieldnames):
+    with open(filename, "a", newline="", encoding="utf-8") as f:
+        csv.DictWriter(f, fieldnames=fieldnames).writerows(rows)
+
+
+def inject_challan_cameras():
+    cam_csv = os.path.join(BASE_DIR, "cam_cameras.csv")
+    have = {k[0] for k in _existing(cam_csv, ("camera_id",))}
+    new = [c for c in CHALLAN_CAMERAS if c["camera_id"] not in have]
+    if new:
+        _append(cam_csv, new, ["camera_id", "location_name", "lat", "lon"])
+    return len(new)
+
+
+def inject_challan_captures():
+    caps_csv = os.path.join(BASE_DIR, "cam_plate_captures.csv")
+    have = _existing(caps_csv, ("plate_id", "camera_id", "captured_at"))
+    next_id = get_max_id(caps_csv, "capture_id")
+    new = []
+    for capture in CHALLAN_CAPTURES:
+        if (capture["plate_id"], capture["camera_id"], capture["captured_at"]) in have:
+            continue
+        next_id += 1
+        new.append({"capture_id": next_id, **capture})
+    if new:
+        _append(caps_csv, new, ["capture_id", "plate_id", "camera_id", "captured_at",
+                                "observed_make", "observed_model", "observed_colour",
+                                "ocr_confidence"])
+    return len(new)
+
+
 def create_mediator_test_cases():
     test_cases_csv = os.path.join(BASE_DIR, "data", "mediator_test_cases.csv")
     rows = []
@@ -340,11 +407,26 @@ def create_mediator_test_cases():
         w.writerows(rows)
     print(f"Created {test_cases_csv}")
 
+def inject_challan():
+    """Idempotent: safe to re-run on a repo whose CSVs already carry the Challan Guard rows."""
+    cameras = inject_challan_cameras()
+    captures = inject_challan_captures()
+    print(f"Challan Guard fixtures: +{cameras} camera(s), +{captures} capture(s)")
+
+
 if __name__ == "__main__":
+    import sys
+
+    if "--challan-only" in sys.argv:
+        # The rest of this module appends blindly, so a repo that already has the five demo
+        # vehicles must only ever re-run the idempotent part.
+        inject_challan()
+        raise SystemExit(0)
     inject_reg()
     inject_ins()
     inject_theft()
     inject_cam()
     inject_puc()
+    inject_challan()
     create_mediator_test_cases()
     print("Demo fixtures injected into CSVs.")

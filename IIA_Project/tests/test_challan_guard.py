@@ -96,3 +96,32 @@ class TestStore:
     def test_prior_issued_matches_the_read_when_nothing_was_resolved(self, store):
         store.challan_insert({**CASE, "status": "ISSUED"})  # plate_resolved stays NULL
         assert store.challan_prior_issued("DL05CD9B76") == 1
+
+
+# =============================================================== B5: demo fixtures =============
+
+def test_seed_is_idempotent(store):
+    from scripts.seed_challan_cases import load_candidates, seed
+
+    expected = len(load_candidates())
+    assert expected >= 5
+    assert seed() == expected
+    assert seed() == 0  # a second run tops up nothing
+    assert len(store.challan_list()) == expected
+
+
+def test_seeded_candidates_carry_camera_coordinates(store):
+    from scripts.seed_challan_cases import seed
+
+    seed()
+    for case in store.challan_list():
+        assert case["lat"] is not None and case["lon"] is not None
+        assert case["status"] == "CANDIDATE" and case["verdict"] is None
+
+
+def test_reset_empties_the_queue(store):
+    from scripts.seed_challan_cases import reset, seed
+
+    seed()
+    assert reset() > 0
+    assert store.challan_list() == []

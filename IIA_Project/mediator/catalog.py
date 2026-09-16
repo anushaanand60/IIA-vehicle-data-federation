@@ -66,7 +66,10 @@ DEFAULT_SOURCES = [
         "trust_score": 0.60,
         "covers": [
             "plate_number", "last_seen_location", "last_seen_time",
-            "observed_make", "observed_model", "observed_colour"
+            "observed_make", "observed_model", "observed_colour",
+            # Where the camera stands: Challan Guard's impossible-travel check needs it, and
+            # declaring it here keeps that check a registry lookup rather than a special case.
+            "camera_lat", "camera_lon"
         ],
         "timeout_ms": 1500
     }

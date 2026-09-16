@@ -156,6 +156,24 @@ GLOBAL_SCHEMA_ATTRIBUTES: Dict[str, Dict[str, Any]] = {
         "category": "camera",
         "primary_source": "CAM"
     },
+    # Where the camera that took the capture stands. Stored on the camera, not the capture, so it
+    # reaches the profile through the same CAMERAS join that already supplies last_seen_location.
+    # Challan Guard's impossible-travel check is the only consumer; it is a plain stored attribute
+    # so that check stays metadata-driven rather than hard-coding a camera table.
+    "camera_lat": {
+        "type": "number",
+        "description": "Latitude of the camera that recorded the capture (decimal degrees)",
+        "example": "28.4601",
+        "category": "camera",
+        "primary_source": "CAM"
+    },
+    "camera_lon": {
+        "type": "number",
+        "description": "Longitude of the camera that recorded the capture (decimal degrees)",
+        "example": "77.0648",
+        "category": "camera",
+        "primary_source": "CAM"
+    },
     # Extensibility attribute (PUC - UC6)
     "puc_expiry": {
         "type": "date",

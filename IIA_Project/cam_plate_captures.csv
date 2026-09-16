@@ -914,3 +914,6 @@ capture_id,plate_id,camera_id,captured_at,observed_make,observed_model,observed_
 913,UP16GH1122,CAM004,2026-09-04T11:00:00,Kia,Seltos,Blue,0.96
 914,MH12IJ7788,CAM005,2026-09-04T07:10:00,Tata,Nexon,Grey,0.92
 915,DL03SC5566,CAM002,2026-09-03T16:20:00,Hyundai,i20,Silver,0.93
+916,DL05CD9B76,CAM004,2026-09-04T11:00:00,Maruti Suzuki,Swift,Silver,0.71
+917,DLO1AB1234,CAM002,2026-09-04T08:30:00,Hyundai,Creta,White,0.76
+918,UP16GH1122,CAM006,2026-09-04T11:30:00,Kia,Seltos,Blue,0.93

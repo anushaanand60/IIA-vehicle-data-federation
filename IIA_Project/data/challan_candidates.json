@@ -1,0 +1,74 @@
+{
+  "about": "The five ANPR events the Challan Guard demo starts from. Each one is a *candidate* challan: a plate as a camera read it, where and when, and what the camera thought the vehicle looked like. Nothing here is a verdict - mediator/challan_guard.py decides that live, over the federation, when an operator presses Verify. Seeded with scripts/seed_challan_cases.py.",
+  "cameras": [
+    {"camera_id": "CAM001", "location": "NH8 Toll Plaza", "lat": 28.4595, "lon": 77.0266},
+    {"camera_id": "CAM002", "location": "Ring Road Junction", "lat": 28.6139, "lon": 77.209},
+    {"camera_id": "CAM003", "location": "Cyber City Entrance", "lat": 28.4949, "lon": 77.087},
+    {"camera_id": "CAM004", "location": "Sector 29 Crossing", "lat": 28.4601, "lon": 77.0648},
+    {"camera_id": "CAM005", "location": "Old Delhi Signal", "lat": 28.6562, "lon": 77.241},
+    {"camera_id": "CAM006", "location": "Yamuna Expressway Toll, Agra", "lat": 27.1767, "lon": 78.0081},
+    {"camera_id": "CAM007", "location": "Jaipur Bypass", "lat": 26.9124, "lon": 75.7873}
+  ],
+  "candidates": [
+    {
+      "story": "OCR read 8 as B. The plate as read is registered to nobody; the corrected plate is a real vehicle whose policy expired on 10/06/2026, so this fine is owed - by the right person.",
+      "plate_read": "DL05CD9B76",
+      "camera_id": "CAM004",
+      "location": "Sector 29 Crossing",
+      "lat": 28.4601,
+      "lon": 77.0648,
+      "captured_at": "2026-09-04T11:00:00",
+      "observed_make": "Maruti Suzuki",
+      "observed_colour": "Silver",
+      "ocr_confidence": 0.71
+    },
+    {
+      "story": "OCR read 0 as O on a fully insured vehicle. Without the guard this is a wrongful challan; with it, the fine is never raised.",
+      "plate_read": "DLO1AB1234",
+      "camera_id": "CAM002",
+      "location": "Ring Road Junction",
+      "lat": 28.6139,
+      "lon": 77.209,
+      "captured_at": "2026-09-04T08:30:00",
+      "observed_make": "Hyundai",
+      "observed_colour": "White",
+      "ocr_confidence": 0.76
+    },
+    {
+      "story": "Same plate in Gurgaon at 11:00 and on the Agra expressway at 11:30 - about 170 km apart. No vehicle does that, so the plate exists twice: hold the fine and flag a clone.",
+      "plate_read": "UP16GH1122",
+      "camera_id": "CAM006",
+      "location": "Yamuna Expressway Toll, Agra",
+      "lat": 27.1767,
+      "lon": 78.0081,
+      "captured_at": "2026-09-04T11:30:00",
+      "observed_make": "Kia",
+      "observed_colour": "Blue",
+      "ocr_confidence": 0.93
+    },
+    {
+      "story": "Reported stolen on an open police case before this sighting. Fining the registered owner for their stolen car is exactly the failure the guard exists to stop - this goes to the police instead.",
+      "plate_read": "HR26EF4455",
+      "camera_id": "CAM003",
+      "location": "Cyber City Entrance",
+      "lat": 28.4949,
+      "lon": 77.087,
+      "captured_at": "2026-09-02T19:45:00",
+      "observed_make": "Mahindra",
+      "observed_colour": "Black",
+      "ocr_confidence": 0.94
+    },
+    {
+      "story": "Registered, active, correctly read, and with no policy on record at all: a genuine uninsured-vehicle challan. Used for the dispute demo - a teammate adds a policy at the insurer, the citizen disputes, and the live re-check cancels the fine.",
+      "plate_read": "DL01AB0002",
+      "camera_id": "CAM001",
+      "location": "NH8 Toll Plaza",
+      "lat": 28.4595,
+      "lon": 77.0266,
+      "captured_at": "2026-09-04T07:10:00",
+      "observed_make": "Tata",
+      "observed_colour": "Grey",
+      "ocr_confidence": 0.9
+    }
+  ]
+}
