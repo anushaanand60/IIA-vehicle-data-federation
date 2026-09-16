@@ -17,7 +17,7 @@ if str(_APP_DIR) not in sys.path:
 import pandas as pd  # noqa: E402
 import streamlit as st  # noqa: E402
 
-from components import section  # noqa: E402
+from components import page_head, panel, section  # noqa: E402
 from mediator.catalog import (  # noqa: E402
     get_all_mappings,
     get_source_catalog,
@@ -85,21 +85,28 @@ def _register_source_form() -> None:
 
 
 def render() -> None:
-    section("Registered data sources",
-            "The mediator's own metadata (SOURCE_CATALOG in meta.db): where each agency lives, "
-            "how far it is trusted, and which global attributes it can answer.")
-    st.dataframe(_catalog_table(), width="stretch", key="ct_catalog_table")
+    page_head("Source catalog",
+              "The mediator's own metadata: which agencies it knows about, how far each is "
+              "trusted, and which source column stands for which global attribute.")
 
-    section("GAV mapping rules",
-            "MAPPING_REGISTRY: every source column that stands for a global attribute, the "
-            "transform applied on the way out, and the score that discovered it.")
-    mapping_df = _mapping_table()
-    if mapping_df is not None:
-        st.dataframe(mapping_df, width="stretch", key="ct_mapping_table")
-    else:
-        st.caption("No correspondences have been persisted to the registry yet.")
+    with panel("ct_sources"):
+        section("Registered data sources",
+                "SOURCE_CATALOG in meta.db: where each agency lives, how far it is trusted, and "
+                "which global attributes it can answer.")
+        st.dataframe(_catalog_table(), width="stretch", hide_index=True, key="ct_catalog_table")
 
-    _register_source_form()
+    with panel("ct_mappings"):
+        section("GAV mapping rules",
+                "MAPPING_REGISTRY: every source column that stands for a global attribute, the "
+                "transform applied on the way out, and the score that discovered it.")
+        mapping_df = _mapping_table()
+        if mapping_df is not None:
+            st.dataframe(mapping_df, width="stretch", hide_index=True, key="ct_mapping_table")
+        else:
+            st.caption("No correspondences have been persisted to the registry yet.")
+
+    with panel("ct_register"):
+        _register_source_form()
 
 
 if __name__ == "__main__":

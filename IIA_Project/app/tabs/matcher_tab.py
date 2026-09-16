@@ -22,7 +22,7 @@ import pandas as pd  # noqa: E402
 import plotly.express as px  # noqa: E402
 import streamlit as st  # noqa: E402
 
-from components import group_label, section  # noqa: E402
+from components import group_label, page_head, panel, section  # noqa: E402
 from mediator.catalog import get_source_catalog, save_mapping  # noqa: E402
 from mediator.matcher import match_source_schema  # noqa: E402
 
@@ -41,24 +41,28 @@ def _fetch_schema(base_url: str, source_id: str) -> dict:
 
 
 def render() -> None:
-    section(
-        "Hybrid schema matching",
-        "Discovers correspondences between an autonomous source schema and the mediated "
-        "VEHICLE_PROFILE. Score = 0.40 · N (lexical + thesaurus) + 0.20 · C "
-        "(type/constraint) + 0.40 · I (instance profiles).",
-    )
+    page_head("Schema matcher",
+              "How a source's own column names become global attributes: the matcher reads a "
+              "live schema and proposes the correspondences, a human accepts them.")
 
-    sources_avail = list(get_source_catalog().keys())
-    if not sources_avail:
-        st.info("No sources are registered in the catalog yet.")
-        return
+    with panel("mt_run_panel"):
+        section(
+            "Hybrid schema matching",
+            "Discovers correspondences between an autonomous source schema and the mediated "
+            "VEHICLE_PROFILE. Score = 0.40 · N (lexical + thesaurus) + 0.20 · C "
+            "(type/constraint) + 0.40 · I (instance profiles).",
+        )
 
-    group_label("Source to match")
-    c_src, c_btn = st.columns([2, 1])
-    chosen_source = c_src.selectbox("Source", sources_avail, key="mt_source",
-                                    label_visibility="collapsed")
-    run_match = c_btn.button("Run schema matcher", type="primary", key="mt_run",
-                             width="stretch")
+        sources_avail = list(get_source_catalog().keys())
+        if not sources_avail:
+            st.info("No sources are registered in the catalog yet.")
+            return
+
+        c_src, c_btn = st.columns([2, 1])
+        chosen_source = c_src.selectbox("Source to match", sources_avail, key="mt_source")
+        c_btn.markdown("<div style='height:30px'></div>", unsafe_allow_html=True)
+        run_match = c_btn.button("Run schema matcher", type="primary", key="mt_run",
+                                 width="stretch")
 
     state_key = f"mt_res_{chosen_source}"
     if run_match:
@@ -72,56 +76,59 @@ def render() -> None:
 
     sim_matrix = m_res.get("similarity_matrix", {})
     if sim_matrix:
-        df_heat = pd.DataFrame.from_dict(sim_matrix, orient="index")
-        fig = px.imshow(
-            df_heat,
-            labels=dict(x="Global Attribute", y="Source Column", color="Similarity Score"),
-            x=df_heat.columns,
-            y=df_heat.index,
-            color_continuous_scale="Viridis",
-            text_auto=".2f",
-            aspect="auto",
-        )
-        fig.update_layout(
-            title=f"Similarity matrix — {chosen_source} against the global schema", height=450
-        )
-        st.plotly_chart(fig, width="stretch", key="mt_heatmap")
+        with panel("mt_heat"):
+            section("Similarity matrix",
+                    f"Every source column of {chosen_source} scored against every global "
+                    f"attribute.")
+            df_heat = pd.DataFrame.from_dict(sim_matrix, orient="index")
+            fig = px.imshow(
+                df_heat,
+                labels=dict(x="Global Attribute", y="Source Column", color="Similarity Score"),
+                x=df_heat.columns,
+                y=df_heat.index,
+                color_continuous_scale="Viridis",
+                text_auto=".2f",
+                aspect="auto",
+            )
+            fig.update_layout(height=450, margin=dict(t=10, b=10))
+            st.plotly_chart(fig, width="stretch", key="mt_heatmap")
 
-    section(f"Discovered correspondences — {chosen_source}",
-            "Every pair scoring at or above the threshold θ ≥ 0.55. Persisting them writes "
-            "the mapping rules the decomposer builds each source's SQL from.")
-    corrs = m_res.get("correspondences", [])
-    if corrs:
-        corr_df = pd.DataFrame([
-            {
-                "Table": c["source_table"],
-                "Source Column": c["source_attr"],
-                "Discovered Global Attribute": c["global_attr"],
-                "Total Score": c["score"],
-                "N (Name)": c["components"]["N"],
-                "C (Type)": c["components"]["C"],
-                "I (Instance)": c["components"]["I"],
-            }
-            for c in corrs
-        ])
-        st.dataframe(corr_df, width="stretch", key="mt_corr_table")
+    with panel("mt_corrs"):
+        section(f"Discovered correspondences — {chosen_source}",
+                "Every pair scoring at or above the threshold θ ≥ 0.55. Persisting them writes "
+                "the mapping rules the decomposer builds each source's SQL from.")
+        corrs = m_res.get("correspondences", [])
+        if corrs:
+            corr_df = pd.DataFrame([
+                {
+                    "Table": c["source_table"],
+                    "Source Column": c["source_attr"],
+                    "Discovered Global Attribute": c["global_attr"],
+                    "Total Score": c["score"],
+                    "N (Name)": c["components"]["N"],
+                    "C (Type)": c["components"]["C"],
+                    "I (Instance)": c["components"]["I"],
+                }
+                for c in corrs
+            ])
+            st.dataframe(corr_df, width="stretch", hide_index=True, key="mt_corr_table")
 
-        if st.button("Accept and persist all correspondences to the registry",
-                     key="mt_persist", type="primary"):
-            for c in corrs:
-                save_mapping(
-                    source_id=chosen_source,
-                    source_table=c["source_table"],
-                    source_attr=c["source_attr"],
-                    global_attr=c["global_attr"],
-                    match_score=c["score"],
-                )
-            st.success(f"Persisted {len(corrs)} correspondences to MAPPING_REGISTRY in meta.db!")
+            if st.button("Accept and persist all correspondences to the registry",
+                         key="mt_persist", type="primary"):
+                for c in corrs:
+                    save_mapping(
+                        source_id=chosen_source,
+                        source_table=c["source_table"],
+                        source_attr=c["source_attr"],
+                        global_attr=c["global_attr"],
+                        match_score=c["score"],
+                    )
+                st.success(f"Persisted {len(corrs)} correspondences to MAPPING_REGISTRY.")
 
-    unmapped = m_res.get("unmapped", [])
-    if unmapped:
-        group_label(f"Unmapped source columns ({len(unmapped)})")
-        st.markdown(", ".join(f"`{u['source_attr']}`" for u in unmapped))
+        unmapped = m_res.get("unmapped", [])
+        if unmapped:
+            group_label(f"Unmapped source columns ({len(unmapped)})")
+            st.markdown(", ".join(f"`{u['source_attr']}`" for u in unmapped))
 
 
 if __name__ == "__main__":
