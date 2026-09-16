@@ -19,6 +19,8 @@ from mediator import catalog
 from sources.server_manager import WrapperServerThread
 from sources.wrapper_template import QueryRejected, create_app, write_guard_sql
 
+from app.tabs.sql_console import extract_plate
+
 TABLES = ["CRIME_RECORDS"]
 SCHEMA = """
     CREATE TABLE CRIME_RECORDS (incident_id INTEGER PRIMARY KEY, vehicle_number TEXT,
@@ -117,7 +119,8 @@ def writable(tmp_path) -> str:
 
 @pytest.fixture()
 def read_only(tmp_path) -> str:
-    base, server = serve(create_app(make_db(tmp_path), source_id="TST", dbms="sqlite", tables=TABLES))
+    base, server = serve(create_app(make_db(tmp_path), source_id="TST", dbms="sqlite", tables=TABLES,
+                                    admin_enabled=False))
     yield base
     server.stop()
 
@@ -204,3 +207,69 @@ def test_a_source_that_is_down_is_reported_not_raised(tmp_path, monkeypatch):
                             "vehicle_number", "OFFICIAL", 0.9, ["plate_number"])
     at = run_tab("SELECT * FROM CRIME_RECORDS", "sqlc_run")
     assert any("DOWN" in e.value or "TIMEOUT" in e.value for e in at.error)
+
+
+# ==================== unit: extract_plate ====================
+
+@pytest.mark.parametrize("sql,expected", [
+    ("INSERT INTO CRIME_RECORDS (vehicle_number) VALUES ('DL01AB1234')", "DL01AB1234"),
+    ("... 'DL-05-cd-9876' ...", "DL05CD9876"),
+    ("SELECT * FROM X WHERE plate = 'hr 26 ef 4455'", "HR26EF4455"),
+    ("UPDATE T SET a = 1 WHERE b = 2", None),
+    ("SELECT 1", None),
+])
+def test_extract_plate_cases(sql, expected):
+    assert extract_plate(sql) == expected
+
+
+def test_extract_plate_no_plate_returns_none():
+    assert extract_plate("DELETE FROM CRIME_RECORDS WHERE incident_id = 1") is None
+
+
+# ==================== tab: re-run in Investigate ====================
+
+def test_write_then_requery_button_sets_selected_plate(catalogued):
+    at = run_tab("INSERT INTO CRIME_RECORDS (incident_id, vehicle_number, case_status) "
+                 "VALUES (3, 'DL01AB1234', 'OPEN')", "sqlc_write")
+    assert at.button(key="sqlc_requery")
+    at.button(key="sqlc_requery").click().run()
+    assert not at.exception, [e.value for e in at.exception]
+    assert at.session_state["selected_plate"] == "DL01AB1234"
+    assert any("Investigate" in i.value for i in at.info)
+
+
+def test_write_without_plate_literal_shows_no_requery_button(catalogued):
+    at = run_tab("DELETE FROM CRIME_RECORDS WHERE incident_id=1", "sqlc_write")
+    assert "sqlc_requery" not in {b.key for b in at.button}
+
+
+# ==================== tab: history ====================
+
+def test_history_is_populated_and_shows_last_entries(catalogued):
+    at = run_tab("SELECT * FROM CRIME_RECORDS", "sqlc_run")
+    assert at.session_state["sqlc_history"]
+    last = at.session_state["sqlc_history"][-1]
+    assert last["source"] == "TST" and last["kind"] == "read" and last["ok"] is True
+    assert "SELECT" in last["sql"]
+
+
+def test_history_load_button_restores_sql(catalogued):
+    at = run_tab("SELECT * FROM CRIME_RECORDS", "sqlc_run")
+    at.text_area(key="sqlc_sql").set_value("SELECT incident_id FROM CRIME_RECORDS").run()
+    at.button(key="sqlc_run").click().run()
+    assert not at.exception, [e.value for e in at.exception]
+    assert len(at.session_state["sqlc_history"]) == 2
+
+    # most recent history entry (index 0) is the second query; loading it back must restore that SQL
+    at.text_area(key="sqlc_sql").set_value("something else").run()
+    at.button(key="sqlc_hist_0").click().run()
+    assert not at.exception, [e.value for e in at.exception]
+    assert at.session_state["sqlc_sql"] == "SELECT incident_id FROM CRIME_RECORDS"
+
+
+# ==================== tab: before/after row counts ====================
+
+def test_write_shows_before_after_row_count_with_arrow(catalogued):
+    at = run_tab("DELETE FROM CRIME_RECORDS WHERE incident_id=1", "sqlc_write")
+    captions = [c.value for c in at.caption]
+    assert any("→" in c or "->" in c for c in captions)
