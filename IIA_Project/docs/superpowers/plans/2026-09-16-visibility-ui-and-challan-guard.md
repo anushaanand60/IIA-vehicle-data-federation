@@ -31,7 +31,7 @@ Files A may touch: `app/theme.py`, `app/components.py`, `app/app.py`, `app/tabs/
 
 **Interfaces:** Produces `theme.TOKENS: dict`, `theme.inject()`, `theme.masthead(title, sub, eyebrow=None)` (existing names kept so app.py keeps working), CSS class vocabulary `.vz-h`, `.vz-lead`, `.vz-card`, `.vz-kpi`, `.vz-chip`, `.vz-table`, `.vz-step`, `.vz-grouplabel` (Task A2 builds on these).
 
-- [ ] **Step 1: Failing tests** — append to `tests/test_theme.py`:
+- [x] **Step 1: Failing tests** — append to `tests/test_theme.py`:
 
 ```python
 def test_primary_button_label_is_forced_light():
@@ -55,9 +55,9 @@ def test_dark_mode_block_present():
     assert "prefers-color-scheme: dark" in css.replace(":dark", ": dark")
 ```
 
-- [ ] **Step 2: Run** `python -m pytest tests/test_theme.py -q` → FAIL (tokens still indigo).
+- [x] **Step 2: Run** `python -m pytest tests/test_theme.py -q` → FAIL (tokens still indigo).
 
-- [ ] **Step 3: Implement.** Rewrite the token block in `app/theme.py`:
+- [x] **Step 3: Implement.** Rewrite the token block in `app/theme.py`:
 
 ```python
 TOKENS = {
@@ -128,8 +128,8 @@ Masthead: `masthead()` renders a `.vz-hero` block (display title 2.4rem, lead �
 
 `.streamlit/config.toml`: `primaryColor="#E4572E"`, `backgroundColor="#F3F4F6"`, `secondaryBackgroundColor="#FCFCFA"`, `textColor="#14213D"`, `font="sans serif"`.
 
-- [ ] **Step 4:** `python -m pytest tests/test_theme.py tests/test_tabs_render.py -q` → PASS.
-- [ ] **Step 5:** Commit `style: port AirSentinel Visibility tokens; fix primary button label contrast`.
+- [x] **Step 4:** `python -m pytest tests/test_theme.py tests/test_tabs_render.py -q` → PASS.
+- [x] **Step 5:** Commit `style: port AirSentinel Visibility tokens; fix primary button label contrast`.
 
 ### Task A2: Shared primitives in `app/components.py`
 
@@ -148,7 +148,7 @@ def readable_ink(bg_hex: str) -> str     # "#FFFFFF" or TOKENS["ink"], WCAG rela
 ```
 Keep existing `decision_banner`, `source_chips`, `profile_sections`, `conflict_panel`, `provenance_table`, `risk_gauge`, `alert_banner`, `risk_placeholder` signatures; re-implement their internals on the new classes.
 
-- [ ] **Step 1: Failing tests** (`tests/test_components.py`):
+- [x] **Step 1: Failing tests** (`tests/test_components.py`):
 ```python
 from app import components as c
 def test_readable_ink_picks_white_on_dark():
@@ -164,10 +164,10 @@ def test_styled_table_escapes_html(monkeypatch):
     c.styled_table([{"a": "<b>x</b>"}])
     assert "&lt;b&gt;" in out[0] and "vz-table" in out[0]
 ```
-- [ ] **Step 2:** run → FAIL (functions missing).
-- [ ] **Step 3:** implement (use `html.escape` in `styled_table`; `readable_ink` = relative luminance per WCAG, threshold contrast ≥ 4.5 preferring white).
-- [ ] **Step 4:** `python -m pytest tests/test_components.py tests/test_investigate_tab.py -q` → PASS.
-- [ ] **Step 5:** Commit `feat(ui): shared Visibility primitives (section, kpi_row, styled_table, stepper, chip)`.
+- [x] **Step 2:** run → FAIL (functions missing).
+- [x] **Step 3:** implement (use `html.escape` in `styled_table`; `readable_ink` = relative luminance per WCAG, threshold contrast ≥ 4.5 preferring white).
+- [x] **Step 4:** `python -m pytest tests/test_components.py tests/test_investigate_tab.py -q` → PASS.
+- [x] **Step 5:** Commit `feat(ui): shared Visibility primitives (section, kpi_row, styled_table, stepper, chip)`.
 
 ### Task A3: Re-compose every tab on the primitives
 
@@ -185,11 +185,11 @@ Rules for each tab (apply, don't reinterpret):
 9. `app/app.py`: tab labels become `Investigate · Challan Guard · Watchlist · Reports · Citizen Check · Plan Trace · Catalog · Matcher · SQL Console` in that order. **Add the Challan Guard tab wired to `tabs.challan_guard.render()` guarded by `try/except ImportError` that renders `st.info("Challan Guard not installed yet")`** so A can commit before B lands. Sidebar Source Editor stays.
 10. Masthead copy: title "Uninsured Vehicle Identification", lead "Live federated check across registration, insurance, police, camera and PUC records. Nothing is copied; every answer is fetched now."
 
-- [ ] Step 1: add the per-tab heading assertions to `tests/test_tabs_render.py` (fail: titles not present).
-- [ ] Step 2: migrate tabs one at a time; run `python -m pytest tests/test_tabs_render.py tests/test_investigate_tab.py tests/test_sql_console.py tests/test_source_editor.py tests/test_onboarding.py tests/test_watchlist.py tests/test_plan_trace.py -q` after each.
-- [ ] Step 3: `python -m pytest -q` full → green.
-- [ ] Step 4: Commit per 2–3 tabs: `style(ui): recompose <tabs> on Visibility primitives`.
-- [ ] Step 5: Visual check: `python run_system.py`, open http://localhost:8501, screenshot each tab to `docs/screenshots/<tab>.png` is optional; at minimum confirm primary buttons show light text.
+- [x] Step 1: add the per-tab heading assertions to `tests/test_tabs_render.py` (fail: titles not present).
+- [x] Step 2: migrate tabs one at a time; run `python -m pytest tests/test_tabs_render.py tests/test_investigate_tab.py tests/test_sql_console.py tests/test_source_editor.py tests/test_onboarding.py tests/test_watchlist.py tests/test_plan_trace.py -q` after each.
+- [x] Step 3: `python -m pytest -q` full → green.
+- [x] Step 4: Commit per 2–3 tabs: `style(ui): recompose <tabs> on Visibility primitives`.
+- [x] Step 5: Visual check: `python run_system.py`, open http://localhost:8501, screenshot each tab to `docs/screenshots/<tab>.png` is optional; at minimum confirm primary buttons show light text.
 
 ---
 
