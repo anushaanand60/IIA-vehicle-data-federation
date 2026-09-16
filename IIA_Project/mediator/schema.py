@@ -76,21 +76,26 @@ GLOBAL_SCHEMA_ATTRIBUTES: Dict[str, Dict[str, Any]] = {
         "description": "Start date of the active policy (YYYY-MM-DD)",
         "example": "2026-01-15",
         "category": "insurance",
-        "primary_source": "INS"
+        "primary_source": "INS",
+        "needs_identity_check": True
     },
     "insurance_expiry": {
         "type": "date",
         "description": "Expiration date of the policy (YYYY-MM-DD)",
         "example": "2027-01-14",
         "category": "insurance",
-        "primary_source": "INS"
+        "primary_source": "INS",
+        "needs_identity_check": True
     },
     "insurance_status": {
         "type": "string",
         "description": "Derived insurance status: VALID, EXPIRED, NONE, or UNKNOWN",
         "example": "VALID",
         "category": "insurance",
-        "is_derived": True
+        "is_derived": True,
+        # The planner plans a derived attribute by planning its inputs; no source has to "cover" it.
+        "derived_from": ["insurance_expiry"],
+        "needs_identity_check": True
     },
     # Theft attributes
     "stolen_status": {
@@ -98,7 +103,8 @@ GLOBAL_SCHEMA_ATTRIBUTES: Dict[str, Dict[str, Any]] = {
         "description": "Derived stolen status: STOLEN, RECOVERED, NOT_REPORTED, or UNKNOWN",
         "example": "NOT_REPORTED",
         "category": "theft",
-        "is_derived": True
+        "is_derived": True,
+        "derived_from": ["case_status", "last_incident_date"]
     },
     "last_incident_date": {
         "type": "date",

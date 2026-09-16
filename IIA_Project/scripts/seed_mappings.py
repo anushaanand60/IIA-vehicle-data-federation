@@ -34,14 +34,14 @@ from tests.fixtures import APPROVED_MAPPINGS  # noqa: E402  the team's validated
 VALIDATED_BY = "human_expert"
 
 # Aggregates dropped on purpose, keyed by (source_id, global_attr).
-# INS stores policy_until as DD/MM/YYYY, so ordering by it in SQL means reassembling the date with
-# substr() || substr() || substr(). MySQL reads || as logical OR unless PIPES_AS_CONCAT is set, and a
-# mis-sorted ORDER BY ... LIMIT 1 would silently return the wrong policy rather than fail loudly.
-# The integrator already performs latest-wins for INS in Python (it parses %d/%m/%Y), so dropping the
-# pushdown costs one extra row over the wire and removes an engine-specific correctness risk.
-# THEFT and CAM keep theirs: they order by a plain epoch / ISO column, which sorts the same way on
-# all three engines.
-NO_PUSHDOWN = {("INS", "insurance_expiry")}
+# Empty now: "latest_by:<col>" is the registry's statement of *which column means newest*, and both
+# consumers read it. The decomposer decides for itself whether that ordering can be pushed into SQL
+# (it refuses for a DD/MM/YYYY column such as INS.policy_until, because reassembling the date needs
+# substr() || substr(), and MySQL reads || as logical OR unless PIPES_AS_CONCAT is set - a mis-sorted
+# ORDER BY ... LIMIT 1 would silently return the wrong policy rather than fail loudly), and the
+# integrator applies the mapping's transform and picks the latest row in Python. Blanking the field
+# here used to hide the ordering from the integrator as well, which is not what was intended.
+NO_PUSHDOWN: set = set()
 
 
 def seed(reset: bool = False) -> int:

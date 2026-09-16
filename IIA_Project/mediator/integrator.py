@@ -10,6 +10,66 @@ from mediator.catalog import get_source_catalog, get_mappings_for_source
 from mediator.transforms import get_transform, norm_plate
 from mediator.decide import evaluate_vehicle_decision, REFERENCE_TODAY
 
+LATEST_BY = "latest_by:"
+
+
+def _order_column(mappings: List[Dict[str, Any]]) -> Optional[tuple]:
+    """(column, table, transform) the source declared as its recency order, or None if it declared none."""
+    for m in mappings:
+        aggregate = str(m.get("aggregate") or "")
+        if aggregate.startswith(LATEST_BY):
+            column = aggregate[len(LATEST_BY):].strip()
+            if column:
+                return column, m.get("source_table"), m.get("transform_fn")
+    return None
+
+
+def _sort_key(value: Any) -> tuple:
+    """Total order over one source's ordering column.
+
+    The mapping's own transform has already turned the stored encoding (DD/MM/YYYY text, epoch
+    seconds, ISO timestamps) into an ISO string or a number, so all that is left is to keep numbers
+    numeric, strings lexicographic (ISO sorts correctly that way) and missing values lowest. The
+    rank keeps the comparison total even if one row's value is unparseable, so latest-wins degrades
+    to "ignore that row" instead of raising.
+    """
+    if value is None or value == "":
+        return (0, 0.0, "")
+    if isinstance(value, bool):
+        return (1, float(value), "")
+    if isinstance(value, (int, float)):
+        return (1, float(value), "")
+    if isinstance(value, (datetime, date)):
+        return (2, 0.0, value.isoformat())
+    text = str(value).strip()
+    if not text:
+        return (0, 0.0, "")
+    try:
+        return (1, float(text), "")
+    except ValueError:
+        return (2, 0.0, text)
+
+
+def _pick_latest_row(rows: List[Dict[str, Any]], mappings: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Latest-wins driven by the registry: the source says which of its columns means "newest"."""
+    spec = _order_column(mappings)
+    if not spec:
+        return rows[0]  # nothing declared: the order the wrapper returned stands
+    column, table, transform_fn = spec
+    transform = get_transform(transform_fn)
+
+    def key(row: Dict[str, Any]) -> tuple:
+        raw = row.get(column)
+        if raw is None and table:
+            raw = row.get(f"{table}__{column}")  # decomposer aliases duplicate column names
+        try:
+            return _sort_key(transform(raw))
+        except Exception:
+            return _sort_key(None)
+
+    return max(rows, key=key)
+
+
 def integrate_results(execution_results: Dict[str, Any], canonical_plate: str, requested_sources: List[str]) -> Dict[str, Any]:
     catalog = get_source_catalog()
     sources_data = execution_results.get("sources_executed", {})
@@ -67,38 +127,9 @@ def integrate_results(execution_results: Dict[str, Any], canonical_plate: str, r
         if not raw_rows:
             continue
 
-        # Step 2: Handle source-specific aggregation (latest-wins)
-        chosen_row = None
-        if s_id == "INS":
-            # Pick row with latest policy_until
-            def get_ins_key(r):
-                pu = r.get("policy_until", "")
-                try:
-                    return datetime.strptime(pu, "%d/%m/%Y")
-                except Exception:
-                    return datetime.min
-            chosen_row = max(raw_rows, key=get_ins_key)
-
-        elif s_id == "CAM":
-            # Pick row with latest captured_at
-            def get_cam_key(r):
-                ca = r.get("captured_at", "")
-                try:
-                    return datetime.fromisoformat(ca.replace("Z", "+00:00"))
-                except Exception:
-                    return datetime.min
-            chosen_row = max(raw_rows, key=get_cam_key)
-
-        elif s_id == "THEFT":
-            # Pick row with latest reported_date
-            def get_theft_key(r):
-                try:
-                    return int(r.get("reported_date") or 0)
-                except Exception:
-                    return 0
-            chosen_row = max(raw_rows, key=get_theft_key)
-        else:
-            chosen_row = raw_rows[0]
+        # Step 2: latest-wins, read out of this source's own mappings (aggregate "latest_by:<col>")
+        # instead of a branch per source id: a new source orders its rows by registering a mapping.
+        chosen_row = _pick_latest_row(raw_rows, mappings)
 
         # Step 3: Apply transforms and map to global attributes
         for m in mappings:
@@ -123,13 +154,6 @@ def integrate_results(execution_results: Dict[str, Any], canonical_plate: str, r
                     if glob_attr not in source_values_by_attr:
                         source_values_by_attr[glob_attr] = {}
                     source_values_by_attr[glob_attr][s_id] = clean_val
-
-        # Store extra helper attributes for derived calculations
-        if s_id == "THEFT" and chosen_row:
-            tf_yn = get_transform("yn_to_bool")
-            profile["_theft_stolen_flag"] = tf_yn(chosen_row.get("stolen_flag"))
-            profile["_theft_recovered_flag"] = tf_yn(chosen_row.get("recovered_flag"))
-            profile["_theft_case_status"] = chosen_row.get("case_status")
 
     # Step 4: Compute derived attributes
     # 4.1 Insurance status (derived only when this question asked INS)
@@ -160,9 +184,12 @@ def integrate_results(execution_results: Dict[str, Any], canonical_plate: str, r
     elif "THEFT" in requested_sources and (not sources_data.get("THEFT", {}).get("rows")):
         profile["stolen_status"] = "NOT_REPORTED"
     else:
-        is_stolen = profile.get("_theft_stolen_flag", False)
-        is_recovered = profile.get("_theft_recovered_flag", False)
-        cs = (profile.get("_theft_case_status") or "").upper()
+        # The flags come from the mapped global attributes (stolen_flag / recovered_flag /
+        # case_status), so the source's own encoding is already the registry's problem, not ours.
+        tf_yn = get_transform("yn_to_bool")
+        is_stolen = tf_yn(profile.get("stolen_flag")) or False
+        is_recovered = tf_yn(profile.get("recovered_flag")) or False
+        cs = str(profile.get("case_status") or "").upper()
 
         if is_stolen and not is_recovered and cs == "OPEN":
             profile["stolen_status"] = "STOLEN"
@@ -194,9 +221,5 @@ def integrate_results(execution_results: Dict[str, Any], canonical_plate: str, r
     profile["decision"] = dec
     profile["confidence"] = conf
     profile["reasons"] = reasons
-
-    # Clean up internal keys
-    for k in ["_theft_stolen_flag", "_theft_recovered_flag", "_theft_case_status"]:
-        profile.pop(k, None)
 
     return profile

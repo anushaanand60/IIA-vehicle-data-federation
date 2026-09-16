@@ -22,10 +22,11 @@ APPROVED_MAPPINGS = [
     {"source_id": "INS", "source_table": "INSURERS", "source_attr": "insurer_name", "global_attr": "insurer_name", "transform_fn": "title_case", "aggregate": None, "join_path": "POLICY_RECORDS.insurer_id=INSURERS.insurer_id", "match_score": 1.0},
     {"source_id": "INS", "source_table": "POLICY_RECORDS", "source_attr": "policy_type", "global_attr": "policy_type", "transform_fn": "none", "aggregate": None, "join_path": "POLICY_RECORDS.insurer_id=INSURERS.insurer_id", "match_score": 1.0},
     {"source_id": "INS", "source_table": "POLICY_RECORDS", "source_attr": "policy_start", "global_attr": "insurance_start", "transform_fn": "parse_ddmmyyyy", "aggregate": None, "join_path": "POLICY_RECORDS.insurer_id=INSURERS.insurer_id", "match_score": 1.0},
-    # No pushdown aggregate: policy_until is DD/MM/YYYY text, unsortable portably in SQL (MySQL
-    # reads || as OR); the integrator already parses %d/%m/%Y and picks the latest row in Python.
-    # Keeping this None matches scripts/seed_mappings.py's NO_PUSHDOWN for the demo registry.
-    {"source_id": "INS", "source_table": "POLICY_RECORDS", "source_attr": "policy_until", "global_attr": "insurance_expiry", "transform_fn": "parse_ddmmyyyy", "aggregate": None, "join_path": "POLICY_RECORDS.insurer_id=INSURERS.insurer_id", "match_score": 1.0},
+    # latest_by declares *which column means newest*, which the integrator needs to pick the current
+    # policy. It is not a promise of SQL pushdown: policy_until is DD/MM/YYYY text, unsortable
+    # portably in SQL (MySQL reads || as OR), so the decomposer skips the ORDER BY for any
+    # parse_ddmmyyyy column and the integrator parses %d/%m/%Y and picks the latest row in Python.
+    {"source_id": "INS", "source_table": "POLICY_RECORDS", "source_attr": "policy_until", "global_attr": "insurance_expiry", "transform_fn": "parse_ddmmyyyy", "aggregate": "latest_by:policy_until", "join_path": "POLICY_RECORDS.insurer_id=INSURERS.insurer_id", "match_score": 1.0},
     {"source_id": "INS", "source_table": "POLICY_RECORDS", "source_attr": "is_active", "global_attr": "is_active", "transform_fn": "none", "aggregate": None, "join_path": "POLICY_RECORDS.insurer_id=INSURERS.insurer_id", "match_score": 1.0},
     {"source_id": "INS", "source_table": "POLICY_RECORDS", "source_attr": "premium_inr", "global_attr": "premium_inr", "transform_fn": "none", "aggregate": None, "join_path": "POLICY_RECORDS.insurer_id=INSURERS.insurer_id", "match_score": 1.0},
 

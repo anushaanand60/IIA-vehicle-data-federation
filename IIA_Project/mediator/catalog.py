@@ -24,7 +24,10 @@ DEFAULT_SOURCES = [
             "plate_number", "owner_name", "vehicle_make", "vehicle_model",
             "vehicle_colour", "registration_date", "registration_status"
         ],
-        "timeout_ms": 1500
+        "timeout_ms": 1500,
+        # Asked on any question whose attributes are flagged needs_identity_check, so "is this
+        # vehicle insured?" still confirms the plate exists at the registration authority (UC1).
+        "identity_authority": 1
     },
     {
         "source_id": "INS",
@@ -70,6 +73,12 @@ DEFAULT_SOURCES = [
 ]
 
 
+def _seed_identity_authorities(cur) -> None:
+    for s in DEFAULT_SOURCES:
+        if s.get("identity_authority"):
+            cur.execute("UPDATE SOURCE_CATALOG SET identity_authority = 1 WHERE source_id = ?;", (s["source_id"],))
+
+
 def init_meta_db():
     conn = sqlite3.connect(META_DB_PATH)
     cur = conn.cursor()
@@ -86,9 +95,16 @@ def init_meta_db():
         covers TEXT, -- JSON array
         timeout_ms INTEGER,
         last_health TEXT,
-        last_seen_at TEXT
+        last_seen_at TEXT,
+        identity_authority INTEGER DEFAULT 0
     );
     """)
+    # Migration, not a rebuild: a meta.db written before this column existed (every laptop already
+    # has one) gains it in place, keeping its base_url edits and health history.
+    catalog_columns = [row[1] for row in cur.execute("PRAGMA table_info(SOURCE_CATALOG);").fetchall()]
+    if "identity_authority" not in catalog_columns:
+        cur.execute("ALTER TABLE SOURCE_CATALOG ADD COLUMN identity_authority INTEGER DEFAULT 0;")
+        _seed_identity_authorities(cur)
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS MAPPING_REGISTRY (
@@ -132,6 +148,7 @@ def init_meta_db():
                 s["source_id"], s["display_name"], s["dbms"], s["base_url"], s["identifier_attr"],
                 s["authority"], s["trust_score"], json.dumps(s["covers"]), s["timeout_ms"], "OK", datetime.now(timezone.utc).isoformat()
             ))
+        _seed_identity_authorities(cur)
 
 
     conn.commit()
@@ -215,6 +232,18 @@ def register_source(source_id: str, display_name: str, dbms: str, base_url: str,
         timeout_ms = excluded.timeout_ms,
         last_seen_at = excluded.last_seen_at;
     """, (source_id, display_name, dbms, base_url, identifier_attr, authority, trust_score, json.dumps(covers), timeout_ms, "OK", now_ts))
+    conn.commit()
+    conn.close()
+
+def set_identity_authority(source_id: str, is_authority: bool = True) -> None:
+    """Flag the source the planner asks to confirm a plate exists (see planner, needs_identity_check).
+
+    Kept in the catalog rather than in the planner so the policy is data a demonstrator can change,
+    not a branch someone has to edit.
+    """
+    init_meta_db()
+    conn = sqlite3.connect(META_DB_PATH)
+    conn.execute("UPDATE SOURCE_CATALOG SET identity_authority = ? WHERE source_id = ?;", (int(is_authority), source_id))
     conn.commit()
     conn.close()
 
