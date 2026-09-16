@@ -166,6 +166,49 @@ ipconfig getifaddr en0                 # macOS
 Write the four addresses in one place. Hotspot addresses change when a laptop reconnects, so
 re-check them on demo day before blaming the code.
 
+### Open the wrapper port (Windows Firewall)
+
+The wrapper binds `0.0.0.0`, so it is listening — but Windows silently drops inbound connections to
+a new port, which from laptop 1 looks exactly like a dead source. **Each source laptop opens one
+rule, for its own port only** (REG 8001, INS 8002, THEFT 8003, CAM 8004, PUC 8005). Run it in an
+**Administrator** PowerShell, on laptop 2 for example:
+
+```powershell
+netsh advfirewall firewall add rule name="IIA wrapper 8002" dir=in action=allow protocol=TCP localport=8002
+```
+
+Only the wrapper port is opened. The database port (5432 / 3306) stays closed and the engine stays
+bound to `127.0.0.1` — that is the source-autonomy argument: each agency publishes an API, never
+its database.
+
+**Verify from laptop 1**, once every laptop has its rule and its wrapper running:
+
+```powershell
+python scripts\configure_cluster.py --probe
+```
+
+```
+  UP    REG    http://127.0.0.1:8001      (PostgreSQL)   admin: on
+  UP    INS    http://192.168.43.12:8002  (MySQL)        admin: on
+  UP    THEFT  http://192.168.43.13:8003  (SQLite)       admin: on
+  UP    CAM    http://192.168.43.14:8004  (PostgreSQL)   admin: on
+
+4/4 source(s) reachable
+```
+
+`admin: on` is the second half of the check and the one people forget: `--probe` also calls
+`GET <base_url>/admin/actions` on every source. `on` means that laptop will accept its own
+agency's writes, `off` means it was started with `<SOURCE>_ADMIN=off`, and `unreachable` means the
+port never answered at all (firewall rule missing, wrapper not running, or a stale address).
+
+**Why this makes the cross-laptop demo work with no sync step.** GUI writes — the SQL Console, the
+Source Editor sidebar and Challan Guard — POST straight to `http://<laptop-ip>:800x/admin/...` on
+the laptop that owns that data; reads always go live through `/query` at query time. The mediator
+stores no copy of any source row, so a policy renewed on laptop 2 is visible in the next query run
+on laptop 1, laptop 3 or laptop 4 — immediately, with no ETL, no refresh, no replication and no
+cache to invalidate. That is the whole federation thesis, demonstrable in two laptops and ten
+seconds.
+
 ### A note on two accounts
 
 Loading needs to create tables; serving must not. So each source laptop uses **two** URLs:
@@ -354,8 +397,9 @@ python scripts/configure_cluster.py --set REG=127.0.0.1 INS=192.168.43.12 \
 python scripts/configure_cluster.py --probe
 ```
 
-`--probe` must report 4/4 reachable, each with the engine it should be running. This is the moment
-that catches a firewall rule or a stale address, and it takes two seconds.
+`--probe` must report 4/4 reachable, each with the engine it should be running and each `admin: on`.
+This is the moment that catches a firewall rule (§3.0, "Open the wrapper port") or a stale address,
+and it takes two seconds.
 
 **3. Validate the registry and read the coverage matrix:**
 
@@ -414,7 +458,8 @@ slot shows an install hint and typing the plate works exactly as before.
 |---|---|---|
 | `/health` says `"dbms":"SQLite"` on laptop 1/2/4 | `<SOURCE>_DB_URL` not set in *that* shell | export it, restart the wrapper |
 | Every profile field is `None` | `MAPPING_REGISTRY` empty | `python scripts/seed_mappings.py` |
-| Source `DOWN` from the mediator, `OK` locally | firewall, or the port is closed | open the port; the wrapper binds `0.0.0.0` by default |
+| Source `DOWN` from the mediator, `OK` locally | firewall, or the port is closed | add the `netsh advfirewall` rule in §3.0; the wrapper binds `0.0.0.0` by default |
+| `--probe` shows `admin: off` | that laptop started with `<SOURCE>_ADMIN=off` | unset it and restart the wrapper; GUI writes to that source are refused until then |
 | Source `DOWN` after a reconnect | hotspot reassigned the address | `configure_cluster.py --set ...` again |
 | `table doesn't exist` on MySQL/Linux | table-name case | match the `CREATE TABLE` spelling exactly |
 | `--verify` shows 0 rows everywhere | CSVs missing, or wrong working directory | run from `IIA_Project/` |

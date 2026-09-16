@@ -93,6 +93,24 @@ def show() -> None:
               + " " + str(m.get("trust_score", "")))
 
 
+def admin_state(base_url: str) -> str:
+    """Does this laptop still accept its own agency's writes? `on` / `off` / `unreachable`.
+
+    GET /admin/actions is a menu, not a write, so it answers 200 even when the door is shut
+    (`enabled: false`, set by <SOURCE>_ADMIN=off). A non-200 means an older wrapper without the
+    endpoint, which is the same thing from the operator's side: no writes. Asked separately from
+    /health because a source can be perfectly reachable for queries and still refuse edits.
+    """
+    try:
+        with httpx.Client(trust_env=False, timeout=PROBE_TIMEOUT_S) as client:
+            response = client.get(base_url + "/admin/actions")
+        if response.status_code != 200:
+            return "off"
+        return "on" if response.json().get("enabled") else "off"
+    except Exception:
+        return "unreachable"
+
+
 def probe() -> int:
     catalog = get_source_catalog()
     if not catalog:
@@ -101,19 +119,22 @@ def probe() -> int:
     down = 0
     for source_id in sorted(catalog):
         base_url = str(catalog[source_id]["base_url"]).rstrip("/")
+        admin = admin_state(base_url)
         try:
             with httpx.Client(trust_env=False, timeout=PROBE_TIMEOUT_S) as client:
                 response = client.get(base_url + "/health")
             body = response.json() if response.status_code == 200 else {}
             if response.status_code == 200 and body.get("up"):
                 print("  UP    " + source_id.ljust(6) + " " + base_url
-                      + "   (" + str(body.get("dbms", "?")) + ")")
+                      + "   (" + str(body.get("dbms", "?")) + ")   admin: " + admin)
                 continue
             detail = str(body.get("error") or ("HTTP " + str(response.status_code)))
-            print("  DOWN  " + source_id.ljust(6) + " " + base_url + "   " + detail)
+            print("  DOWN  " + source_id.ljust(6) + " " + base_url + "   " + detail
+                  + "   admin: " + admin)
         except Exception as exc:
             print("  DOWN  " + source_id.ljust(6) + " " + base_url
-                  + "   " + type(exc).__name__ + ": " + str(exc).splitlines()[0][:90])
+                  + "   " + type(exc).__name__ + ": " + str(exc).splitlines()[0][:90]
+                  + "   admin: " + admin)
         down += 1
     print()
     print(str(len(catalog) - down) + "/" + str(len(catalog)) + " source(s) reachable")
