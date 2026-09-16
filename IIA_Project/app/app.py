@@ -76,6 +76,7 @@ if _APP_DIR not in sys.path:
     sys.path.insert(0, _APP_DIR)
 from tabs.sql_console import render as render_sql_console
 from tabs.source_editor import render_sidebar as render_source_editor_sidebar
+from tabs.onboarding import is_unknown, render_unknown_plate
 
 # Navigation tabs
 tab_investigate, tab_plantrace, tab_matcher, tab_catalog, tab_reports, tab_sqlconsole = st.tabs([
@@ -182,6 +183,9 @@ with tab_investigate:
             </ul>
         </div>
         """, unsafe_allow_html=True)
+
+        if is_unknown(profile):  # plate in no source: onboard it live (Task 0.5)
+            render_unknown_plate(profile["plate_number"], profile)
 
         # Conflict Panel if detected
         conflicts = profile.get("conflicts", [])
