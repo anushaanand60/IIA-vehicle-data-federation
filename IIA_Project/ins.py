@@ -56,7 +56,10 @@ def read_master():
 
 def main():
     master = read_master()
-    random.shuffle(master)  # shuffle so the "no policy" / "expired" picks aren't just the first N rows
+    # Shuffle so the "no policy" / "expired" picks aren't just the first N rows. Each generator shuffles with its own
+    # stream: ins.py, theft.py and cam.py once all shuffled right after random.seed(SEED), got the same order, and so
+    # picked correlated slices of `master` (same vehicles kept popping up in every source's "special case" set).
+    random.Random(f"{SEED}-INS").shuffle(master)
 
     no_policy = set(r["true_plate"] for r in master[:N_NO_POLICY])
     expired = set(r["true_plate"] for r in master[N_NO_POLICY:N_NO_POLICY + N_EXPIRED])

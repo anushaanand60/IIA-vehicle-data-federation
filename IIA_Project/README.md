@@ -40,6 +40,8 @@ python -m pytest tests/ -v
 ```
 Runs 13 automated tests verifying transforms, schema matching, query decomposition, end-to-end ground truth accuracy, and PDF generation.
 
+Grade decisions against every generated plate with `python scripts/evaluate_ground_truth.py --start-wrappers`, and check the schema matcher's precision/recall against the hand-made gold mapping with `python scripts/evaluate_matcher.py`.
+
 ---
 
 ## Pre-Loaded Demo Scenarios

@@ -1,0 +1,36 @@
+{
+  "about": "Hand-made gold mapping for evaluating mediator/matcher.py (design PDF section 6). One entry per source column that corresponds to a stored global attribute in mediator/schema.py. Every other column is expected to stay unmapped. Derived attributes (insurance_status, stolen_status) are excluded because the matcher never proposes them.",
+  "REG": [
+    ["VEHICLE_REGISTRATION", "registration_no", "plate_number"],
+    ["OWNERS", "full_name", "owner_name"],
+    ["VEHICLE_REGISTRATION", "make", "vehicle_make"],
+    ["VEHICLE_REGISTRATION", "model", "vehicle_model"],
+    ["VEHICLE_REGISTRATION", "colour", "vehicle_colour"],
+    ["VEHICLE_REGISTRATION", "registered_on", "registration_date"],
+    ["VEHICLE_REGISTRATION", "reg_status", "registration_status"]
+  ],
+  "INS": [
+    ["POLICY_RECORDS", "vehicle_reg", "plate_number"],
+    ["INSURERS", "insurer_name", "insurer_name"],
+    ["POLICY_RECORDS", "policy_type", "policy_type"],
+    ["POLICY_RECORDS", "policy_start", "insurance_start"],
+    ["POLICY_RECORDS", "policy_until", "insurance_expiry"]
+  ],
+  "THEFT": [
+    ["CRIME_RECORDS", "vehicle_number", "plate_number"],
+    ["CRIME_RECORDS", "reported_date", "last_incident_date"],
+    ["CRIME_RECORDS", "case_status", "case_status"]
+  ],
+  "CAM": [
+    ["PLATE_CAPTURES", "plate_id", "plate_number"],
+    ["CAMERAS", "location_name", "last_seen_location"],
+    ["PLATE_CAPTURES", "captured_at", "last_seen_time"],
+    ["PLATE_CAPTURES", "observed_make", "observed_make"],
+    ["PLATE_CAPTURES", "observed_model", "observed_model"],
+    ["PLATE_CAPTURES", "observed_colour", "observed_colour"]
+  ],
+  "PUC": [
+    ["POLLUTION_CERT", "regn_number", "plate_number"],
+    ["POLLUTION_CERT", "valid_upto", "puc_expiry"]
+  ]
+}

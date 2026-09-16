@@ -72,7 +72,7 @@ def read_master():
 
 def main():
     master = read_master()
-    random.shuffle(master)
+    random.Random(f"{SEED}-CAM").shuffle(master)  # its own order, not INS's or THEFT's (see ins.py)
 
     conflict_set = master[:N_CONFLICT]
     no_capture_set = {r["true_plate"] for r in master[N_CONFLICT:N_CONFLICT + N_NO_CAPTURE]}

@@ -43,7 +43,7 @@ def read_master():
 
 def main():
     master = read_master()
-    random.shuffle(master)
+    random.Random(f"{SEED}-THEFT").shuffle(master)  # its own order, not INS's or CAM's (see ins.py)
 
     stolen_open = master[:N_STOLEN_OPEN]
     stolen_recovered = master[N_STOLEN_OPEN:N_STOLEN_OPEN + N_STOLEN_RECOVERED]
