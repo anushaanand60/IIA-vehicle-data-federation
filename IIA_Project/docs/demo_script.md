@@ -24,3 +24,44 @@ Each row: the click/command, then one sentence to say. Story plates: `DL01AB1234
 **If time is short, cut in this order:** self-check (9:20) → UC6 PUC (9:00) → OCR (7:00), and keep
 the SQL-console write → re-query (4:15–6:00) and the UC5 refusal (8:30) no matter what — those two
 are the rubric's core claims (freshness and honest failure).
+
+---
+
+# Challan Guard (5 min)
+
+The standout segment: **verify before you fine.** Run it after the 10-minute script, or in place of
+7:00–9:00 if only one can be shown.
+
+**Before the demo** (mediator laptop, once):
+
+```powershell
+python scripts\seed_challan_cases.py       # files the five demo ANPR sightings as CANDIDATE cases
+```
+
+Then open the GUI, tab **2. Challan Guard**. For every case below the gesture is the same: pick the
+case in the queue selector, press **Verify (live)**, and read the stepper — Sources reachable →
+Identity → Clone signal → Theft → Registration → Insurance at sighting time. Each step is one live
+federated query; nothing on this page is precomputed.
+
+Opening line: *"An ANPR camera cannot issue a fine. It can only say 'I think I saw this plate here
+at this time.' Everything between that and a ₹2,000 challan is what this tab does — and it does it
+against the four agencies live, at the moment of the decision."*
+
+| # | Case | Verify → | What to say |
+| :--- | :--- | :--- | :--- |
+| **1** | Read `DL05CD9B76` at Sector 29 Crossing, 04 Sep 11:00 (OCR confidence 0.71) | **ISSUED ₹2000**, resolved to `DL05CD9876` — *"uninsured on 2026-09-04: policy expired 2026-06-10"* | *"The camera read a B where the plate says 8. `DL05CD9B76` is registered to nobody, so a naive system either drops the case or fines a ghost. The guard substitutes one confusable character at a time, finds `DL05CD9876` registered with the make and colour the camera actually observed, and only then asks the insurer. The policy expired in June. The fine is owed — by the right person."* |
+| **2** | Read `DLO1AB1234` at Ring Road Junction, 04 Sep 08:30 | **REJECTED**, resolved to `DL01AB1234` — *"insured on 2026-09-04 (policy valid to 2027-01-14) — no offence"* | *"Same class of misread — letter O for zero — but this time the real vehicle is fully insured. About 90% of wrongful challans in India start exactly here. No fine is ever raised, no citizen has to appeal, and the whole reason is that we checked the insurer at fine time instead of a copied table."* |
+| **3** | `UP16GH1122`, Yamuna Expressway Toll, Agra, 04 Sep 11:30 | **HOLD** — *"impossible travel: Sector 29 Crossing → Yamuna Expressway Toll, Agra in 30 min (340 km/h) — cloned plate suspected"* | *"The same plate was in Gurgaon half an hour earlier, 170 km away. No car does 340 km/h, so the plate exists twice. This is the signal UK patent GB2448780A describes and the Met's ANPR uses. The guard refuses to fine either sighting and puts the plate on the watchlist as a clone suspect — because fining here means fining whichever owner is innocent."* |
+| **4** | `HR26EF4455`, Cyber City Entrance, 02 Sep 19:45 | **REJECTED** — *"vehicle reported stolen before sighting — route to police, do not fine owner"* | *"Police records say this car was stolen before the camera saw it. The person driving it is not the person we would have fined. Note the ordering: theft is checked before insurance, because 'your stolen car was uninsured' is not a sentence any enforcement system should produce."* |
+| **5a** | `DL01AB0002`, NH8 Toll Plaza, 04 Sep 07:10 | **ISSUED ₹2000** — *"uninsured on 2026-09-04: no policy on record"* | *"Correctly read, registered, active, and genuinely uninsured. This is the challan the Supreme Court's order is about — and it is the one we are now going to have overturned, live."* |
+| **5b** | **Teammate, on laptop 2 (INS):** `python scripts\mutate_source.py add_policy INS DL01AB0002 --start 01/01/2026 --until 01/01/2027` | — | *"The insurance laptop just backdated a policy in its own MySQL database. Nobody told the mediator. There is no sync step, because there is nothing to sync."* |
+| **5c** | Tab **5. Citizen Check** → *Dispute a challan* → case id of 5a, reason "I renewed before that date" | **CANCELLED** — *"record changed since issue: insurance_expiry was none now 2027-01-01"* | *"The dispute re-ran the identical verification against the live sources and the answer changed, so the challan is cancelled and the diff says exactly which fact moved. The citizen sees their own masked plate, the sighting and the outcome — no owner record, no camera coordinates."* Undo afterwards: `python scripts\mutate_source.py delete_policies INS DL01AB0002` |
+| **6** | **Stop the INS wrapper**, then Verify any unverified case | **HOLD** — *"INS unreachable — refusing to fine on partial evidence"* | *"This is the property the whole project is graded on. A missing insurer is not evidence of no insurance. With a warehouse you would have a stale row and issue the fine anyway; federating makes the outage visible, and the only honest verdict is to refuse."* Restart the wrapper and re-verify to close the loop. |
+
+Closing line: *"Five sightings, one fine issued to the right owner, three wrongful fines prevented,
+and one refusal. The counter at the top of the tab — 'wrongful fines prevented' — is the number
+this feature exists to move, and every one of those outcomes came from a query executed while you
+watched."*
+
+**If time is short:** cases 1 and 2 (misread both ways) and case 6 (refusal) carry the argument;
+case 5's dispute loop is the one to show if a second laptop is available.

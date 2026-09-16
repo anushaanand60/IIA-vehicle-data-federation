@@ -472,9 +472,13 @@ of the whole project, not an oversight.
 
 ## 9. The GUI, tab by tab — every control explained
 
-**File:** `app/app.py`, Streamlit — now **8 tabs** plus a sidebar (up from 5 at the first demo —
+**File:** `app/app.py`, Streamlit — now **9 tabs** plus a sidebar (up from 5 at the first demo —
 see §17 for exactly what changed and why), and only ~120 lines itself: it
-is theme injection, the masthead, the sidebar call, and eight `with tab: render()` calls. Every
+is theme injection, the masthead, the sidebar call, and nine `with tab: render()` calls. The shell
+order is the order the demo is narrated in — *Investigate · Challan Guard · Watchlist · Reports ·
+Citizen Check · Plan Trace · Catalog · Matcher · SQL Console* — the two things an operator actually
+does first, the machinery that proves how it was done last; the subsections below are grouped by
+what each tab is for rather than by that order (Challan Guard has §18 to itself). Every
 tab's actual body lives in its own `app/tabs/*.py` module, built from shared render helpers in
 `app/components.py` (`decision_banner`, `source_chips`, `profile_sections`, `conflict_panel`,
 `provenance_table`, `risk_gauge`, `alert_banner`) and one injected stylesheet from `app/theme.py`
@@ -857,7 +861,69 @@ score all respond to whatever is actually typed or photographed, not a fixed dem
 
 ---
 
-## 18. Rubric, mapped to exactly what to say and show
+## 18. Challan Guard — verify before you fine
+
+**The pain point, with sources (`docs/FIELD_RESEARCH.md` facts 12–15).** The Supreme Court's
+2025–26 order to auto-challan uninsured vehicles multiplies the volume of ANPR-triggered fines, and
+those fines are already wrong often enough that Delhi Traffic Police run an Online Challan Dispute
+System; guides to contesting them attribute roughly **90% of wrongful challans to plate misreads**
+(O/0, 8/B, 1/I, 5/S), Hyderabad police busted a **cloned-plate racket** in 2025 where duplicate
+plates pushed fines onto the original owner, and NCRB's Vahan Samanvay lags on stolen-then-recovered
+updates. **The workflow.** Challan Guard sits between the camera and the fine: an ANPR sighting
+enters `CHALLAN_CASES` in the mediator's own `meta.db` as a *candidate* — a plate as read, a camera,
+a time, an observed make/colour and an OCR confidence — and nothing further happens until an
+operator presses **Verify (live)**, which runs six ordered steps, each a real federated query and
+each recorded as an event: (1) **sources reachable** — if REG, INS or THEFT is not `OK`, verdict
+**HOLD**, `"<SRC> unreachable — refusing to fine on partial evidence"`, and stop; (2) **identity** —
+`mediator/plate_resolve.py` generates one-character substitutions from a fixed confusable table,
+keeps only candidates that are actually registered, and scores them `+0.5` make match, `+0.3` colour
+match, `+0.2` for the literal read, resolving only when the best clears 0.5 and leads the runner-up
+by 0.2 (deterministic and explainable in a dispute — no fuzzy matching); (3) **clone signal** —
+`mediator/travel_check.py` builds legs between this sighting and the camera network's other
+sightings of the resolved plate and flags any leg above 160 km/h as impossible travel, the signal UK
+patent GB2448780A describes; (4) **theft** — a theft reported *before* the sighting rejects the
+fine and routes to police, deliberately checked before insurance; (5) **registration status**; and
+only then (6) **insurance on the date of the sighting**, not today. The verdict is ISSUE (₹2,000,
+₹4,000 on repeat, MV Act §196), REJECT or HOLD, and the case carries an evidence bundle of every
+source's rows, statuses and fetch times. A citizen then disputes from the Citizen Check tab; the
+dispute **re-runs the identical verification live** and cancels the challan if a fact has moved,
+naming the diff (`"record changed since issue: insurance_expiry was none now 2027-01-01"`).
+**Why federation makes it possible, and a warehouse would not.** Both decisions — issuing and
+overturning — are made against the agencies' current records at the moment they are made: the fine
+is checked at fine time, the dispute is checked at dispute time, and a teammate adding a policy on
+the insurance laptop changes the next verdict with no sync step, no ETL and no cache to invalidate.
+A warehouse would answer both questions from a copy whose age nobody at the desk can see, and would
+have no way to distinguish "the insurer says no policy" from "we could not reach the insurer" —
+which is exactly the distinction the guard turns into a refusal instead of a fine. That refusal, not
+the fine, is the feature: the tab's headline counter is **"wrongful fines prevented"**.
+
+---
+
+## 19. The "Visibility" design system — why the GUI looks like one product
+
+The GUI is not styled tab by tab: one token block in `app/theme.py` (`TOKENS` + `FONTS`, injected
+once as `--vz-*` CSS custom properties, with a `prefers-color-scheme: dark` override) and one
+primitive vocabulary in `app/components.py` — `section`, `group_label`, `kpi_row`, `styled_table`,
+`stepper`, `chip`, `card` — are what all nine tabs are composed from, so a change to a rule lands
+everywhere at once. The rules are stated and then **enforced by tests**, which is the part worth
+saying out loud: exactly one logical block per real display heading with a beacon bar, and
+`tests/test_tabs_render.py::test_no_tab_uses_a_markdown_pseudo_heading` fails the build if any tab
+reintroduces `st.subheader` or a `###` markdown pseudo-heading or a caption used as a heading;
+exactly **one accent** (`#E4572E`), which means "interactive" and nothing else, so status and
+decision colours are reserved as *data* colours and are never borrowed for chrome; every coloured
+chip picks its ink by **WCAG relative luminance** (`readable_ink` / `readable_fill` in
+`components.py`, lifting a fill toward white in 5% steps until a label clears 4.5:1), because the
+predecessor's light-on-light banners were unreadable on a projector; colour is never the only
+carrier of meaning — the status *word* is always printed beside it (WCAG 1.4.1); numbers are mono
+with tabular numerals so a latency column lines up; and nothing on the page is below 0.8rem, pinned
+by `tests/test_theme.py`. `styled_table` renders small result sets as escaped HTML rather than
+`st.dataframe` so the table can follow the tokens into dark mode, and `stepper` is what draws
+Challan Guard's verification run — the same primitive, so a verification reads like the rest of the
+product rather than like a debug dump.
+
+---
+
+## 20. Rubric, mapped to exactly what to say and show
 
 | # | Item | Marks | What to say | What to show |
 |---|---|---|---|---|

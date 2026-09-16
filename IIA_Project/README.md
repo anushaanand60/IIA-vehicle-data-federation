@@ -82,8 +82,8 @@ mediator's own query path.
     laptop's settings to a gitignored `sources/<id>/laptop.env`, starts the wrapper, and prints the
     exact `configure_cluster.py --set` line for laptop 1. Later runs are just
     `python scripts/serve.py <SRC>`.
-16. **Streamlit Interactive GUI, 8 tabs**: Investigate, Plan Trace, Matcher & Heatmap, Catalog &
-    Registry, Ministry Reports, SQL Console, Watchlist & Alerts, Citizen Self-Check — plus a
+16. **Streamlit Interactive GUI, 9 tabs**: Investigate, Challan Guard, Watchlist & Alerts, Ministry
+    Reports, Citizen Check, Plan Trace, Catalog & Registry, Matcher & Heatmap, SQL Console — plus a
     Source Editor sidebar. `app/app.py` is ~120 lines; every tab body lives in its own
     `app/tabs/*.py` module built from shared `app/components.py` render helpers and a single
     `app/theme.py` design-token stylesheet (AirSentinel-derived palette, explicit colour + icon on
@@ -97,6 +97,37 @@ mediator's own query path.
     decisions and traces only, never a copy of source rows, so it is auditable state, not a cache
     that would contradict the freshness thesis. Browsable from the Ministry Reports tab, filterable
     by plate.
+19. **Challan Guard — verify before you fine**: the pain point is real and documented
+    (`docs/FIELD_RESEARCH.md` facts 12–15): ANPR-triggered e-challans are wrong often enough that
+    Delhi runs an online dispute system, roughly 90% of wrongful challans trace to a plate misread
+    (O/0, 8/B, 1/I), cloned plates push the fine onto an innocent owner, and stolen-vehicle indexes
+    lag. Challan Guard sits between the camera and the fine: every ANPR sighting enters a queue as a
+    *candidate*, and pressing **Verify (live)** runs six ordered steps over the federation —
+    (1) are REG, INS and THEFT reachable at all, (2) identity, resolving the read against the
+    registration database through a fixed one-character confusable table scored on observed
+    make/colour (`mediator/plate_resolve.py`), (3) clone signal, via impossible travel between this
+    sighting and the camera network's other sightings of the same plate
+    (`mediator/travel_check.py`, 160 km/h plausibility bound), (4) theft reported *before* the
+    sighting, (5) registration status, and only then (6) insurance validity **on the date the
+    vehicle was seen**. The verdict is ISSUE (₹2,000, ₹4,000 on repeat, MV Act §196), REJECT or
+    HOLD, with the ordered steps and a full evidence bundle — every source's rows, statuses and
+    fetch times — written to `CHALLAN_CASES` / `CHALLAN_EVENTS` in the mediator's own `meta.db`; no
+    source is ever written. A citizen can then **dispute** the challan from the Citizen Check tab,
+    which re-runs the identical verification live and cancels the fine if a fact has changed, naming
+    the diff ("insurance_expiry was none now 2027-01-01"). This is only possible because the system
+    federates: the verification is against the sources *at fine time and again at dispute time*, so
+    there is no stale row to be wrong about — and when a source is unreachable the guard holds the
+    fine rather than guessing, because a missing insurer is not evidence of no insurance.
+20. **"Visibility" design system**: one token block in `app/theme.py` (`TOKENS`, `FONTS`, injected
+    once as `--vz-*` CSS variables) and one primitive vocabulary in `app/components.py` —
+    `section`, `group_label`, `kpi_row`, `styled_table`, `stepper`, `chip`, `card` — that every tab
+    is composed from. The rules are explicit and testable: one real display heading per logical
+    block with a beacon bar (never a caption or a tiny uppercase eyebrow used as a heading, pinned
+    by `tests/test_tabs_render.py`), exactly one accent colour meaning "interactive", status and
+    decision colours used only as *data* colours and always paired with the word, chip and banner
+    inks chosen by WCAG relative luminance so no label ever falls below 4.5:1, numbers in tabular
+    mono, and nothing below 0.8rem. The result is that nine tabs read as one product, and a viewer
+    can tell a verdict from chrome at a glance.
 
 ---
 
