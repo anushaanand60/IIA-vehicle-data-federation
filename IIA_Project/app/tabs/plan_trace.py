@@ -5,18 +5,23 @@ render(response) is the tab body for app/app.py. Standalone demo against whateve
 """
 from __future__ import annotations
 
+import html
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:  # `streamlit run` puts only this file's folder on sys.path
     sys.path.insert(0, str(ROOT))
+_APP_DIR = Path(__file__).resolve().parents[1]
+if str(_APP_DIR) not in sys.path:
+    sys.path.insert(0, str(_APP_DIR))
 
 import altair as alt  # noqa: E402
 import pandas as pd  # noqa: E402
 import streamlit as st  # noqa: E402
 
 from mediator.contract import GLOBAL_ATTRIBUTES, FederationResponse  # noqa: E402
+from theme import status_class  # noqa: E402
 
 # A status is a state, so it gets a status colour plus an icon and a word: never colour alone.
 BADGES = {"OK": ("green", "check_circle", "OK"), "TIMEOUT": ("yellow", "schedule", "Timeout"),
@@ -93,6 +98,108 @@ def render(response: FederationResponse) -> None:
             if r.rows:
                 with st.expander(f"Raw rows ({r.row_count})", icon=":material/table_rows:"):
                     st.dataframe(pd.DataFrame(r.rows), hide_index=True)
+
+
+def _tab_chip(source_id: str, detail: dict) -> str:
+    variant = status_class(str(detail.get("status") or ""))
+    status_word = str(detail.get("status") or "DOWN").upper()
+    elapsed = detail.get("elapsed_ms")
+    rows = detail.get("row_count")
+    meta = "—" if elapsed is None else f"{elapsed} ms · {rows if rows is not None else '—'} rows"
+    return (
+        f'<span class="fm-chip fm-chip--{variant}"><span class="fm-dot"></span>'
+        f"{html.escape(source_id)} · {html.escape(status_word)}"
+        f'<span class="fm-meta">{html.escape(meta)}</span></span>'
+    )
+
+
+def _tab_not_asked_chip(source_id: str) -> str:
+    muted = ("border:1px dashed var(--fm-rule);background:var(--fm-paper);"
+             "color:var(--fm-ink_muted);")
+    return (
+        f'<span class="fm-chip" style="{muted}">'
+        f'<span class="fm-dot" style="background:var(--fm-ink_muted);"></span>'
+        f"{html.escape(source_id)} · NOT ASKED</span>"
+    )
+
+
+def _chip_row(sources_detail: dict) -> None:
+    """Status chips per source and per catalogued-but-unasked source.
+
+    Draws its own row (`.fm-chip` classes from `theme.py`) instead of calling
+    `components.source_chips`, which renders under the fixed key `fm_chip_row` -- the Investigate
+    tab already claims that key in the same page, and two tabs sharing one key in a single script
+    run raises a duplicate-element-key error. This tab keeps its own scoped key (`pt_chip_row`).
+    """
+    try:
+        from mediator.catalog import get_source_catalog
+        catalogued = list(get_source_catalog().keys())
+    except Exception:  # the chip row must never be the thing that breaks this tab
+        catalogued = list(sources_detail)
+    skipped = [s for s in catalogued if s not in sources_detail]
+    if not sources_detail and not skipped:
+        st.caption("No source was asked for this query.")
+        return
+    with st.container(horizontal=True, key="pt_chip_row"):
+        for source_id, detail in sources_detail.items():
+            st.markdown(_tab_chip(source_id, detail), unsafe_allow_html=True)
+        for source_id in skipped:
+            st.markdown(_tab_not_asked_chip(source_id), unsafe_allow_html=True)
+
+
+def render_tab() -> None:
+    """Tab 2 body for `app/app.py`.
+
+    `render(response)` above draws a transport-layer `FederationResponse` (the standalone demo,
+    `python -m mediator.executor`). The live app's Investigate tab instead writes
+    `st.session_state["latest_result"] = {"profile", "plan_trace"}` via `mediator.core.
+    run_global_query`, where `plan_trace` is a plain dict (`canonical_plate`, `sources_contacted`,
+    `sources_detail`, `sqls`, `total_elapsed_ms`, ...) -- a different shape, so this reads that one
+    directly rather than reusing `render()`.
+    """
+    result = st.session_state.get("latest_result")
+    if not result:
+        st.info("Execute a query in the Investigate tab to inspect its execution plan trace.")
+        return
+
+    trace = result.get("plan_trace") or {}
+    sources_detail: dict = trace.get("sources_detail") or {}
+    sqls: dict = trace.get("sqls") or {}
+    contacted = trace.get("sources_contacted") or []
+    answered_ok = sum(1 for detail in sources_detail.values() if detail.get("status") == "OK")
+
+    st.caption(
+        f"Plate **{trace.get('canonical_plate', '—')}**, entered as "
+        f"`{trace.get('raw_plate', '—')}`. Requested: "
+        f"{', '.join(trace.get('requested_attrs') or []) or 'the full profile'}."
+    )
+
+    with st.container(horizontal=True, key="pt_metrics"):
+        st.metric("Sources asked", len(contacted), border=True)
+        st.metric("Answered OK", f"{answered_ok} of {len(contacted)}", border=True)
+        st.metric("Total time", f"{trace.get('total_elapsed_ms', 0)} ms", border=True)
+
+    st.subheader("Sources asked and skipped")
+    _chip_row(sources_detail)  # `.fm-chip` badges; catalogued-but-unasked sources shown muted
+
+    st.subheader("SQL sent per source")
+    if sqls:
+        for source_id, sql_text in sqls.items():
+            detail = sources_detail.get(source_id, {})
+            with st.expander(f"{source_id} — {detail.get('status', '?')}"):
+                st.code(sql_text, language="sql")
+    else:
+        st.caption("No source needed to be asked for this query.")
+
+    st.subheader("Latency per source")
+    if sources_detail:
+        frame = pd.DataFrame(
+            [{"Source": sid, "Latency (ms)": detail.get("elapsed_ms", 0)}
+             for sid, detail in sources_detail.items()]
+        ).set_index("Source")
+        st.bar_chart(frame)
+    else:
+        st.caption("No source was asked, so there is no latency to show.")
 
 
 def _theme() -> str:
