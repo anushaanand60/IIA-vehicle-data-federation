@@ -47,9 +47,10 @@ KPI_LABELS = (("Candidates", "CANDIDATE"), ("Held", "HOLD"), ("Issued", "ISSUED"
               ("Rejected", "REJECTED"), ("Wrongful fines prevented", "PREVENTED"))
 
 
-def status_chip(status: Any) -> str:
+def status_chip(status: Any, case_id: Any = None) -> str:
     text = str(status or "—").upper()
-    return chip(text, TOKENS[STATUS_TOKEN.get(text, "undetermined")])
+    label = text if case_id is None else f"#{case_id} · {text}"
+    return chip(label, TOKENS[STATUS_TOKEN.get(text, "undetermined")])
 
 
 def _kpis() -> None:
@@ -64,11 +65,11 @@ def _cell(value: Any) -> str:
 
 
 def _queue_table(cases: list[dict]) -> None:
-    """`components.styled_table` escapes every cell, so the status column is drawn as a chip strip
-    underneath rather than as HTML inside the table."""
+    """`components.styled_table` escapes every cell, so colour cannot live inside the table: the
+    statuses repeat underneath as a chip strip, tagged with the case number that carries them."""
     styled_table([{head: _cell(case.get(column)) for head, column in zip(HEADINGS, QUEUE_COLUMNS)}
                   for case in cases], columns=list(HEADINGS))
-    chip_strip([status_chip(case.get("status")) for case in cases])
+    chip_strip([status_chip(case.get("status"), case.get("case_id")) for case in cases])
 
 
 def _label(case: dict) -> str:

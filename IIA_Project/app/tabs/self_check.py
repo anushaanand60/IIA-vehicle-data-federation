@@ -19,6 +19,7 @@ here does not need to interact with the demo/investigator surface.
 """
 from __future__ import annotations
 
+import html
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -148,6 +149,10 @@ def _minimisation_caption(plan_trace: dict) -> None:
 
 MASK = "•"
 
+# A dispute outcome is a *status*, so it wears a status colour from the theme tokens — green when
+# the fine is gone, red when it stands — never the accent, which means "interactive".
+CASE_TOKEN = {"CANCELLED": "clear", "UPHELD": "report", "DISPUTED": "unknown"}
+
 
 def mask_plate(plate: Any) -> str:
     """Keep the ends, hide the middle: enough to recognise your own plate, not to identify it."""
@@ -166,7 +171,11 @@ def _dispute_outcome(case: dict) -> None:
                 "UPHELD": "Your challan has been UPHELD.",
                 }.get(status, f"Your case is now {status}.")
     (st.success if status == "CANCELLED" else st.warning)(headline)
-    st.markdown(f"**Case #{case.get('case_id')} — {plate} — {status}**")
+    st.markdown(
+        f'<div class="vz-card">{chip(status, TOKENS[CASE_TOKEN.get(status, "undetermined")])} '
+        f"<strong>Case #{html.escape(str(case.get('case_id')))}</strong> — "
+        f"{html.escape(plate)}</div>",
+        unsafe_allow_html=True)
     st.markdown(f"Sighting: {case.get('captured_at')} at {case.get('location') or 'a road camera'}")
     st.markdown(f"Why: {case.get('reason') or 'no reason recorded'}")
     if status == "CANCELLED":
