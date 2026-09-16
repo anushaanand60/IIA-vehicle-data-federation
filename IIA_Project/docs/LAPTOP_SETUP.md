@@ -3,7 +3,8 @@
 From a blank laptop to a serving source. `NETWORK.md` explains the topology, the environment
 variables, the latency budget and what to do when a source is not `OK`; this file is the runbook.
 
-Target deployment: **four laptops, one database each**, three DBMS engines.
+Target deployment: **four laptops, one database each**, three DBMS engines — plus an optional 5th
+for the extensibility source (PUC), which can equally well run alongside laptop 1.
 
 | Laptop | Source | Engine | Wrapper port | Also runs |
 |---|---|---|---|---|
@@ -11,6 +12,7 @@ Target deployment: **four laptops, one database each**, three DBMS engines.
 | 2 | `INS` — Insurance provider | MySQL | 8002 | |
 | 3 | `THEFT` — Police crime records | SQLite | 8003 | |
 | 4 | `CAM` — Road camera network | PostgreSQL | 8004 | |
+| 5 (optional) | `PUC` — Pollution certificate authority | SQLite | 8005 | |
 
 The database listens on `127.0.0.1` only. The **wrapper port is the only thing published** — each
 agency publishes an API, not a database. That is the source-autonomy argument, and the professor
@@ -55,7 +57,7 @@ python scripts/seed_mappings.py
 Then check the install:
 
 ```bash
-pytest -q            # 267 passed, 3 deselected
+pytest -q            # 546 passed, 3 deselected
 ```
 
 **Run the loads before `pytest`, not after.** Four schema-matcher tests read sample values out of
@@ -91,7 +93,7 @@ different owners and the sources would stop agreeing.
 
 ```bash
 python reg.py && python ins.py && python theft.py && python cam.py && python puc.py
-python data/inject_demo_fixtures.py     # appends the five demo vehicles
+python data/inject_demo_fixtures.py     # appends the demo vehicles (incl. the scrapped-plate story)
 git add -f *.csv && git commit -m "Regenerate synthetic data"
 ```
 </details>
@@ -108,17 +110,41 @@ git add -f *.csv && git commit -m "Regenerate synthetic data"
 (`<ID>_ADMIN=off`), `--check` verifies the demo plates exist in the configured database without serving. On start it
 prints this laptop's IP address(es) and the exact `python scripts/configure_cluster.py --set <SRC>=<ip>` line for laptop 1.
 
-Do this first. It is the same wrappers, registry, executor, integrator and GUI as the four-laptop
+Do this first. It is the same wrappers, registry, executor, integrator and GUI as the four/five-laptop
 deployment; only the database URLs differ.
 
-Section 1 already loaded the four SQLite databases and seeded the registry, so this is one command:
+Section 1 already loaded the five SQLite databases and seeded the registry, so this is one command:
 
 ```bash
-python run_system.py                   # four wrappers + the GUI on :8501
+python run_system.py                   # five wrappers (REG/INS/THEFT/CAM/PUC) + the GUI on :8501
 ```
 
 Keep this working. If the hotspot dies mid-demo, this is the fallback — say out loud that it is the
 rehearsal mode.
+
+**After every `git pull`, on every laptop:** wrapper-owning code (`sources/`) and the synthetic
+CSVs can both change between sessions, and a wrapper that keeps serving a database built from the
+*old* CSVs will quietly disagree with the rest of the federation (a demo plate that used to be
+`CLEAR` can start reading `UNINSURED`, or vice versa). So the routine after every pull is:
+
+```bash
+git pull
+python scripts/load_source.py <SRC> --verify    # this laptop's own source only, reload from the new CSVs
+python scripts/serve.py <SRC>                   # restart the wrapper (re-reads sources/<id>/laptop.env)
+```
+
+and, **on laptop 1 only**, re-seed the registry before restarting the GUI, because a schema or
+mapping change (a new `transform_fn`, a new `aggregate`, a new attribute) lands in
+`tests/fixtures.py::APPROVED_MAPPINGS`, not automatically in `meta.db`:
+
+```bash
+python scripts/seed_mappings.py
+streamlit run app/app.py                        # or: python run_system.py
+```
+
+Skipping the reload is the single most common "it worked yesterday" bug on demo day — `/health`
+still reports `up: true` against stale data, so nothing *looks* wrong until a decision is checked
+against the expected table in §5.
 
 ---
 
@@ -184,7 +210,14 @@ GRANT SELECT ON vehicle_registration, owners TO iia_reader;
 **Keep the database off the LAN.** In `postgresql.conf` set `listen_addresses = 'localhost'`, then
 restart the service.
 
-**Start the wrapper.**
+**Start the wrapper.** `scripts/serve.py` is the one-command way — it persists the URL to
+`sources/reg/laptop.env`, so a reboot or `git pull` only needs `python scripts/serve.py REG` again:
+
+```powershell
+python scripts/serve.py REG --db-url "postgresql+psycopg2://iia_reader:secret@127.0.0.1:5432/regdb"
+```
+
+The equivalent by hand, if you need to see the environment variable directly:
 
 ```powershell
 $env:REG_DB_URL = "postgresql+psycopg2://iia_reader:secret@127.0.0.1:5432/regdb"
@@ -229,6 +262,14 @@ GRANT SELECT ON insdb.INSURERS TO 'iia_reader'@'localhost';
 Set `bind-address = 127.0.0.1` in `my.ini` (Windows:
 `C:\ProgramData\MySQL\MySQL Server 8.0\my.ini`) or `my.cnf`, then restart the service.
 
+One command with `scripts/serve.py` (persists to `sources/ins/laptop.env` for later runs):
+
+```bash
+python scripts/serve.py INS --db-url "mysql+pymysql://iia_reader:secret@127.0.0.1:3306/insdb"
+```
+
+or by hand:
+
 ```bash
 export INS_DB_URL="mysql+pymysql://iia_reader:secret@127.0.0.1:3306/insdb"
 python -m sources.ins.wrapper
@@ -249,7 +290,7 @@ Nothing to install beyond Python — the database is a file.
 
 ```bash
 python scripts/load_source.py THEFT --verify        # writes sources/theft/theft.db
-python -m sources.theft.wrapper
+python scripts/serve.py THEFT                       # or: python -m sources.theft.wrapper
 ```
 
 `THEFT_DB_URL` can be left unset: SQLite is this source's real engine, so the default is correct
@@ -265,12 +306,29 @@ Exactly section 3.1 with `camdb`, `PLATE_CAPTURES` / `CAMERAS` and port 8004:
 ```bash
 psql -U postgres -c "CREATE DATABASE camdb;"
 python scripts/load_source.py CAM --url "postgresql+psycopg2://postgres:<pw>@127.0.0.1:5432/camdb" --verify
-export CAM_DB_URL="postgresql+psycopg2://iia_reader:secret@127.0.0.1:5432/camdb"
-python -m sources.cam.wrapper
+python scripts/serve.py CAM --db-url "postgresql+psycopg2://iia_reader:secret@127.0.0.1:5432/camdb"
 ```
 
 CAM is the observational source: plates are OCR output and are meant to be noisy. Do not "fix" them
 in the database — the plate matching and the cloned-plate story both depend on it.
+
+---
+
+### 3.5 Laptop 5 (optional) — PUC, SQLite, port 8005
+
+The fifth, extensibility source (UC6). Nothing to install beyond Python:
+
+```bash
+python scripts/load_source.py PUC --verify
+python scripts/serve.py PUC
+```
+
+PUC is not registered in `SOURCE_CATALOG`/`MAPPING_REGISTRY` until it is added — either live in the
+Catalog tab's "Register New Source" form during the demo, or ahead of time with
+`python scripts/seed_mappings.py` (which seeds PUC's 5 validated mappings alongside the other four
+if `SOURCE_CATALOG` already lists it). Running the whole federation without a 5th laptop is fine —
+`run_system.py` and `scripts/serve.py PUC` both default to the local SQLite file, so PUC can also
+just run alongside REG/INS/THEFT/CAM on laptop 1 for the extensibility demo.
 
 ---
 
@@ -281,7 +339,7 @@ means the decomposer emits `SELECT * WHERE 1=0` and every profile comes back bla
 
 ```bash
 python scripts/seed_mappings.py
-python scripts/seed_mappings.py --show     # 31 mappings across REG, INS, THEFT, CAM
+python scripts/seed_mappings.py --show     # 36 mappings across REG, INS, THEFT, CAM, PUC
 ```
 
 This writes the transforms and join paths that the schema matcher cannot infer — the human
@@ -326,7 +384,7 @@ slot shows an install hint and typing the plate works exactly as before.
 ## 5. Demo-day checklist
 
 1. All four laptops on the hotspot; `configure_cluster.py --probe` reports **4/4**.
-2. `scripts/seed_mappings.py --show` lists 31 mappings.
+2. `scripts/seed_mappings.py --show` lists 36 mappings.
 3. `validate_registry.py` clean.
 4. Query the five story plates once each to warm the processes (the first query in a fresh process
    pays a one-time ~0.3 s warm-up):
@@ -375,7 +433,7 @@ cause.
 Verified end to end on one machine with all four sources on SQLite: the five demo decisions, the
 plate-format variants, latest-wins policy selection on renewal pairs, the join-backed fields
 (`owner_name`, `insurer_name`, `last_seen_location`), the DD/MM/YYYY and epoch date transforms, and
-the INS-down degradation to `UNDETERMINED`. Full suite: 267 passed.
+the INS-down degradation to `UNDETERMINED`, the admin write menu on every source, OCR plate reading and repair, the watchlist/risk score, and the evidence-bundle PDF. Full suite: 546 passed, 3 deselected `@pytest.mark.live`.
 
 **Not yet verified against live PostgreSQL or MySQL** — neither engine was usable on the machine
 this was integrated on. The schemas are plain ANSI SQL and the loader reads column types back from
