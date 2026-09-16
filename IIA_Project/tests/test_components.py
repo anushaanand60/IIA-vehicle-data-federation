@@ -15,11 +15,11 @@ from app import components as c
 # --------------------------------------------------------------- readable_ink
 
 def test_readable_ink_picks_white_on_dark():
-    assert c.readable_ink("#14213D") == "#FFFFFF"
+    assert c.readable_ink("#0F2B4C") == "#FFFFFF"
 
 
 def test_readable_ink_picks_ink_on_light():
-    assert c.readable_ink("#FCEDE7").upper() == "#14213D"
+    assert c.readable_ink("#E7F5EC").upper() == "#0B0C0C"
 
 
 @pytest.mark.parametrize("bg", ["#1F7A4D", "#B42318", "#B7791F", "#C2410C", "#7F1D1D",

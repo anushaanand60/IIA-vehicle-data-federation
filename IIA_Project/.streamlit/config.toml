@@ -1,18 +1,17 @@
-# Theme of record: "Visibility" — cool ink ground, one beacon accent (#E4572E), dark ink.
-# The colour tokens and the type scale live in app/theme.py (inject()); this file is what
-# Streamlit's own chrome reads, so the two must agree — ground #F3F4F6, plate #FCFCFA,
-# ink #14213D, accent #E4572E.
+# Theme of record: "Civic" — light grey ground, white panels, near-black ink, one green action
+# colour. The tokens and the type scale live in app/theme.py (inject()); this file is what
+# Streamlit's own chrome reads, so the two must agree.
 #
-# Streamlit's own base is pinned to light on purpose: our banners and chips are tinted light
-# surfaces with dark text, and app/theme.py repaints OUR surfaces for a dark-mode viewer
-# itself (@media prefers-color-scheme). Pinning keeps baseweb internals (menus, dataframe
-# chrome, alerts) legible on every laptop and on the projector.
+# `base = "light"` is not optional. Without it Streamlit follows the viewer's operating system,
+# and an operator whose laptop is in dark mode gets Streamlit's dark chrome underneath our light
+# stylesheet: dark tab labels on dark ground, white dataframes glaring on navy. The page is
+# light on every machine, projector included, by construction.
 [theme]
 base = "light"
-primaryColor = "#E4572E"
+primaryColor = "#00703C"
 backgroundColor = "#F3F4F6"
-secondaryBackgroundColor = "#FCFCFA"
-textColor = "#14213D"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#0B0C0C"
 font = "sans serif"
 
 [server]
