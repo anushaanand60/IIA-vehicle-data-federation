@@ -34,6 +34,7 @@ if str(_APP_DIR) not in sys.path:
 
 import streamlit as st  # noqa: E402
 
+from mediator import challan_guard  # noqa: E402
 from mediator.catalog import get_source_catalog  # noqa: E402
 from mediator.core import run_global_query  # noqa: E402
 from mediator.decide import REFERENCE_TODAY  # noqa: E402
@@ -167,8 +168,62 @@ def _minimisation_caption(plan_trace: dict) -> None:
     )
 
 
-def render() -> None:
-    """Draw the whole Citizen Self-Check tab. Never raises — a broken lookup shows a warning."""
+# ------------------------------------------------------------------ dispute a challan
+# Same data-minimisation rule as the rest of this page: a citizen sees the outcome of their own
+# case and the evidence that moved it, never the owner record, never where the camera stands.
+
+MASK = "•"
+
+
+def mask_plate(plate: Any) -> str:
+    """Keep the ends, hide the middle: enough to recognise your own plate, not to identify it."""
+    text = str(plate or "").strip().upper()
+    if not text:
+        return "—"
+    if len(text) <= 6:
+        return text[0] + MASK * (len(text) - 1)
+    return text[:4] + MASK * (len(text) - 6) + text[-2:]
+
+
+def _dispute_outcome(case: dict) -> None:
+    status = str(case.get("status") or "").upper()
+    plate = mask_plate(case.get("plate_resolved") or case.get("plate_read"))
+    headline = {"CANCELLED": "Your challan has been CANCELLED.",
+                "UPHELD": "Your challan has been UPHELD.",
+                }.get(status, f"Your case is now {status}.")
+    (st.success if status == "CANCELLED" else st.warning)(headline)
+    st.markdown(f"**Case #{case.get('case_id')} — {plate} — {status}**")
+    st.markdown(f"Sighting: {case.get('captured_at')} at {case.get('location') or 'a road camera'}")
+    st.markdown(f"Why: {case.get('reason') or 'no reason recorded'}")
+    if status == "CANCELLED":
+        st.markdown("No payment is due. The check was re-run live against the insurer, the "
+                    "registration authority and police records just now — not against a stored copy.")
+
+
+def _dispute_block() -> None:
+    st.subheader("Dispute a challan")
+    st.caption("Enter the case number printed on your e-challan. The whole check is re-run live "
+               "against the sources; if anything has changed since it was issued, it is cancelled.")
+    case_id = st.number_input("Challan case number", key="sc_case_id", min_value=0, step=1, value=0)
+    reason = st.text_area("Why do you believe this challan is wrong?", key="sc_reason",
+                          placeholder="e.g. I renewed my policy before that date")
+    if not st.button("Submit dispute", key="sc_dispute"):
+        return
+    if not case_id:
+        st.warning("Enter the case number from your challan.")
+        return
+    try:
+        case = challan_guard.dispute(int(case_id), reason.strip() or "no reason given")
+    except ValueError as exc:  # a case that cannot be disputed is explained, not hidden
+        st.warning(str(exc))
+        return
+    except Exception as exc:
+        st.warning(f"Could not re-check this challan right now: {exc}")
+        return
+    _dispute_outcome(case or {})
+
+
+def _lookup_block() -> None:
     st.subheader("Check your own vehicle")
     st.caption("Check your own vehicle — no personal data is shown")
 
@@ -203,3 +258,9 @@ def render() -> None:
         _stolen_line(profile, availability)
 
     _minimisation_caption(plan_trace)
+
+
+def render() -> None:
+    """Draw the whole Citizen Self-Check tab. Never raises — a broken lookup shows a warning."""
+    _lookup_block()
+    _dispute_block()

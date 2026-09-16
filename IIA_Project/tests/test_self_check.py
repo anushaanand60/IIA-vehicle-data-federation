@@ -237,7 +237,62 @@ def test_unknown_plate_shows_not_registered(cluster):
 
 # ----------------------------------------------------------- (5) whole-app wiring
 
-def test_app_file_renders_eight_tabs_with_no_exceptions():
+def test_app_file_renders_every_tab_with_no_exceptions():
     at = AppTest.from_file(str(ROOT / "app" / "app.py"), default_timeout=180).run()
     assert not at.exception, [e.value for e in at.exception]
-    assert len(at.tabs) == 8
+    assert len(at.tabs) == 9  # Challan Guard joined the shell (Workstream A, Task A3)
+
+
+# ----------------------------------------------------------- (6) citizen dispute loop
+
+DISPUTED_CASE = {
+    "case_id": 7, "plate_read": "DL05CD9B76", "plate_resolved": "DL05CD9876",
+    "captured_at": "2026-09-04T11:00:00", "location": "Sector 29 Crossing",
+    "lat": 28.4601, "lon": 77.0648, "status": "CANCELLED", "verdict": "REJECT",
+    "reason": "record changed since issue: insurance_expiry was none now 2027-01-01",
+    "amount_inr": None, "evidence": {"profile": {"owner_name": "Asha Menon"}},
+}
+
+
+def test_dispute_block_masks_the_plate_and_reports_the_outcome(cluster, monkeypatch):
+    """A citizen sees the outcome of their own dispute and nothing else: no owner name, no camera
+    coordinates, and their own plate masked in the middle."""
+    from app.tabs import self_check as tab
+
+    monkeypatch.setattr(tab.challan_guard, "dispute",
+                        lambda cid, reason, actor="citizen": DISPUTED_CASE)
+    at = run_tab()
+    at.number_input(key="sc_case_id").set_value(7).run()
+    at.text_area(key="sc_reason").set_value("I renewed before that date").run()
+    at.button(key="sc_dispute").click().run()
+    assert not at.exception, [e.value for e in at.exception]
+
+    text = _page_text(at)
+    assert "CANCELLED" in text
+    assert "insurance_expiry" in text
+    assert "DL05CD9876" not in text and "DL05CD9B76" not in text  # masked
+    assert "DL05" in text and "76" in text                        # but recognisably theirs
+    assert "Asha Menon" not in text
+    assert "28.4601" not in text
+
+
+def test_a_dispute_on_a_case_that_was_never_issued_is_explained_not_crashed(cluster, monkeypatch):
+    from app.tabs import self_check as tab
+
+    def refuse(case_id, reason, actor="citizen"):
+        raise ValueError("case 7 is CANDIDATE; only an issued challan can be disputed")
+
+    monkeypatch.setattr(tab.challan_guard, "dispute", refuse)
+    at = run_tab()
+    at.number_input(key="sc_case_id").set_value(7).run()
+    at.text_area(key="sc_reason").set_value("not mine").run()
+    at.button(key="sc_dispute").click().run()
+    assert not at.exception, [e.value for e in at.exception]
+    assert "only an issued challan" in _page_text(at)
+
+
+def test_masking_keeps_the_ends_and_hides_the_middle():
+    from app.tabs.self_check import mask_plate
+
+    assert mask_plate("DL05CD9876") == "DL05••••76"
+    assert mask_plate(None) == "—"
