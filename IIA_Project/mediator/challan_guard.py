@@ -212,6 +212,9 @@ def _verification(case: Dict[str, Any], exclude_case_id: Optional[int] = None) -
 
 # ------------------------------------------------------------------ the case API
 
+# Note for the §8 grep: `captured_at`, `location`, `lat`, `lon` below are columns of the mediator's
+# own CHALLAN_CASES table in meta.db, describing the ANPR event an operator filed. They are never
+# used to address a source — every source fact still arrives as a global attribute.
 def new_candidate(plate_read: str, camera_id: str, location: str, lat: Optional[float],
                   lon: Optional[float], captured_at: str, observed_make: Optional[str] = None,
                   observed_colour: Optional[str] = None, ocr_confidence: Optional[float] = None,
