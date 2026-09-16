@@ -315,6 +315,8 @@ def match_source_schema(source_schema: Dict[str, Any], theta: float = 0.55) -> D
                 score = min(1.0, score + 0.15)
             elif g_attr == "insurance_start" and "start" in col_name.lower():
                 score = min(1.0, score + 0.15)
+            elif g_attr == "puc_expiry" and any(w in col_name.lower() for w in ["valid", "upto"]):
+                score = min(1.0, score + 0.20)  # PUC certificates say "valid_upto", never "expiry"
             elif g_attr == "owner_name" and "name" in col_name.lower() and ("owner" in t_name.lower() or "owner" in col_name.lower()):
                 score = min(1.0, score + 0.20)
             elif g_attr == "last_seen_location" and "location" in col_name.lower():

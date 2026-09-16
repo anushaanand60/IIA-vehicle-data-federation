@@ -64,12 +64,7 @@ def test_evaluation_reports_every_source_and_an_overall_score(team_dbs):
 def test_matcher_maps_the_uc6_pollution_source_plate_column_correctly(team_dbs):
     # The UC6 demo runs the matcher on PUC; regn_number -> plate_number must always be found.
     puc = evaluate(sources=["PUC"])["per_source"]["PUC"]
-    assert puc["tp"] >= 1, puc
-    # Known matcher limitation as of this run: valid_upto (a date column) scores closer to
-    # last_incident_date than to puc_expiry (both read as "the most recent date on record" by name
-    # and instance similarity), producing one false positive and one miss. This is mediator/matcher.py's
-    # behaviour, not this evaluation harness's -- recorded here rather than silently loosened away.
-    assert (puc["tp"], puc["fp"], puc["fn"]) == (1, 1, 1), puc
+    assert (puc["tp"], puc["fp"], puc["fn"]) == (2, 0, 0), puc  # regn_number -> plate_number, valid_upto -> puc_expiry
 
 
 def test_cli_prints_a_table_and_json(team_dbs):
