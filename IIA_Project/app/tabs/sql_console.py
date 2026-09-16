@@ -124,7 +124,7 @@ def _run_select(source_id: str, base: str, sql: str) -> bool:
     body = r.json()
     rows = body.get("rows", [])
     if rows:
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
     else:
         st.info("The source answered, with zero rows. That is data, not a failure.")
     st.caption(f"{body.get('row_count', len(rows))} rows, {body.get('elapsed_ms')} ms, "
@@ -189,7 +189,7 @@ def _render_history() -> None:
             status = "OK" if entry["ok"] else "FAILED"
             c_sql.code(f"[{entry['source']} · {entry['kind']} · {status} · {entry['ts']}]\n"
                        f"{entry['sql']}", language="sql")
-            if c_load.button("Load", key=f"sqlc_hist_{i}", use_container_width=True):
+            if c_load.button("Load", key=f"sqlc_hist_{i}", width="stretch"):
                 st.session_state["sqlc_sql"] = entry["sql"]
 
 
@@ -231,9 +231,9 @@ def render() -> None:
     sql = st.text_area("SQL statement", key="sqlc_sql", height=160)
 
     c_read, c_write = st.columns(2)
-    run = c_read.button("Run SELECT", key="sqlc_run", type="primary", use_container_width=True)
+    run = c_read.button("Run SELECT", key="sqlc_run", type="primary", width="stretch")
     write = c_write.button("Execute write (INSERT/UPDATE/DELETE)", key="sqlc_write",
-                           use_container_width=True)
+                           width="stretch")
     if run or write:
         statement = (sql or "").strip()
         if not statement:

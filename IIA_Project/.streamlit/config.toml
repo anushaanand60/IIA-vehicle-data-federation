@@ -1,12 +1,18 @@
-# The GUI's custom CSS in app/app.py hardcodes light-theme colours: dark slate text
-# (#1e293b) for the headings and pale backgrounds (#dcfce7, #fee2e2, #fef3c7) for the
-# decision banners. In dark mode Streamlit paints its own text near-white, so the
-# banner text turns white-on-pale and the title turns dark-on-dark — both unreadable.
+# Theme of record: warm paper ground, one indigo accent, dark ink. The colour tokens and the
+# type scale live in app/theme.py (inject()); this file is what Streamlit's own chrome reads,
+# so the two must agree — paper #FBFAF7, secondary #F2EFE8, ink #1F2937, accent #4338CA.
 #
-# Pinning the theme keeps the page identical on every laptop and on the projector,
+# The theme is pinned to light on purpose. Our banners and chips are tinted light surfaces with
+# dark text; in dark mode Streamlit would paint its own text near-white and every banner would
+# read white-on-pale. Pinning keeps the page identical on every laptop and on the projector,
 # whatever each machine's Windows dark-mode setting happens to be.
 [theme]
 base = "light"
+primaryColor = "#4338CA"
+backgroundColor = "#FBFAF7"
+secondaryBackgroundColor = "#F2EFE8"
+textColor = "#1F2937"
+font = "sans serif"
 
 [server]
 headless = true

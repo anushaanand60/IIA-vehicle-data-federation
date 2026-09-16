@@ -48,25 +48,6 @@ def ensure_cluster_running():
 
 cluster = ensure_cluster_running()
 
-# Custom Header Styling
-st.markdown("""
-<style>
-    .reportview-container { background: #f8fafc; }
-    .main-title { font-size: 26px; font-weight: 700; color: #1e293b; margin-bottom: 2px; }
-    .sub-title { font-size: 14px; color: #64748b; margin-bottom: 20px; }
-    .status-card-ok { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 10px; text-align: center; }
-    .status-card-down { background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 10px; text-align: center; }
-    .status-card-timeout { background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 10px; text-align: center; }
-    .decision-banner-clear { background: #dcfce7; border-left: 6px solid #16a34a; padding: 16px; border-radius: 6px; margin-bottom: 15px; }
-    .decision-banner-danger { background: #fee2e2; border-left: 6px solid #dc2626; padding: 16px; border-radius: 6px; margin-bottom: 15px; }
-    .decision-banner-warn { background: #fef3c7; border-left: 6px solid #d97706; padding: 16px; border-radius: 6px; margin-bottom: 15px; }
-    .decision-banner-unknown { background: #f1f5f9; border-left: 6px solid #64748b; padding: 16px; border-radius: 6px; margin-bottom: 15px; }
-</style>
-""", unsafe_allow_html=True)
-
-st.markdown('<div class="main-title">🚗 Federated Mediator: Uninsured Vehicle Detection</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-title">Global-As-View (GAV) virtual data integration across autonomous government & observational authorities.</div>', unsafe_allow_html=True)
-
 import live_update
 
 # Never import through the package name "app": under `streamlit run app/app.py` that name is this very
@@ -77,6 +58,14 @@ if _APP_DIR not in sys.path:
 from tabs.sql_console import render as render_sql_console
 from tabs.source_editor import render_sidebar as render_source_editor_sidebar
 from tabs.onboarding import is_unknown, render_unknown_plate
+from theme import inject, masthead
+
+# The whole look of the page comes from app/theme.py: tokens -> CSS variables, injected once.
+inject()
+masthead(
+    "Federated Mediator",
+    "Uninsured vehicle detection across autonomous government and observational authorities",
+)
 
 # Navigation tabs
 tab_investigate, tab_plantrace, tab_matcher, tab_catalog, tab_reports, tab_sqlconsole = st.tabs([
@@ -120,14 +109,14 @@ with tab_investigate:
         st.session_state["selected_plate"] = "DL01AB1234"
 
     for idx, (label_p, desc, raw_val) in enumerate(demo_plates):
-        if demo_cols[idx].button(f"**{label_p}**\n\n_{desc}_", key=f"btn_{label_p}", use_container_width=True):
+        if demo_cols[idx].button(f"**{label_p}**\n\n_{desc}_", key=f"btn_{label_p}", width="stretch"):
             st.session_state["selected_plate"] = raw_val
 
     # Search bar & Query Type
     c_input, c_type, c_submit = st.columns([3, 2, 1])
     plate_input = c_input.text_input("License Plate Number (accepts any format)", value=st.session_state["selected_plate"])
     query_type = c_type.selectbox("Query Scope", ["UC2: Full Vehicle Profile (all sources)", "UC1: Insurance Verification Only (INS + REG)"])
-    run_btn = c_submit.button("🔎 Run Global Query", type="primary", use_container_width=True)
+    run_btn = c_submit.button("🔎 Run Global Query", type="primary", width="stretch")
 
     # Perform query
     if plate_input:
@@ -238,12 +227,12 @@ with tab_investigate:
                     "Fetched At": pinfo.get("fetched_at")
                 })
             if prov_rows:
-                st.dataframe(pd.DataFrame(prov_rows), use_container_width=True)
+                st.dataframe(pd.DataFrame(prov_rows), width="stretch")
 
         # File Report button
         st.markdown("---")
         c_rep1, c_rep2 = st.columns([1, 3])
-        if c_rep1.button("📑 File Report to Ministry", type="secondary", use_container_width=True):
+        if c_rep1.button("📑 File Report to Ministry", type="secondary", width="stretch"):
             rep_id = file_ministry_report(profile, plan_trace)
             pdf_path = generate_report_pdf(rep_id)
             st.success(f"Report MOT-{rep_id:06d} successfully filed in Ministry Audit Log and PDF generated!")
@@ -334,7 +323,7 @@ with tab_matcher:
                 aspect="auto"
             )
             fig.update_layout(title=f"Similarity Matrix Heatmap ({chosen_source} vs Global Schema)", height=450)
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
 
         # Candidate mappings review table
         st.markdown(f"##### Discovered Correspondences for {chosen_source} (Threshold θ ≥ 0.55)")
@@ -352,7 +341,7 @@ with tab_matcher:
                 }
                 for c in corrs
             ])
-            st.dataframe(corr_df, use_container_width=True)
+            st.dataframe(corr_df, width="stretch")
 
             if st.button("💾 Accept & Persist All Correspondences to Registry"):
                 for c in corrs:
@@ -390,13 +379,13 @@ with tab_catalog:
         }
         for s in cat_view.values()
     ])
-    st.dataframe(cat_df, use_container_width=True)
+    st.dataframe(cat_df, width="stretch")
 
     st.markdown("##### GAV Mapping Rules (`MAPPING_REGISTRY`)")
     maps = get_all_mappings()
     if maps:
         map_df = pd.DataFrame(maps)[["source_id", "source_table", "source_attr", "global_attr", "transform_fn", "aggregate", "join_path", "match_score"]]
-        st.dataframe(map_df, use_container_width=True)
+        st.dataframe(map_df, width="stretch")
 
     st.markdown("---")
     st.markdown("##### ➕ Register New Source (Extensibility Live Demo UC6)")
