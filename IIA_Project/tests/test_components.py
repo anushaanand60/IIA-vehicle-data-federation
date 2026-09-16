@@ -1,4 +1,4 @@
-"""Task A2 — the shared Visibility primitives in `app/components.py`.
+"""Task D2 — the shared Civic primitives in `app/components.py`.
 
 Every tab is composed from this vocabulary, so these tests pin the parts that carry a claim:
 the ink chosen for a coloured chip really is the readable one (WCAG relative luminance, not a
@@ -39,7 +39,7 @@ def test_every_status_colour_gets_a_readable_chip(bg):
 
 def test_chip_html_contains_text_and_class():
     html = c.chip("OK", "#1F7A4D")
-    assert "vz-chip" in html and ">OK<" in html
+    assert "cv-chip" in html and ">OK<" in html
 
 
 def test_chip_keeps_the_legacy_class_for_untouched_tabs():
@@ -56,7 +56,7 @@ def test_styled_table_escapes_html(monkeypatch):
     out = []
     monkeypatch.setattr(c.st, "markdown", lambda s, **k: out.append(s))
     c.styled_table([{"a": "<b>x</b>"}])
-    assert "&lt;b&gt;" in out[0] and "vz-table" in out[0]
+    assert "&lt;b&gt;" in out[0] and "cv-table" in out[0]
 
 
 def test_styled_table_honours_an_explicit_column_order(monkeypatch):
@@ -89,15 +89,15 @@ def test_section_emits_one_heading_and_an_optional_lead(monkeypatch):
     monkeypatch.setattr(c.st, "markdown", lambda s, **k: out.append(s))
     c.section("Source selection", "who was asked, and why")
     assert len(out) == 1, "a section is one markdown block, never a heading plus a caption"
-    assert 'class="vz-h"' in out[0] and "Source selection" in out[0]
-    assert 'class="vz-lead"' in out[0] and "who was asked" in out[0]
+    assert 'class="cv-h"' in out[0] and "Source selection" in out[0]
+    assert 'class="cv-lead"' in out[0] and "who was asked" in out[0]
 
 
 def test_section_without_a_lead_has_no_lead_element(monkeypatch):
     out = []
     monkeypatch.setattr(c.st, "markdown", lambda s, **k: out.append(s))
     c.section("Latency per source")
-    assert "vz-lead" not in out[0]
+    assert "cv-lead" not in out[0]
 
 
 def test_stepper_marks_done_steps(monkeypatch):
@@ -105,19 +105,65 @@ def test_stepper_marks_done_steps(monkeypatch):
     monkeypatch.setattr(c.st, "markdown", lambda s, **k: out.append(s))
     c.stepper([{"title": "Identity", "detail": "resolved", "done": True},
                {"title": "Theft", "detail": "pending", "done": False}])
-    assert "vz-step done" in out[0] and "Identity" in out[0]
-    assert out[0].count("vz-step") == 2
+    assert "cv-step done" in out[0] and "Identity" in out[0]
+    assert out[0].count("cv-step") == 2
 
 
 def test_kpi_row_prints_label_and_value(monkeypatch):
     out = []
     monkeypatch.setattr(c.st, "markdown", lambda s, **k: out.append(s))
     c.kpi_row([("Sources asked", 4), ("Total time", "412 ms")])
-    assert "vz-kpi" in out[0] and "Sources asked" in out[0] and "412 ms" in out[0]
+    assert "cv-kpi" in out[0] and "Sources asked" in out[0] and "412 ms" in out[0]
 
 
 def test_group_label_is_not_a_heading(monkeypatch):
     out = []
     monkeypatch.setattr(c.st, "markdown", lambda s, **k: out.append(s))
     c.group_label("Filters")
-    assert "vz-grouplabel" in out[0] and "vz-h" not in out[0]
+    assert "cv-grouplabel" in out[0] and "cv-h" not in out[0]
+
+
+# ------------------------------------------------- page head / panel / nav labels (Task D2)
+
+def test_page_head_prints_the_title_and_its_purpose(monkeypatch):
+    out = []
+    monkeypatch.setattr(c.st, "markdown", lambda s, **k: out.append(s))
+    c.page_head("Investigate a vehicle", "One plate in, one defensible decision out.")
+    assert len(out) == 1
+    assert "cv-pagehead" in out[0]
+    assert "Investigate a vehicle" in out[0] and "defensible decision" in out[0]
+
+
+def test_page_head_escapes_what_it_is_given(monkeypatch):
+    out = []
+    monkeypatch.setattr(c.st, "markdown", lambda s, **k: out.append(s))
+    c.page_head("<b>x</b>", "<i>y</i>")
+    assert "&lt;b&gt;" in out[0] and "&lt;i&gt;" in out[0]
+
+
+def test_panel_opens_a_keyed_container_the_stylesheet_can_find(monkeypatch):
+    """`theme.py` paints `[class*="st-key-cvp_"]`; the namespace is the contract between them."""
+    seen = {}
+
+    class _Ctx:
+        def __enter__(self):
+            return None
+
+        def __exit__(self, *exc):
+            return False
+
+    def fake_container(*args, **kwargs):
+        seen["key"] = kwargs.get("key")
+        return _Ctx()
+
+    monkeypatch.setattr(c.st, "container", fake_container)
+    with c.panel("queue"):
+        pass
+    assert seen["key"] == "cvp_queue"
+
+
+def test_nav_group_label_writes_into_the_sidebar(monkeypatch):
+    out = []
+    monkeypatch.setattr(c.st.sidebar, "markdown", lambda s, **k: out.append(s))
+    c.nav_group_label("Enforcement")
+    assert out and "cv-navgroup" in out[0] and "Enforcement" in out[0]

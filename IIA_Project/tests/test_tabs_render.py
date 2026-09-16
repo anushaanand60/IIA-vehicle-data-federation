@@ -107,7 +107,7 @@ def run(page) -> AppTest:
 
 def headings(at: AppTest) -> list[str]:
     """Every real section heading on the page (Task A3's `components.section`)."""
-    return [m.value for m in at.markdown if 'class="vz-h"' in m.value]
+    return [m.value for m in at.markdown if 'class="cv-h"' in m.value]
 
 
 def has_heading(at: AppTest, title: str) -> bool:
@@ -275,14 +275,41 @@ def test_app_py_is_under_150_lines():
     assert len(lines) < 150, f"app/app.py is {len(lines)} lines"
 
 
-def test_app_file_renders_every_tab_with_no_exceptions():
+# ------------------------------------------------- (D2) the sidebar navigation shell
+
+def test_nav_lists_ten_pages():
     at = AppTest.from_file(str(ROOT / "app" / "app.py"), default_timeout=180).run()
     assert not at.exception, [e.value for e in at.exception]
-    assert len(at.tabs) == 9, "Investigate, Challan Guard, Watchlist, Reports, Citizen Check, "                               "Plan Trace, Catalog, Matcher, SQL Console"
+    assert at.sidebar.radio(key="nav").options == [
+        "Investigate", "Challan Guard", "Watchlist", "Reports", "Citizen Check",
+        "Plan Trace", "Catalog", "Matcher", "SQL Console", "Source Editor"]
+    assert not at.tabs, "the nine-tab strip is replaced by the sidebar menu"
 
 
-def test_app_masthead_states_what_the_system_does():
+def test_every_page_in_the_menu_renders_without_an_exception():
+    """One AppTest, ten selections: the menu is the only way into a page now, so a page that
+    raises on arrival would take the whole app down rather than one tab of it."""
+    at = AppTest.from_file(str(ROOT / "app" / "app.py"), default_timeout=300).run()
+    assert not at.exception, [e.value for e in at.exception]
+    for page in at.sidebar.radio(key="nav").options:
+        at.sidebar.radio(key="nav").set_value(page).run()
+        assert not at.exception, (page, [e.value for e in at.exception])
+        assert at.session_state["nav"] == page
+
+
+def test_the_sidebar_names_the_service_and_reports_source_health():
     at = AppTest.from_file(str(ROOT / "app" / "app.py"), default_timeout=180).run()
-    page = " ".join(m.value for m in at.markdown)
-    assert "Uninsured Vehicle Identification" in page
-    assert "Nothing is copied" in page
+    sidebar_html = " ".join(m.value for m in at.sidebar.markdown)
+    assert "Vehicle Compliance Mediator" in sidebar_html
+    assert "Ministry of Transportation" in sidebar_html
+    assert "cv-brand" in sidebar_html
+    assert "Sources" in sidebar_html  # the health chip strip's group label
+    assert any("holds no source data" in c.value for c in at.sidebar.caption)
+
+
+def test_a_page_query_param_opens_that_page():
+    at = AppTest.from_file(str(ROOT / "app" / "app.py"), default_timeout=180)
+    at.query_params["page"] = "Reports"
+    at.run()
+    assert not at.exception, [e.value for e in at.exception]
+    assert at.sidebar.radio(key="nav").value == "Reports"

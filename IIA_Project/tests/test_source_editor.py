@@ -1,9 +1,9 @@
-"""Source Editor sidebar (app/tabs/source_editor.py): the write form is built entirely from the
+"""Source Editor page (app/tabs/source_editor.py): the write form is built entirely from the
 wrapper's own GET /admin/actions answer, never from GUI-side knowledge of what a source can do.
 
 Uses a real HTTP wrapper on a free port, built with source_id="INS" so it carries the real INS
 admin action menu (renew/expire/add_policy/delete_policies), but registered in the catalog under
-an unrelated display id "TST" -- proving the sidebar only ever trusts what the wrapper reports at
+an unrelated display id "TST" -- proving the page only ever trusts what the wrapper reports at
 /admin/actions, not the catalog key.
 """
 from __future__ import annotations
@@ -88,11 +88,11 @@ def catalogued(writable, tmp_path, monkeypatch) -> str:
 
 
 def _page() -> None:
-    from app.tabs.source_editor import render_sidebar
-    render_sidebar()
+    from app.tabs.source_editor import render
+    render()
 
 
-def run_sidebar() -> AppTest:
+def run_page() -> AppTest:
     at = AppTest.from_function(_page, default_timeout=60).run()
     assert not at.exception, [e.value for e in at.exception]
     return at
@@ -101,23 +101,23 @@ def run_sidebar() -> AppTest:
 # ============================== (1) actions populated from the endpoint ==============================
 
 def test_actions_are_populated_from_the_wrapper_endpoint(catalogued):
-    at = run_sidebar()
-    at.sidebar.selectbox(key="se_source").select("TST").run()
-    action_options = at.sidebar.selectbox(key="se_action").options
+    at = run_page()
+    at.selectbox(key="se_source").select("TST").run()
+    action_options = at.selectbox(key="se_action").options
     assert set(action_options) == {"renew", "expire", "add_policy", "delete_policies"}
 
 
 # ==================== (2) select expire, apply -> row affected, is_active=0 ====================
 
 def test_expire_action_applies_and_query_reflects_it(catalogued):
-    at = run_sidebar()
-    at.sidebar.selectbox(key="se_source").select("TST").run()
-    at.sidebar.selectbox(key="se_action").select("expire").run()
-    at.sidebar.text_input(key="se_plate").set_value("DL-01-AB-1234").run()
-    at.sidebar.button(key="se_apply").click().run()
+    at = run_page()
+    at.selectbox(key="se_source").select("TST").run()
+    at.selectbox(key="se_action").select("expire").run()
+    at.text_input(key="se_plate").set_value("DL-01-AB-1234").run()
+    at.button(key="se_apply").click().run()
     assert not at.exception, [e.value for e in at.exception]
 
-    success_values = [s.value for s in at.sidebar.success]
+    success_values = [s.value for s in at.success]
     assert any("row(s) affected" in v for v in success_values)
     assert at.session_state["selected_plate"] == "DL-01-AB-1234"
 
@@ -133,11 +133,11 @@ def test_admin_disabled_shows_info_message(disabled, tmp_path, monkeypatch):
     monkeypatch.setattr(catalog, "META_DB_PATH", str(tmp_path / "meta_disabled.db"))
     catalog.register_source("TST", "Test Source (TST)", "SQLite", disabled,
                             "vehicle_reg", "OFFICIAL", 0.9, ["insurance_expiry"])
-    at = run_sidebar()
-    at.sidebar.selectbox(key="se_source").select("TST").run()
-    info_values = [i.value for i in at.sidebar.info]
+    at = run_page()
+    at.selectbox(key="se_source").select("TST").run()
+    info_values = [i.value for i in at.info]
     assert any("ADMIN=off" in v or "disabled" in v.lower() for v in info_values)
-    assert "se_action" not in {s.key for s in at.sidebar.selectbox}
+    assert "se_action" not in {s.key for s in at.selectbox}
 
 
 # ==================== (4) dead base_url -> error, no exception ====================
@@ -146,8 +146,8 @@ def test_dead_source_is_reported_not_raised(tmp_path, monkeypatch):
     monkeypatch.setattr(catalog, "META_DB_PATH", str(tmp_path / "meta_dead.db"))
     catalog.register_source("TST", "Test Source (TST)", "SQLite", f"http://127.0.0.1:{free_port()}",
                             "vehicle_reg", "OFFICIAL", 0.9, ["insurance_expiry"])
-    at = run_sidebar()
-    at.sidebar.selectbox(key="se_source").select("TST").run()
+    at = run_page()
+    at.selectbox(key="se_source").select("TST").run()
     assert not at.exception, [e.value for e in at.exception]
-    warning_values = [w.value for w in at.sidebar.warning]
+    warning_values = [w.value for w in at.warning]
     assert any("DOWN" in v for v in warning_values)

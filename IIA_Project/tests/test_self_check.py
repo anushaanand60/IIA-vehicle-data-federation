@@ -240,7 +240,7 @@ def test_unknown_plate_shows_not_registered(cluster):
 def test_app_file_renders_every_tab_with_no_exceptions():
     at = AppTest.from_file(str(ROOT / "app" / "app.py"), default_timeout=180).run()
     assert not at.exception, [e.value for e in at.exception]
-    assert len(at.tabs) == 9  # Challan Guard joined the shell (Workstream A, Task A3)
+    assert len(at.sidebar.radio(key="nav").options) == 10  # the sidebar menu (Task D2)
 
 
 # ----------------------------------------------------------- (6) citizen dispute loop

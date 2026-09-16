@@ -1,4 +1,4 @@
-"""Source Editor sidebar: writes driven entirely by each wrapper's own admin action menu.
+"""Source Editor page: writes driven entirely by each wrapper's own admin action menu.
 
 Replaces the old hard-coded "Live Source Data Mutator" (five fixed forms baked into app.py). That
 panel assumed it knew every source's actions and parameters ahead of time; this one asks the
@@ -24,7 +24,7 @@ if str(_APP_DIR) not in sys.path:
 import httpx  # noqa: E402
 import streamlit as st  # noqa: E402
 
-from components import group_label, section  # noqa: E402
+from components import group_label, page_head, panel, section  # noqa: E402
 from mediator.catalog import get_source_catalog  # noqa: E402
 
 ACTIONS_TIMEOUT_S = 3.0
@@ -88,9 +88,15 @@ def _apply(source_id: str, base: str, action: str, plate: str, params: dict[str,
     st.caption("Re-run the plate in Investigate — the mediator reads it live.")
 
 
-def render_sidebar() -> None:
-    with st.sidebar:
-        section("Source editor",
+def render() -> None:
+    """The Source Editor page. It lives in the main content area rather than the sidebar: the
+    sidebar carries navigation and the cluster's health, and a write form is neither."""
+    page_head("Source editor",
+              "Change an agency's own record, from the agency's own admin menu — so the demo can "
+              "show the mediator reading the change live, with nothing cached in between.")
+
+    with panel("se_form"):
+        section("Choose a source and an action",
                 "Writes go to the agency's own database, through its wrapper's named admin "
                 "actions — never arbitrary SQL, never a direct connection.")
 
@@ -144,14 +150,17 @@ def render_sidebar() -> None:
             if value != "":
                 params[name] = value
 
-        group_label("CLI fallback — run on the laptop that owns this source")
-        st.code(_cli_line(source_id, action, plate, params), language="bash")
-
-        if st.button("Apply", key="se_apply", type="primary", width="stretch"):
+        if st.button("Apply this change", key="se_apply", type="primary"):
             _apply(source_id, base, action, plate, params)
+
+    with panel("se_cli"):
+        section("If this laptop cannot be reached",
+                "The same write, run by the agency itself on the machine that owns the source.")
+        group_label("CLI fallback")
+        st.code(_cli_line(source_id, action, plate, params), language="bash")
 
 
 if __name__ == "__main__":
     import streamlit as _st
     _st.set_page_config(page_title="Source Editor", page_icon=":material/edit:", layout="wide")
-    render_sidebar()
+    render()
