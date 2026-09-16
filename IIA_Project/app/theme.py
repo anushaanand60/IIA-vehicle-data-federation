@@ -124,7 +124,10 @@ def _base() -> str:
     would rescale every control on the page instead of only the prose.
     """
     return """
-:root {color-scheme: light;}
+/* `only` is the opt-out: it tells the browser this page supports exactly one scheme, so a
+   viewer whose OS is dark — or whose browser offers to auto-darken pages — still gets the page
+   the way it was designed, rather than an inverted half of it. */
+:root, html {color-scheme: light only;}
 html, body, .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"],
 [data-testid="stHeader"], [data-testid="stBottomBlockContainer"] {
   background:var(--cv-ground) !important;}
@@ -176,9 +179,10 @@ def _sidebar() -> str:
   border:2px solid #0B0C0C; color:#0B0C0C; font-family:var(--cv-font-mono); font-weight:600;
   font-size:0.9rem; display:flex; align-items:center; justify-content:center;
   letter-spacing:.02em;}
-.cv-brand .t {color:#FFFFFF; font-family:var(--cv-font-display); font-weight:700;
-  font-size:1.05rem; line-height:1.25;}
-.cv-brand .s {color:#DCE6F2; font-size:0.9rem; line-height:1.3; margin-top:2px;}
+.cv-brand .t {display:block; color:#FFFFFF; font-family:var(--cv-font-display);
+  font-weight:700; font-size:1.05rem; line-height:1.25;}
+.cv-brand .s {display:block; color:#DCE6F2; font-size:0.9rem; line-height:1.35;
+  margin-top:4px;}
 /* Navigation: one radio, drawn as a menu. The radio dot is visually hidden rather than
    removed, so the menu is still reachable and operable from the keyboard. */
 [data-testid="stSidebar"] [role="radiogroup"] {gap:2px;}
@@ -238,16 +242,28 @@ def _controls() -> str:
 [data-testid="stBaseButton-secondary"]:hover, [data-testid="stDownloadButton"] button:hover {
   background:#EEF2F6 !important;}
 button:active, [role="button"]:active {transform:translateY(1px);}
-*:focus-visible {outline:3px solid var(--cv-focus) !important; outline-offset:0;
-  box-shadow:0 0 0 5px var(--cv-ink) inset;}
-input, textarea, [data-baseweb="select"] > div, [data-baseweb="input"] {
-  background:var(--cv-panel) !important; color:var(--cv-ink) !important;
-  border-color:var(--cv-ink) !important; border-radius:4px;}
-[data-baseweb="input"], [data-baseweb="select"] > div, [data-baseweb="textarea"] {
-  border-width:2px !important; min-height:44px;}
+/* Scoped to things you can actually operate: a blanket `*:focus-visible` also catches the
+   scrollable main region, which Streamlit gives tabindex="0", and rings the whole page. */
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible,
+textarea:focus-visible, summary:focus-visible, [role="button"]:focus-visible,
+[role="radiogroup"] label:focus-within, [data-baseweb="select"]:focus-within {
+  outline:3px solid var(--cv-focus) !important; outline-offset:0;}
+button:focus-visible {box-shadow:0 0 0 4px var(--cv-ink) inset;}
+/* The border belongs to baseweb's root element, not to the <input> inside it: set it there or
+   a number input comes out with one stray edge and a text area with none at all. */
+[data-baseweb="input"], [data-baseweb="textarea"], [data-baseweb="select"] > div,
+[data-testid="stNumberInputContainer"] {
+  border:2px solid var(--cv-ink) !important; border-radius:4px !important;
+  background:var(--cv-panel) !important; min-height:44px;}
+[data-baseweb="base-input"], input, textarea {
+  border:none !important; background:transparent !important; color:var(--cv-ink) !important;}
 [data-testid="stWidgetLabel"] p {color:var(--cv-ink); font-weight:600; font-size:1rem;}
-[data-testid="stCaptionContainer"] p {color:var(--cv-ink-muted); font-size:0.95rem;
-  max-width:70ch;}
+/* Captions are the quiet tier, not a faint one: `ink2` clears 7.5:1 on a white panel, where
+   `ink_muted` only just clears AA and reads washed out on a projector. */
+[data-testid="stMain"] [data-testid="stCaptionContainer"],
+[data-testid="stMain"] [data-testid="stCaptionContainer"] * {color:var(--cv-ink2) !important;
+  font-size:0.95rem;}
+[data-testid="stCaptionContainer"] p {max-width:70ch;}
 [data-baseweb="popover"], [data-baseweb="menu"], [data-baseweb="popover"] *,
 [data-baseweb="menu"] *, [data-testid="stTooltipContent"], [data-testid="stTooltipContent"] * {
   color:var(--cv-ink);}
@@ -261,11 +277,19 @@ input, textarea, [data-baseweb="select"] > div, [data-baseweb="input"] {
   background:var(--cv-panel);}
 [data-testid="stTable"] td, [data-testid="stTable"] th {color:var(--cv-ink);
   font-size:1rem; background:var(--cv-panel);}
+/* The tint and the bar belong to the alert's own container; the kind is only knowable from the
+   test id of the element inside it, hence :has(). */
 [data-testid="stAlert"], [data-testid="stAlert"] * {color:var(--cv-ink);}
-[data-testid="stAlertContentInfo"] {background:#E8F1FA; border-left:5px solid var(--cv-info);}
-[data-testid="stAlertContentSuccess"] {background:#E7F5EC; border-left:5px solid var(--cv-ok);}
-[data-testid="stAlertContentWarning"] {background:#FDF1E5; border-left:5px solid var(--cv-warn);}
-[data-testid="stAlertContentError"] {background:#FBE9E7; border-left:5px solid var(--cv-bad);}
+[data-testid="stAlertContainer"] {border-radius:var(--cv-radius) !important;
+  padding:16px 20px !important; font-size:1rem;}
+[data-testid="stAlertContainer"]:has([data-testid="stAlertContentInfo"]) {
+  background:#E8F1FA !important; border-left:5px solid var(--cv-info) !important;}
+[data-testid="stAlertContainer"]:has([data-testid="stAlertContentSuccess"]) {
+  background:#E7F5EC !important; border-left:5px solid var(--cv-ok) !important;}
+[data-testid="stAlertContainer"]:has([data-testid="stAlertContentWarning"]) {
+  background:#FDF1E5 !important; border-left:5px solid var(--cv-warn) !important;}
+[data-testid="stAlertContainer"]:has([data-testid="stAlertContentError"]) {
+  background:#FBE9E7 !important; border-left:5px solid var(--cv-bad) !important;}
 [data-baseweb="tab-highlight"] {background:var(--cv-action) !important;}
 [data-baseweb="tab"] p {color:var(--cv-ink); font-weight:600; font-size:1rem;}
 @media (prefers-reduced-motion: reduce) {
@@ -297,8 +321,7 @@ def _primitives() -> str:
 [class*="st-key-cvp_"] {background:var(--cv-panel); border:1px solid var(--cv-line);
   border-radius:var(--cv-radius); box-shadow:var(--cv-shadow); padding:24px 28px;
   margin-bottom:24px;}
-[class*="st-key-cvp_"] .cv-h:first-child, [class*="st-key-cvp_"] [data-testid="stVerticalBlock"]
-  > [data-testid="stElementContainer"]:first-child .cv-h {margin-top:0;}
+[class*="st-key-cvp_"] > [data-testid="stElementContainer"]:first-child .cv-h {margin-top:0;}
 .cv-panel {background:var(--cv-panel); border:1px solid var(--cv-line);
   border-radius:var(--cv-radius); box-shadow:var(--cv-shadow); padding:24px 28px;
   margin:0 0 24px; color:var(--cv-ink);}
@@ -352,7 +375,11 @@ def _primitives() -> str:
 
 
 def _variants() -> str:
-    """Tinted surface + left bar per semantic variant, for banners and status chips."""
+    """Tinted surface + left bar per semantic variant, for banners and status chips.
+
+    Emitted last: the legacy `.fm-banner` / `.fm-chip` base rules carry the same specificity, so
+    a tint written before them would lose the cascade and every banner would come out plain white.
+    """
     out = []
     for variant in (*DECISION, *STATUS):
         token = f"var(--cv-{variant})"
@@ -441,8 +468,8 @@ def _css() -> str:
 {_sidebar()}
 {_controls()}
 {_primitives()}
-{_variants()}
 {_legacy_aliases()}
+{_variants()}
 </style>"""
 
 
