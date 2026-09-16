@@ -12,16 +12,22 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parents[2]
 if str(_ROOT) not in sys.path:  # `streamlit run` puts only this file's folder on sys.path
     sys.path.insert(0, str(_ROOT))
+_APP_DIR = Path(__file__).resolve().parents[1]
+if str(_APP_DIR) not in sys.path:
+    sys.path.insert(0, str(_APP_DIR))
 
 import pandas as pd  # noqa: E402
 import streamlit as st  # noqa: E402
 
+from components import group_label, section  # noqa: E402
 from mediator.catalog import get_query_log  # noqa: E402
 from mediator.report import generate_report_pdf, list_reports  # noqa: E402
 
 
 def render() -> None:
-    st.subheader("Ministry of Transportation Audit Reports Log (`REPORT_LOG`)")
+    section("Ministry audit reports",
+            "Every decision an operator chose to file with the Ministry of Transportation "
+            "(REPORT_LOG), with the evidence bundle it rested on and its official PDF.")
 
     reports = list_reports()
     if not reports:
@@ -57,7 +63,6 @@ def render() -> None:
                         key=f"rp_dl_{report_id}",
                     )
 
-    st.divider()
     _render_audit_log()
 
 
@@ -65,13 +70,15 @@ def _render_audit_log() -> None:
     """Task 2.6: every federated query the mediator has run, not only the ones an operator chose
     to file. `QUERY_LOG` (`mediator/catalog.py`) stores the decision and the plan trace metadata
     only -- source_id/status pairs and the verdict -- never the raw rows a source returned."""
-    st.subheader("Query audit log")
-    st.caption(
-        "Decisions and traces only — no source rows are ever stored (virtual integration)."
-    )
+    section("Query audit log",
+            "Every federated query the mediator has run, not only the ones an operator filed. "
+            "Decisions and traces only — no source rows are ever stored, which is the "
+            "point of virtual integration.")
 
+    group_label("Filter")
     plate_filter = st.text_input(
-        "Filter by plate", value="", key="rp_audit_plate"
+        "Plate", value="", key="rp_audit_plate", placeholder="DL05CD9876",
+        label_visibility="collapsed",
     ).strip().upper()
 
     rows = get_query_log(limit=100, plate=plate_filter or None)

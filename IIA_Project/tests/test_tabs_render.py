@@ -105,6 +105,15 @@ def run(page) -> AppTest:
     return at
 
 
+def headings(at: AppTest) -> list[str]:
+    """Every real section heading on the page (Task A3's `components.section`)."""
+    return [m.value for m in at.markdown if 'class="vz-h"' in m.value]
+
+
+def has_heading(at: AppTest, title: str) -> bool:
+    return any(title in h for h in headings(at))
+
+
 # --------------------------------------------------------------------- Plan Trace
 
 def _plan_trace_page() -> None:
@@ -162,7 +171,7 @@ def test_matcher_tab_runs_against_a_live_wrapper(reg_cluster):
     at.button(key="mt_run").click().run()
     assert not at.exception, [e.value for e in at.exception]
     # A real REG schema always matches at least the plate/owner/make correspondences.
-    assert any(d.value.startswith("##### Discovered Correspondences") for d in at.markdown)
+    assert has_heading(at, "Discovered correspondences"), headings(at)
 
 
 # ----------------------------------------------------------------------- Catalog
@@ -210,12 +219,72 @@ def test_reports_tab_lists_a_filed_report(reg_cluster):
 
 # ------------------------------------------------------------------------- app.py
 
+# ------------------------------------------------- (A3) every tab leads with a real heading
+
+def test_plan_trace_tab_leads_with_a_section_heading():
+    def page() -> None:
+        import streamlit as st
+        from app.tabs.plan_trace import render_tab
+        st.session_state["latest_result"] = {
+            "profile": {"plate_number": "DL01AB1234"},
+            "plan_trace": {"canonical_plate": "DL01AB1234", "raw_plate": "DL01AB1234",
+                           "requested_attrs": ["all"], "sources_contacted": ["REG"],
+                           "source_count": 1, "total_elapsed_ms": 9,
+                           "sources_detail": {"REG": {"status": "OK", "elapsed_ms": 9,
+                                                      "row_count": 1}},
+                           "sqls": {"REG": "SELECT 1"}},
+        }
+        render_tab()
+
+    at = run(page)
+    assert has_heading(at, "Sources asked and skipped"), headings(at)
+    assert has_heading(at, "SQL sent per source"), headings(at)
+
+
+def test_matcher_tab_leads_with_a_section_heading(reg_cluster):
+    at = run(_matcher_page)
+    assert has_heading(at, "Hybrid schema matching"), headings(at)
+
+
+def test_catalog_tab_leads_with_a_section_heading(reg_cluster):
+    at = run(_catalog_page)
+    assert has_heading(at, "Registered data sources"), headings(at)
+    assert has_heading(at, "Register a new source"), headings(at)
+
+
+def test_reports_tab_leads_with_a_section_heading(reg_cluster):
+    catalog.init_meta_db()
+    at = run(_reports_page)
+    assert has_heading(at, "Ministry audit reports"), headings(at)
+    assert has_heading(at, "Query audit log"), headings(at)
+
+
+def test_no_tab_uses_a_markdown_pseudo_heading():
+    """`st.subheader` / `###` / `#####` and captions-as-headings are all replaced by
+    `components.section`, so a tab body may no longer contain them."""
+    offenders = []
+    for path in sorted((ROOT / "app" / "tabs").glob("*.py")):
+        if path.name in ("self_check.py", "challan_guard.py"):
+            continue  # another workstream owns these; Task C1 restyles them
+        text = path.read_text(encoding="utf-8")
+        if "st.subheader(" in text or 'st.markdown("#' in text or "st.markdown(f\"#" in text:
+            offenders.append(path.name)
+    assert offenders == [], offenders
+
+
 def test_app_py_is_under_150_lines():
     lines = (ROOT / "app" / "app.py").read_text(encoding="utf-8").splitlines()
     assert len(lines) < 150, f"app/app.py is {len(lines)} lines"
 
 
-def test_app_file_renders_seven_tabs_with_no_exceptions():
+def test_app_file_renders_every_tab_with_no_exceptions():
     at = AppTest.from_file(str(ROOT / "app" / "app.py"), default_timeout=180).run()
     assert not at.exception, [e.value for e in at.exception]
-    assert len(at.tabs) == 8
+    assert len(at.tabs) == 9, "Investigate, Challan Guard, Watchlist, Reports, Citizen Check, "                               "Plan Trace, Catalog, Matcher, SQL Console"
+
+
+def test_app_masthead_states_what_the_system_does():
+    at = AppTest.from_file(str(ROOT / "app" / "app.py"), default_timeout=180).run()
+    page = " ".join(m.value for m in at.markdown)
+    assert "Uninsured Vehicle Identification" in page
+    assert "Nothing is copied" in page

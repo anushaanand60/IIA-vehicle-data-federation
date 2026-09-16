@@ -156,8 +156,11 @@ def test_reports_tab_shows_the_audit_log_section(local_cluster):
 
     at = AppTest.from_function(_reports_page, default_timeout=120).run()
     assert not at.exception, [e.value for e in at.exception]
-    assert any("Query audit log" in s.value for s in at.subheader)
-    assert any("no source rows are ever stored" in c.value.lower() for c in at.caption)
+    # Task A3 turned the tab's pseudo-headings into `components.section`, so the heading and
+    # its lead are one markdown block rather than a subheader plus a caption.
+    page = " ".join(str(m.value) for m in at.markdown)
+    assert "Query audit log" in page
+    assert "no source rows are ever stored" in page.lower()
 
     tables = [df.value for df in at.dataframe if "plate" in df.value.columns]
     assert tables, "no audit dataframe rendered"

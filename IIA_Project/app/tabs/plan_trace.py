@@ -5,7 +5,6 @@ render(response) is the tab body for app/app.py. Standalone demo against whateve
 """
 from __future__ import annotations
 
-import html
 import sys
 from pathlib import Path
 
@@ -20,8 +19,9 @@ import altair as alt  # noqa: E402
 import pandas as pd  # noqa: E402
 import streamlit as st  # noqa: E402
 
+from components import chip, chip_strip, kpi_row, section  # noqa: E402
 from mediator.contract import GLOBAL_ATTRIBUTES, FederationResponse  # noqa: E402
-from theme import status_class  # noqa: E402
+from theme import TOKENS, status_class  # noqa: E402
 
 # A status is a state, so it gets a status colour plus an icon and a word: never colour alone.
 BADGES = {"OK": ("green", "check_circle", "OK"), "TIMEOUT": ("yellow", "schedule", "Timeout"),
@@ -70,24 +70,25 @@ def render(response: FederationResponse) -> None:
     trace, results = response.trace, response.results
     asked = len(trace.sources_selected)
     everything = set(trace.requested_attrs) >= set(GLOBAL_ATTRIBUTES)  # a registry may add attributes (UC6)
-    st.caption(f"Plate **{trace.plate_normalized}**, entered as `{trace.plate_raw}`. Requested: "
-               f"{'the full profile' if everything else ', '.join(trace.requested_attrs)}.")
+    section("How this answer was assembled",
+            f"Plate {trace.plate_normalized}, entered as {trace.plate_raw}. Requested: "
+            f"{'the full profile' if everything else ', '.join(trace.requested_attrs)}.")
 
     with st.container(horizontal=True):
         st.metric("Sources asked", f"{asked} of {asked + len(trace.sources_skipped)}", border=True)
         st.metric("Answered", f"{sum(r.status == 'OK' for r in results)} of {asked}", border=True)
         st.metric("Total time", f"{trace.total_elapsed_ms} ms", border=True)
 
-    st.subheader("Source selection")
+    section("Source selection", "Which sources could answer, and why the rest were left out.")
     st.table(selection_table(response).set_index("Source"))
 
-    st.subheader("Latency per source")
+    section("Latency per source")
     if results:
         st.altair_chart(latency_chart(latency_frame(response), _theme()))
     else:
         st.caption("No source covers the requested attributes, so none was asked.")
 
-    st.subheader("What each source was sent")
+    section("What each source was sent")
     for r in results:
         with st.container(border=True):
             st.markdown(f"**{r.source_id}** {badge(r.status)} :gray[{r.row_count} row(s), {r.elapsed_ms} ms]")
@@ -100,36 +101,21 @@ def render(response: FederationResponse) -> None:
                     st.dataframe(pd.DataFrame(r.rows), hide_index=True)
 
 
-def _tab_chip(source_id: str, detail: dict) -> str:
+def _status_chip(source_id: str, detail: dict) -> str:
+    """One source's outcome as a filled pill: source, the status *word*, rows and latency."""
     variant = status_class(str(detail.get("status") or ""))
-    status_word = str(detail.get("status") or "DOWN").upper()
-    elapsed = detail.get("elapsed_ms")
-    rows = detail.get("row_count")
-    meta = "—" if elapsed is None else f"{elapsed} ms · {rows if rows is not None else '—'} rows"
-    return (
-        f'<span class="fm-chip fm-chip--{variant}"><span class="fm-dot"></span>'
-        f"{html.escape(source_id)} · {html.escape(status_word)}"
-        f'<span class="fm-meta">{html.escape(meta)}</span></span>'
-    )
-
-
-def _tab_not_asked_chip(source_id: str) -> str:
-    muted = ("border:1px dashed var(--fm-rule);background:var(--fm-paper);"
-             "color:var(--fm-ink_muted);")
-    return (
-        f'<span class="fm-chip" style="{muted}">'
-        f'<span class="fm-dot" style="background:var(--fm-ink_muted);"></span>'
-        f"{html.escape(source_id)} · NOT ASKED</span>"
-    )
+    word = str(detail.get("status") or "DOWN").upper()
+    elapsed, rows = detail.get("elapsed_ms"), detail.get("row_count")
+    meta = "" if elapsed is None else f" · {elapsed} ms · {rows if rows is not None else 0} rows"
+    return chip(f"{source_id} · {word}{meta}", TOKENS[variant])
 
 
 def _chip_row(sources_detail: dict) -> None:
-    """Status chips per source and per catalogued-but-unasked source.
+    """Status chips per source, plus every catalogued source this query did not need.
 
-    Draws its own row (`.fm-chip` classes from `theme.py`) instead of calling
-    `components.source_chips`, which renders under the fixed key `fm_chip_row` -- the Investigate
-    tab already claims that key in the same page, and two tabs sharing one key in a single script
-    run raises a duplicate-element-key error. This tab keeps its own scoped key (`pt_chip_row`).
+    One markdown block rather than a keyed container: `components.source_chips` renders under
+    the fixed key `fm_chip_row`, which the Investigate tab already claims on the same page, and
+    two elements sharing one key in a single script run is a duplicate-key error.
     """
     try:
         from mediator.catalog import get_source_catalog
@@ -140,11 +126,8 @@ def _chip_row(sources_detail: dict) -> None:
     if not sources_detail and not skipped:
         st.caption("No source was asked for this query.")
         return
-    with st.container(horizontal=True, key="pt_chip_row"):
-        for source_id, detail in sources_detail.items():
-            st.markdown(_tab_chip(source_id, detail), unsafe_allow_html=True)
-        for source_id in skipped:
-            st.markdown(_tab_not_asked_chip(source_id), unsafe_allow_html=True)
+    chip_strip([_status_chip(sid, detail) for sid, detail in sources_detail.items()]
+               + [chip(f"{sid} · NOT ASKED", TOKENS["undetermined"]) for sid in skipped])
 
 
 def render_tab() -> None:
@@ -168,21 +151,25 @@ def render_tab() -> None:
     contacted = trace.get("sources_contacted") or []
     answered_ok = sum(1 for detail in sources_detail.values() if detail.get("status") == "OK")
 
-    st.caption(
-        f"Plate **{trace.get('canonical_plate', '—')}**, entered as "
-        f"`{trace.get('raw_plate', '—')}`. Requested: "
-        f"{', '.join(trace.get('requested_attrs') or []) or 'the full profile'}."
+    section(
+        "How this answer was assembled",
+        f"Plate {trace.get('canonical_plate', '—')}, entered as "
+        f"{trace.get('raw_plate', '—')}. Requested: "
+        f"{', '.join(trace.get('requested_attrs') or []) or 'the full profile'}.",
     )
 
-    with st.container(horizontal=True, key="pt_metrics"):
-        st.metric("Sources asked", len(contacted), border=True)
-        st.metric("Answered OK", f"{answered_ok} of {len(contacted)}", border=True)
-        st.metric("Total time", f"{trace.get('total_elapsed_ms', 0)} ms", border=True)
+    kpi_row([("Sources asked", len(contacted)),
+             ("Answered OK", f"{answered_ok} of {len(contacted)}"),
+             ("Total time", f"{trace.get('total_elapsed_ms', 0)} ms")])
 
-    st.subheader("Sources asked and skipped")
-    _chip_row(sources_detail)  # `.fm-chip` badges; catalogued-but-unasked sources shown muted
+    section("Sources asked and skipped",
+            "A source is asked only when it covers one of the requested attributes; the rest "
+            "are named here so the plan is legible, not silent.")
+    _chip_row(sources_detail)
 
-    st.subheader("SQL sent per source")
+    section("SQL sent per source",
+            "Each statement is built from that source's own mapping rules — the mediator holds "
+            "no source-specific SQL.")
     if sqls:
         for source_id, sql_text in sqls.items():
             detail = sources_detail.get(source_id, {})
@@ -191,7 +178,7 @@ def render_tab() -> None:
     else:
         st.caption("No source needed to be asked for this query.")
 
-    st.subheader("Latency per source")
+    section("Latency per source")
     if sources_detail:
         frame = pd.DataFrame(
             [{"Source": sid, "Latency (ms)": detail.get("elapsed_ms", 0)}

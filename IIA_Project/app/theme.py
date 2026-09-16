@@ -185,6 +185,11 @@ def _primitives() -> str:
   border-left:5px solid var(--vz-accent); padding-left:16px; margin:40px 0 12px;
   text-wrap:balance;}
 .vz-lead {max-width:70ch; color:var(--vz-ink2); font-size:1.0625rem; margin:0 0 16px;}
+/* The sidebar is ~300px wide: the same heading, one step down, so it does not wrap to four
+   lines. Still a real heading with the beacon bar, not a caption. */
+[data-testid="stSidebar"] .vz-h {font-size:1.15rem; margin:14px 0 10px; padding-left:12px;
+  border-left-width:4px;}
+[data-testid="stSidebar"] .vz-lead {font-size:0.9375rem; margin:0 0 10px;}
 .vz-grouplabel {font-family:var(--vz-font-mono); font-size:0.8rem; letter-spacing:.08em;
   text-transform:uppercase; color:var(--vz-ink-muted); margin:18px 0 6px;}
 .vz-hero {background:var(--vz-plate); border:1px solid var(--vz-plate-line);

@@ -13,12 +13,16 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parents[2]
 if str(_ROOT) not in sys.path:  # `streamlit run` puts only this file's folder on sys.path
     sys.path.insert(0, str(_ROOT))
+_APP_DIR = Path(__file__).resolve().parents[1]
+if str(_APP_DIR) not in sys.path:
+    sys.path.insert(0, str(_APP_DIR))
 
 import httpx  # noqa: E402
 import pandas as pd  # noqa: E402
 import plotly.express as px  # noqa: E402
 import streamlit as st  # noqa: E402
 
+from components import group_label, section  # noqa: E402
 from mediator.catalog import get_source_catalog, save_mapping  # noqa: E402
 from mediator.matcher import match_source_schema  # noqa: E402
 
@@ -37,11 +41,11 @@ def _fetch_schema(base_url: str, source_id: str) -> dict:
 
 
 def render() -> None:
-    st.subheader("Hybrid Schema Matching Algorithm")
-    st.markdown(
-        "Discovers correspondences between autonomous source schemas and the mediated "
-        "`VEHICLE_PROFILE` using: **Score = 0.40 · N (lexical + thesaurus) + 0.20 · C "
-        "(type/constraint) + 0.40 · I (instance profiles)**."
+    section(
+        "Hybrid schema matching",
+        "Discovers correspondences between an autonomous source schema and the mediated "
+        "VEHICLE_PROFILE. Score = 0.40 · N (lexical + thesaurus) + 0.20 · C "
+        "(type/constraint) + 0.40 · I (instance profiles).",
     )
 
     sources_avail = list(get_source_catalog().keys())
@@ -49,9 +53,12 @@ def render() -> None:
         st.info("No sources are registered in the catalog yet.")
         return
 
+    group_label("Source to match")
     c_src, c_btn = st.columns([2, 1])
-    chosen_source = c_src.selectbox("Select Source to Match", sources_avail, key="mt_source")
-    run_match = c_btn.button("Run Schema Matcher", type="primary", key="mt_run")
+    chosen_source = c_src.selectbox("Source", sources_avail, key="mt_source",
+                                    label_visibility="collapsed")
+    run_match = c_btn.button("Run schema matcher", type="primary", key="mt_run",
+                             width="stretch")
 
     state_key = f"mt_res_{chosen_source}"
     if run_match:
@@ -76,11 +83,13 @@ def render() -> None:
             aspect="auto",
         )
         fig.update_layout(
-            title=f"Similarity Matrix Heatmap ({chosen_source} vs Global Schema)", height=450
+            title=f"Similarity matrix — {chosen_source} against the global schema", height=450
         )
         st.plotly_chart(fig, width="stretch", key="mt_heatmap")
 
-    st.markdown(f"##### Discovered Correspondences for {chosen_source} (Threshold θ ≥ 0.55)")
+    section(f"Discovered correspondences — {chosen_source}",
+            "Every pair scoring at or above the threshold θ ≥ 0.55. Persisting them writes "
+            "the mapping rules the decomposer builds each source's SQL from.")
     corrs = m_res.get("correspondences", [])
     if corrs:
         corr_df = pd.DataFrame([
@@ -97,7 +106,8 @@ def render() -> None:
         ])
         st.dataframe(corr_df, width="stretch", key="mt_corr_table")
 
-        if st.button("Accept & Persist All Correspondences to Registry", key="mt_persist"):
+        if st.button("Accept and persist all correspondences to the registry",
+                     key="mt_persist", type="primary"):
             for c in corrs:
                 save_mapping(
                     source_id=chosen_source,
@@ -110,10 +120,8 @@ def render() -> None:
 
     unmapped = m_res.get("unmapped", [])
     if unmapped:
-        st.markdown(
-            f"**Unmapped Attributes ({len(unmapped)}):** "
-            + ", ".join(f"`{u['source_attr']}`" for u in unmapped)
-        )
+        group_label(f"Unmapped source columns ({len(unmapped)})")
+        st.markdown(", ".join(f"`{u['source_attr']}`" for u in unmapped))
 
 
 if __name__ == "__main__":
