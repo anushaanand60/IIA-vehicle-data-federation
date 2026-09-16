@@ -18,7 +18,9 @@ class TestDecomposer(unittest.TestCase):
 
     def test_planner_uc2(self):
         plan = plan_query("DL01AB1234", requested_attrs=["all"])
-        self.assertEqual(len(plan["sources"]), 4)
+        from mediator.catalog import get_source_catalog
+        self.assertEqual(set(plan["sources"]), set(get_source_catalog()))  # every registered source (PUC too after UC6)
+        self.assertGreaterEqual(len(plan["sources"]), 4)
 
     def test_decomposer_pushdown(self):
         sql_reg = decompose_query("REG", "DL01AB1234")

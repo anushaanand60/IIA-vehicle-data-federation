@@ -1,16 +1,17 @@
-import os
-from sources.base_wrapper import create_source_wrapper
+"""PUC wrapper: Pollution-Under-Control certificates (UC6, the fifth source). SQLite, API on :8005.
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "puc.db")
-WHITELIST = ["POLLUTION_CERT"]
+Same template as the other four sources, so it exposes /health, /schema, /query and the
+opt-in-by-default /admin/* endpoints. PUC_DB_URL selects another engine.
+"""
+from sources.defaults import sqlite_default
+from sources.wrapper_template import from_env, serve
 
-app = create_source_wrapper(
-    source_id="PUC",
-    dbms_name="SQLite",
-    db_path=DB_PATH,
-    whitelisted_tables=WHITELIST
+app = from_env(
+    "PUC",
+    default_url=sqlite_default("PUC"),
+    default_dbms="SQLite",
+    default_tables=["POLLUTION_CERT"],
 )
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8005)
+    serve(app, default_port=8005)
