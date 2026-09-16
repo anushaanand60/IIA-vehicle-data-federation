@@ -218,4 +218,4 @@ def test_app_py_is_under_150_lines():
 def test_app_file_renders_seven_tabs_with_no_exceptions():
     at = AppTest.from_file(str(ROOT / "app" / "app.py"), default_timeout=180).run()
     assert not at.exception, [e.value for e in at.exception]
-    assert len(at.tabs) == 7
+    assert len(at.tabs) == 8

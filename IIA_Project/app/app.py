@@ -4,7 +4,7 @@ Identifying Uninsured Vehicles Across Autonomous Heterogeneous Databases.
 
 Every tab body lives in its own `app/tabs/*.py` module (`render()`, Plan Trace's is
 `render_tab()`); this file is only setup, theme, masthead, cluster start-up, the sidebar and
-the tab shells. 7 Tabs:
+the tab shells. 8 Tabs:
   1. Investigate         (tabs/investigate.py)
   2. Plan Trace          (tabs/plan_trace.py)
   3. Matcher & Heatmap   (tabs/matcher_tab.py)
@@ -12,6 +12,7 @@ the tab shells. 7 Tabs:
   5. Ministry Reports    (tabs/reports.py)
   6. SQL Console         (tabs/sql_console.py)
   7. Watchlist & Alerts  (tabs/watchlist.py)
+  8. Citizen Self-Check  (tabs/self_check.py)
 """
 
 import sys
@@ -58,6 +59,7 @@ from tabs.matcher_tab import render as render_matcher  # noqa: E402
 from tabs.catalog_tab import render as render_catalog  # noqa: E402
 from tabs.reports import render as render_reports  # noqa: E402
 from tabs.watchlist import render as render_watchlist  # noqa: E402
+from tabs.self_check import render as render_self_check  # noqa: E402
 from theme import inject, masthead  # noqa: E402
 
 # The whole look of the page comes from app/theme.py: tokens -> CSS variables, injected once.
@@ -69,7 +71,7 @@ masthead(
 
 # Navigation tabs
 (tab_investigate, tab_plantrace, tab_matcher, tab_catalog, tab_reports, tab_sqlconsole,
- tab_watchlist) = st.tabs([
+ tab_watchlist, tab_selfcheck) = st.tabs([
     "🔍 1. Investigate",
     "🗺️ 2. Plan Trace",
     "🧬 3. Matcher & Heatmap",
@@ -77,6 +79,7 @@ masthead(
     "📑 5. Ministry Reports",
     "🧪 6. SQL Console",
     "🚨 7. Watchlist & Alerts",
+    "🙋 8. Citizen Self-Check",
 ])
 
 # Each wrapper's /query connection is read-only by construction -- that boundary is never touched
@@ -113,3 +116,6 @@ with tab_sqlconsole:
 
 with tab_watchlist:
     render_watchlist()
+
+with tab_selfcheck:
+    render_self_check()
