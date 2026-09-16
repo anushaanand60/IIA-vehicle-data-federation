@@ -19,7 +19,7 @@ import altair as alt  # noqa: E402
 import pandas as pd  # noqa: E402
 import streamlit as st  # noqa: E402
 
-from components import chip, chip_strip, kpi_row, section  # noqa: E402
+from components import chip, chip_strip, kpi_row, page_head, panel, section  # noqa: E402
 from mediator.contract import GLOBAL_ATTRIBUTES, FederationResponse  # noqa: E402
 from theme import TOKENS, status_class  # noqa: E402
 
@@ -79,26 +79,30 @@ def render(response: FederationResponse) -> None:
         st.metric("Answered", f"{sum(r.status == 'OK' for r in results)} of {asked}", border=True)
         st.metric("Total time", f"{trace.total_elapsed_ms} ms", border=True)
 
-    section("Source selection", "Which sources could answer, and why the rest were left out.")
-    st.table(selection_table(response).set_index("Source"))
+    with panel("pt_selection"):
+        section("Source selection", "Which sources could answer, and why the rest were left out.")
+        st.table(selection_table(response).set_index("Source"))
 
-    section("Latency per source")
-    if results:
-        st.altair_chart(latency_chart(latency_frame(response), _theme()))
-    else:
-        st.caption("No source covers the requested attributes, so none was asked.")
+    with panel("pt_latency"):
+        section("Latency per source")
+        if results:
+            st.altair_chart(latency_chart(latency_frame(response), _theme()))
+        else:
+            st.caption("No source covers the requested attributes, so none was asked.")
 
-    section("What each source was sent")
-    for r in results:
-        with st.container(border=True):
-            st.markdown(f"**{r.source_id}** {badge(r.status)} :gray[{r.row_count} row(s), {r.elapsed_ms} ms]")
-            if r.sql_sent:
-                st.code(r.sql_sent, language="sql", wrap_lines=True)
-            if r.error:
-                st.error(r.error, icon=":material/error:")
-            if r.rows:
-                with st.expander(f"Raw rows ({r.row_count})", icon=":material/table_rows:"):
-                    st.dataframe(pd.DataFrame(r.rows), hide_index=True)
+    with panel("pt_sql"):
+        section("What each source was sent")
+        for r in results:
+            with st.container(border=True):
+                st.markdown(f"**{r.source_id}** {badge(r.status)} "
+                            f":gray[{r.row_count} row(s), {r.elapsed_ms} ms]")
+                if r.sql_sent:
+                    st.code(r.sql_sent, language="sql", wrap_lines=True)
+                if r.error:
+                    st.error(r.error, icon=":material/error:")
+                if r.rows:
+                    with st.expander(f"Raw rows ({r.row_count})", icon=":material/table_rows:"):
+                        st.dataframe(pd.DataFrame(r.rows), hide_index=True)
 
 
 def _status_chip(source_id: str, detail: dict) -> str:
@@ -140,9 +144,12 @@ def render_tab() -> None:
     `sources_detail`, `sqls`, `total_elapsed_ms`, ...) -- a different shape, so this reads that one
     directly rather than reusing `render()`.
     """
+    page_head("How the query was planned",
+              "Which agencies were asked, which were left out and why, the SQL each one was sent, "
+              "and how long each took to answer.")
     result = st.session_state.get("latest_result")
     if not result:
-        st.info("Execute a query in the Investigate tab to inspect its execution plan trace.")
+        st.info("Execute a query in the Investigate page to inspect its execution plan trace.")
         return
 
     trace = result.get("plan_trace") or {}
@@ -151,42 +158,45 @@ def render_tab() -> None:
     contacted = trace.get("sources_contacted") or []
     answered_ok = sum(1 for detail in sources_detail.values() if detail.get("status") == "OK")
 
-    section(
-        "How this answer was assembled",
-        f"Plate {trace.get('canonical_plate', '—')}, entered as "
-        f"{trace.get('raw_plate', '—')}. Requested: "
-        f"{', '.join(trace.get('requested_attrs') or []) or 'the full profile'}.",
-    )
+    with panel("pt_summary"):
+        section(
+            "How this answer was assembled",
+            f"Plate {trace.get('canonical_plate', '—')}, entered as "
+            f"{trace.get('raw_plate', '—')}. Requested: "
+            f"{', '.join(trace.get('requested_attrs') or []) or 'the full profile'}.",
+        )
+        kpi_row([("Sources asked", len(contacted)),
+                 ("Answered OK", f"{answered_ok} of {len(contacted)}"),
+                 ("Total time", f"{trace.get('total_elapsed_ms', 0)} ms")])
 
-    kpi_row([("Sources asked", len(contacted)),
-             ("Answered OK", f"{answered_ok} of {len(contacted)}"),
-             ("Total time", f"{trace.get('total_elapsed_ms', 0)} ms")])
+    with panel("pt_chips"):
+        section("Sources asked and skipped",
+                "A source is asked only when it covers one of the requested attributes; the rest "
+                "are named here so the plan is legible, not silent.")
+        _chip_row(sources_detail)
 
-    section("Sources asked and skipped",
-            "A source is asked only when it covers one of the requested attributes; the rest "
-            "are named here so the plan is legible, not silent.")
-    _chip_row(sources_detail)
+    with panel("pt_statements"):
+        section("SQL sent per source",
+                "Each statement is built from that source's own mapping rules — the mediator "
+                "holds no source-specific SQL.")
+        if sqls:
+            for source_id, sql_text in sqls.items():
+                detail = sources_detail.get(source_id, {})
+                with st.expander(f"{source_id} — {detail.get('status', '?')}"):
+                    st.code(sql_text, language="sql")
+        else:
+            st.caption("No source needed to be asked for this query.")
 
-    section("SQL sent per source",
-            "Each statement is built from that source's own mapping rules — the mediator holds "
-            "no source-specific SQL.")
-    if sqls:
-        for source_id, sql_text in sqls.items():
-            detail = sources_detail.get(source_id, {})
-            with st.expander(f"{source_id} — {detail.get('status', '?')}"):
-                st.code(sql_text, language="sql")
-    else:
-        st.caption("No source needed to be asked for this query.")
-
-    section("Latency per source")
-    if sources_detail:
-        frame = pd.DataFrame(
-            [{"Source": sid, "Latency (ms)": detail.get("elapsed_ms", 0)}
-             for sid, detail in sources_detail.items()]
-        ).set_index("Source")
-        st.bar_chart(frame)
-    else:
-        st.caption("No source was asked, so there is no latency to show.")
+    with panel("pt_speed"):
+        section("Latency per source")
+        if sources_detail:
+            frame = pd.DataFrame(
+                [{"Source": sid, "Latency (ms)": detail.get("elapsed_ms", 0)}
+                 for sid, detail in sources_detail.items()]
+            ).set_index("Source")
+            st.bar_chart(frame)
+        else:
+            st.caption("No source was asked, so there is no latency to show.")
 
 
 def _theme() -> str:

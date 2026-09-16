@@ -19,51 +19,57 @@ if str(_APP_DIR) not in sys.path:
 import pandas as pd  # noqa: E402
 import streamlit as st  # noqa: E402
 
-from components import group_label, section  # noqa: E402
+from components import group_label, page_head, panel, section  # noqa: E402
 from mediator.catalog import get_query_log  # noqa: E402
 from mediator.report import generate_report_pdf, list_reports  # noqa: E402
 
 
 def render() -> None:
-    section("Ministry audit reports",
-            "Every decision an operator chose to file with the Ministry of Transportation "
-            "(REPORT_LOG), with the evidence bundle it rested on and its official PDF.")
+    page_head("Reports and audit log",
+              "What was filed with the Ministry of Transportation, and every federated query the "
+              "mediator ran on the way there.")
 
-    reports = list_reports()
-    if not reports:
-        st.info(
-            "No audit reports have been filed yet. File a report from the Investigate tab to "
-            "see it here."
-        )
+    with panel("rp_filed"):
+        section("Ministry audit reports",
+                "Every decision an operator chose to file (REPORT_LOG), with the evidence bundle "
+                "it rested on and its official PDF.")
 
-    for rep in reports:
-        report_id = rep["report_id"]
-        with st.expander(
-            f"Report MOT-{report_id:06d} — Plate: `{rep['plate']}` | "
-            f"Decision: `{rep['decision']}` | Confidence: `{rep['confidence']}`"
-        ):
-            st.write(f"**Audit Timestamp:** {rep['generated_at']}")
-            st.write(f"**Sources Contacted:** {', '.join(rep.get('sources_used', []))}")
-            st.write(f"**Rule Fired:** {rep.get('rule_fired') or '—'}")
-            risk = rep.get("risk")
-            risk_text = f"{risk['value']} ({risk['level']})" if risk else "—"
-            st.write(f"**Risk Score:** {risk_text}")
-            st.markdown("**Reasons:**")
-            for r in rep.get("reasons", []):
-                st.markdown(f"- {r}")
+        reports = list_reports()
+        if not reports:
+            st.info(
+                "No audit reports have been filed yet. File a report from the Investigate page "
+                "to see it here."
+            )
 
-            pdf_file = generate_report_pdf(report_id)
-            if os.path.exists(pdf_file):
-                with open(pdf_file, "rb") as pf:
-                    st.download_button(
-                        label=f"Download Official PDF (MOT-{report_id:06d})",
-                        data=pf.read(),
-                        file_name=os.path.basename(pdf_file),
-                        mime="application/pdf",
-                        key=f"rp_dl_{report_id}",
-                    )
+        for rep in reports:
+            report_id = rep["report_id"]
+            with st.expander(
+                f"Report MOT-{report_id:06d} — Plate: `{rep['plate']}` | "
+                f"Decision: `{rep['decision']}` | Confidence: `{rep['confidence']}`"
+            ):
+                st.write(f"**Audit Timestamp:** {rep['generated_at']}")
+                st.write(f"**Sources Contacted:** {', '.join(rep.get('sources_used', []))}")
+                st.write(f"**Rule Fired:** {rep.get('rule_fired') or '—'}")
+                risk = rep.get("risk")
+                risk_text = f"{risk['value']} ({risk['level']})" if risk else "—"
+                st.write(f"**Risk Score:** {risk_text}")
+                st.markdown("**Reasons:**")
+                for r in rep.get("reasons", []):
+                    st.markdown(f"- {r}")
 
-    _render_audit_log()
+                pdf_file = generate_report_pdf(report_id)
+                if os.path.exists(pdf_file):
+                    with open(pdf_file, "rb") as pf:
+                        st.download_button(
+                            label=f"Download Official PDF (MOT-{report_id:06d})",
+                            data=pf.read(),
+                            file_name=os.path.basename(pdf_file),
+                            mime="application/pdf",
+                            key=f"rp_dl_{report_id}",
+                        )
+
+    with panel("rp_audit"):
+        _render_audit_log()
 
 
 def _render_audit_log() -> None:
@@ -75,7 +81,7 @@ def _render_audit_log() -> None:
             "Decisions and traces only — no source rows are ever stored, which is the "
             "point of virtual integration.")
 
-    group_label("Filter")
+    group_label("Filter by plate")
     plate_filter = st.text_input(
         "Plate", value="", key="rp_audit_plate", placeholder="DL05CD9876",
         label_visibility="collapsed",

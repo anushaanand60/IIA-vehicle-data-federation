@@ -34,7 +34,8 @@ if str(_APP_DIR) not in sys.path:
 
 import streamlit as st  # noqa: E402
 
-from components import chip, chip_strip, group_label, kpi_row, section  # noqa: E402
+from components import (chip, chip_strip, group_label, kpi_row,  # noqa: E402
+                        page_head, panel, section)
 from mediator import challan_guard  # noqa: E402
 from mediator.catalog import get_source_catalog  # noqa: E402
 from mediator.core import run_global_query  # noqa: E402
@@ -207,42 +208,46 @@ def _dispute_block() -> None:
 
 
 def _lookup_block() -> None:
-    section("Check your own vehicle",
-            "Your own plate, and only the four answers you need about it: is it registered, is it "
-            "insured, does its pollution certificate hold, has it been reported stolen. No owner "
-            "record and no sighting data is shown, because none of it is requested.")
-
-    group_label("Your plate")
-    plate = st.text_input("Your vehicle's license plate number", key="sc_plate")
-    check = st.button("Check my vehicle", key="sc_check")
+    with panel("sc_ask"):
+        section("Your plate",
+                "Only the four answers you need about your own vehicle: is it registered, is it "
+                "insured, does its pollution certificate hold, has it been reported stolen. No "
+                "owner record and no sighting data is shown, because none of it is requested.")
+        plate = st.text_input("Your vehicle's license plate number", key="sc_plate")
+        check = st.button("Check my vehicle", key="sc_check", type="primary")
 
     if not check:
-        st.info("Enter your plate above and press Check to see its compliance status.")
-        return
-    if not plate.strip():
-        st.warning("Enter a plate number first.")
+        with panel("sc_answer"):
+            st.info("Enter your plate above and press Check to see its compliance status.")
         return
 
-    try:
-        result = run_global_query(plate, requested_attrs=REQUESTED_ATTRS)
-        profile: dict[str, Any] = result.get("profile") or {}
-        plan_trace: dict[str, Any] = result.get("plan_trace") or {}
-    except Exception as exc:  # a citizen page must never crash the whole app
-        st.error(f"Could not run this check right now: {exc}")
-        return
+    with panel("sc_answer"):
+        section("What the agencies say")
+        if not plate.strip():
+            st.warning("Enter a plate number first.")
+            return
+        try:
+            result = run_global_query(plate, requested_attrs=REQUESTED_ATTRS)
+            profile: dict[str, Any] = result.get("profile") or {}
+            plan_trace: dict[str, Any] = result.get("plan_trace") or {}
+        except Exception as exc:  # a citizen page must never crash the whole app
+            st.error(f"Could not run this check right now: {exc}")
+            return
 
-    availability = profile.get("source_availability") or {}
-
-    answers = [_registration_line(profile, availability),
-               _insurance_line(profile, availability),
-               _puc_line(profile, availability),
-               _stolen_line(profile, availability)]
-    kpi_row([answer for answer in answers if answer])
-
-    _minimisation_caption(plan_trace)
+        availability = profile.get("source_availability") or {}
+        answers = [_registration_line(profile, availability),
+                   _insurance_line(profile, availability),
+                   _puc_line(profile, availability),
+                   _stolen_line(profile, availability)]
+        kpi_row([answer for answer in answers if answer])
+        _minimisation_caption(plan_trace)
 
 
 def render() -> None:
-    """Draw the whole Citizen Self-Check tab. Never raises — a broken lookup shows a warning."""
+    """Draw the whole Citizen Check page. Never raises — a broken lookup shows a warning."""
+    page_head("Check your own vehicle",
+              "The citizen's own view: four answers about one vehicle, asked of the fewest "
+              "agencies that can answer them.")
     _lookup_block()
-    _dispute_block()
+    with panel("sc_dispute_panel"):
+        _dispute_block()
