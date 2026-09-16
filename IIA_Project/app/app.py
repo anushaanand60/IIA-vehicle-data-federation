@@ -69,11 +69,12 @@ st.markdown('<div class="sub-title">Global-As-View (GAV) virtual data integratio
 
 import live_update
 
-# `streamlit run app/app.py` puts app/ on sys.path, pytest puts the project root there: accept both.
-try:
-    from app.tabs.sql_console import render as render_sql_console
-except ModuleNotFoundError:
-    from tabs.sql_console import render as render_sql_console
+# Never import through the package name "app": under `streamlit run app/app.py` that name is this very
+# script, so the import would execute the whole page a second time (duplicate widget IDs).
+_APP_DIR = os.path.dirname(os.path.abspath(__file__))
+if _APP_DIR not in sys.path:
+    sys.path.insert(0, _APP_DIR)
+from tabs.sql_console import render as render_sql_console
 
 # Navigation tabs
 tab_investigate, tab_plantrace, tab_matcher, tab_catalog, tab_reports, tab_sqlconsole = st.tabs([
