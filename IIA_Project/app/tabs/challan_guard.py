@@ -4,8 +4,11 @@ Nothing on this page decides anything by itself. Pressing Verify calls
 `mediator.challan_guard.verify`, which queries the live federation and writes its verdict, its
 ordered steps and its evidence bundle into `meta.db`. What is drawn here is that record.
 
-Plain `st.*` widgets for now; Task C1 restyles this page on the Visibility primitives. Every
-widget key carries the `cg_` prefix because nine tabs share one Streamlit page.
+Composed on the Visibility primitives in `app/components.py` (Task C1): one `section` per logical
+block, `kpi_row` for the headline counts, `styled_table` for the queue, `stepper` for the
+verification run and `chip` for a case's status. Status colours come from `theme.TOKENS` and never
+from the accent — the accent means "interactive", and a verdict is data. Every widget key carries
+the `cg_` prefix because nine tabs share one Streamlit page.
 """
 from __future__ import annotations
 
@@ -22,36 +25,50 @@ if str(_APP_DIR) not in sys.path:
 
 import streamlit as st  # noqa: E402
 
+from components import (chip, chip_strip, group_label, kpi_row,  # noqa: E402
+                        section, stepper, styled_table)
 from mediator import challan_guard  # noqa: E402
 from scripts.seed_challan_cases import cameras, seed  # noqa: E402
+from theme import TOKENS  # noqa: E402
 
 QUEUE_COLUMNS = ("case_id", "plate_read", "plate_resolved", "location", "captured_at",
                  "status", "verdict", "amount_inr")
 HEADINGS = ("Case", "Read as", "Resolved to", "Where", "When", "Status", "Verdict", "Amount ₹")
 
+# A case's state is data, so it wears a data colour: green where no fine was raised, red where one
+# was, amber where the guard refused to decide. The accent is never used here.
+STATUS_TOKEN = {"CANDIDATE": "undetermined", "HOLD": "suspicious", "ISSUED": "report",
+                "REJECTED": "clear", "DISPUTED": "unknown", "UPHELD": "report",
+                "CANCELLED": "clear"}
+VERDICT_TOKEN = {challan_guard.ISSUE: "report", challan_guard.HOLD: "suspicious",
+                 challan_guard.REJECT: "clear"}
+
+KPI_LABELS = (("Candidates", "CANDIDATE"), ("Held", "HOLD"), ("Issued", "ISSUED"),
+              ("Rejected", "REJECTED"), ("Wrongful fines prevented", "PREVENTED"))
+
+
+def status_chip(status: Any) -> str:
+    text = str(status or "—").upper()
+    return chip(text, TOKENS[STATUS_TOKEN.get(text, "undetermined")])
+
 
 def _kpis() -> None:
     counts = challan_guard.summary()
-    columns = st.columns(5)
-    for column, (label, key) in zip(columns, [
-            ("Candidates", "CANDIDATE"), ("Held", "HOLD"), ("Issued", "ISSUED"),
-            ("Rejected", "REJECTED"), ("Wrongful fines prevented", "PREVENTED")]):
-        column.metric(label, counts.get(key, 0))
+    kpi_row([(label, counts.get(key, 0)) for label, key in KPI_LABELS])
     st.caption("“Wrongful fines prevented” counts challans rejected at verification plus challans "
                "cancelled after a citizen dispute — the number this feature exists to move.")
 
 
 def _cell(value: Any) -> str:
-    text = "—" if value in (None, "") else str(value)
-    return text.replace("|", "\\|")  # a pipe would break the markdown table
+    return "—" if value in (None, "") else str(value)
 
 
 def _queue_table(cases: list[dict]) -> None:
-    """Markdown, not st.dataframe: the queue is short and the plate text must be selectable."""
-    lines = ["| " + " | ".join(HEADINGS) + " |", "|" + "---|" * len(HEADINGS)]
-    for case in cases:
-        lines.append("| " + " | ".join(_cell(case.get(c)) for c in QUEUE_COLUMNS) + " |")
-    st.markdown("\n".join(lines))
+    """`components.styled_table` escapes every cell, so the status column is drawn as a chip strip
+    underneath rather than as HTML inside the table."""
+    styled_table([{head: _cell(case.get(column)) for head, column in zip(HEADINGS, QUEUE_COLUMNS)}
+                  for case in cases], columns=list(HEADINGS))
+    chip_strip([status_chip(case.get("status")) for case in cases])
 
 
 def _label(case: dict) -> str:
@@ -65,37 +82,44 @@ def _steps(case: dict) -> None:
         st.info("Not verified yet. Press Verify to query registration, insurance, police and "
                 "camera records live for this sighting.")
         return
-    for step in steps:
-        mark = "✓" if step.get("done") else "■"
-        st.markdown(f"**{mark} {step.get('title')}** — {step.get('detail')}")
+    stepper(steps)
+
+
+def _verdict_line(case: dict) -> None:
+    verdict, reason = case.get("verdict"), case.get("reason")
+    if not verdict:
+        return
+    amount = case.get("amount_inr")
+    tail = f" (₹{amount})" if verdict == challan_guard.ISSUE and amount else ""
+    st.markdown(
+        f'<div class="vz-card">{chip(str(verdict), TOKENS[VERDICT_TOKEN.get(str(verdict), "unknown")])} '
+        f"<span>{_cell(reason)}{tail}</span></div>",
+        unsafe_allow_html=True)
 
 
 def _detail(case: dict) -> None:
-    st.markdown(f"### Case #{case['case_id']} — {case['plate_read']}")
-    verdict, reason = case.get("verdict"), case.get("reason")
-    if verdict == challan_guard.ISSUE:
-        st.error(f"ISSUE — {reason} (₹{case.get('amount_inr')})")
-    elif verdict == challan_guard.HOLD:
-        st.warning(f"HOLD — {reason}")
-    elif verdict == challan_guard.REJECT:
-        st.success(f"REJECT — {reason}")
-    if case.get("status") in ("CANCELLED", "UPHELD", "DISPUTED"):
-        st.info(f"Dispute outcome: {case['status']} — {reason}")
+    section(f"Case #{case['case_id']} — read as {case['plate_read']}",
+            "The verdict, the steps that produced it, and every source answer it rests on.")
+    with st.container(horizontal=True, key="cg_status_row"):
+        st.markdown(status_chip(case.get("status")), unsafe_allow_html=True)
+        if case.get("plate_resolved") and case["plate_resolved"] != case["plate_read"]:
+            st.markdown(f"resolved to **{case['plate_resolved']}**")
+    _verdict_line(case)
 
-    st.markdown("**Verification steps**")
+    group_label("Verification steps")
     _steps(case)
 
     with st.expander("Evidence bundle (what each source said, and when)"):
         st.json(case.get("evidence") or {})
 
-    st.markdown("**Case history**")
+    group_label("Case history")
     for event in challan_guard.events(case["case_id"]):
         note = (event.get("evidence") or {}).get("reason") or ""
         st.markdown(f"- `{event['at']}` **{event['event']}** by {event['actor']} {note}")
 
 
 def _actions(case_id: int) -> None:
-    st.markdown("**Operator actions**")
+    group_label("Operator actions")
     verify_col, issue_col, reject_col, hold_col = st.columns(4)
     if verify_col.button("Verify (live)", key="cg_verify", type="primary", width="stretch"):
         with st.spinner("Querying every source for this sighting…"):
@@ -115,8 +139,8 @@ def _actions(case_id: int) -> None:
 
 
 def _new_candidate_form() -> None:
-    st.markdown("### File a new candidate from a sighting")
-    st.caption("This is the ANPR event, not a fine: what a camera read, where and when.")
+    section("File a new candidate from a sighting",
+            "This is the ANPR event, not a fine: what a camera read, where and when.")
     known = cameras()
     by_label = {f"{c['camera_id']} — {c['location']}": c for c in known}
     left, right = st.columns(2)
@@ -145,10 +169,10 @@ def _new_candidate_form() -> None:
 
 def render() -> None:
     """Draw the whole Challan Guard tab. Never raises: a broken lookup shows an error, not a stack."""
-    st.subheader("Challan Guard — verify before you fine")
-    st.caption("No e-challan leaves this queue until identity, clone signal, theft status and "
-               "insurance on the day of the sighting have all been confirmed live. If a source "
-               "cannot be reached, the fine is held rather than guessed.")
+    section("Challan Guard — verify before you fine",
+            "No e-challan leaves this queue until identity, clone signal, theft status and "
+            "insurance on the day of the sighting have all been confirmed live. If a source "
+            "cannot be reached, the fine is held rather than guessed.")
 
     try:
         _kpis()
@@ -157,6 +181,7 @@ def render() -> None:
         st.error(f"Could not read the challan queue: {exc}")
         return
 
+    group_label("Queue controls")
     seed_col, refresh_col = st.columns(2)
     if seed_col.button("Seed demo candidates", key="cg_seed", width="stretch"):
         seed()
@@ -170,6 +195,8 @@ def render() -> None:
         _new_candidate_form()
         return
 
+    section("Sightings waiting on a decision",
+            "One row per ANPR event. A case is only a fine once the guard says so.")
     _queue_table(cases)
     labels = {_label(case): case for case in cases}
     chosen = st.selectbox("Case", key="cg_case", options=list(labels))

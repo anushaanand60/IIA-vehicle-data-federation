@@ -19,7 +19,6 @@ here does not need to interact with the demo/investigator surface.
 """
 from __future__ import annotations
 
-import html
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -34,11 +33,12 @@ if str(_APP_DIR) not in sys.path:
 
 import streamlit as st  # noqa: E402
 
+from components import chip, chip_strip, group_label, kpi_row, section  # noqa: E402
 from mediator import challan_guard  # noqa: E402
 from mediator.catalog import get_source_catalog  # noqa: E402
 from mediator.core import run_global_query  # noqa: E402
 from mediator.decide import REFERENCE_TODAY  # noqa: E402
-from theme import status_class  # noqa: E402
+from theme import TOKENS, status_class  # noqa: E402
 
 # The safe, own-vehicle subset (Task 2.4). Each of these has a covering source in the catalog
 # (registration_status -> REG, insurance_expiry/insurance_status -> INS, stolen_status -> THEFT,
@@ -55,109 +55,83 @@ UNAVAILABLE = "could not verify right now (source unavailable)"
 _DOWN = ("DOWN", "TIMEOUT", "ERROR")
 
 
-# ------------------------------------------------------------------ tiny chip helper
-# `components.source_chips` renders under the fixed key `fm_chip_row`; the Investigate tab already
-# claims that key on the same page, so this tab draws its own small `.fm-chip` markup instead
-# (reusing the CSS classes from `app/theme.py`, not the Investigate tab's helper function).
-
-def _chip(source_id: str, status: str) -> str:
-    variant = status_class(status)
-    return (
-        f'<span class="fm-chip fm-chip--{variant}"><span class="fm-dot"></span>'
-        f"{html.escape(source_id)} · {html.escape((status or 'DOWN').upper())}</span>"
-    )
-
-
-def _not_asked_chip(source_id: str) -> str:
-    muted = ("border:1px dashed var(--fm-rule);background:var(--fm-paper);"
-             "color:var(--fm-ink_muted);")
-    return (
-        f'<span class="fm-chip" style="{muted}">'
-        f'<span class="fm-dot" style="background:var(--fm-ink_muted);"></span>'
-        f"{html.escape(source_id)} · NOT ASKED</span>"
-    )
-
+# ------------------------------------------------------------------ source chips
+# `components.source_chips` renders under the fixed key `fm_chip_row`, which the Investigate tab
+# already claims on the same page, so this tab builds its own strip from `components.chip` — one
+# markdown block, therefore no container key to collide.
 
 def _chip_row(sources_detail: dict, asked: list[str], all_sources: list[str]) -> None:
-    with st.container(horizontal=True, key="sc_chip_row"):
-        for source_id in asked:
-            detail = sources_detail.get(source_id) or {}
-            st.markdown(_chip(source_id, str(detail.get("status") or "")),
-                       unsafe_allow_html=True)
-        for source_id in all_sources:
-            if source_id not in asked:
-                st.markdown(_not_asked_chip(source_id), unsafe_allow_html=True)
+    chips = []
+    for source_id in asked:
+        status = str((sources_detail.get(source_id) or {}).get("status") or "DOWN").upper()
+        chips.append(chip(f"{source_id} · {status}", TOKENS[status_class(status)]))
+    chips += [chip(f"{source_id} · NOT ASKED", TOKENS["undetermined"])
+              for source_id in all_sources if source_id not in asked]
+    chip_strip(chips)
 
 
 # ------------------------------------------------------------------ per-question rendering
+# Each answer is returned as a (label, value) pair rather than drawn, so the four of them render as
+# one `kpi_row` grid — one block, one look, instead of four differently-sized metric cards.
 
-def _registration_line(profile: dict, availability: dict) -> None:
+def _registration_line(profile: dict, availability: dict) -> tuple[str, str]:
     status = profile.get("registration_status")
     reg_avail = availability.get("REG")
     if status:
-        st.metric("Registration status", str(status).upper())
-    elif reg_avail in _DOWN or "REG" not in availability:
-        st.metric("Registration status", UNAVAILABLE)
-    else:
-        st.metric("Registration status", "NOT REGISTERED")
+        return ("Registration status", str(status).upper())
+    if reg_avail in _DOWN or "REG" not in availability:
+        return ("Registration status", UNAVAILABLE)
+    return ("Registration status", "NOT REGISTERED")
 
 
-def _insurance_line(profile: dict, availability: dict) -> None:
+def _insurance_line(profile: dict, availability: dict) -> tuple[str, str]:
     ins_status = profile.get("insurance_status")
     expiry = profile.get("insurance_expiry")
     if ins_status in (None, "UNKNOWN"):
         if availability.get("INS") in _DOWN or "INS" not in availability:
-            st.metric("Insurance validity", UNAVAILABLE)
-        else:
-            st.metric("Insurance validity", "no policy on record")
-    elif ins_status == "NONE":
-        st.metric("Insurance validity", "no policy on record")
-    elif ins_status in ("VALID", "EXPIRED"):
-        value = f"{ins_status}" + (f" (expires {expiry})" if expiry else "")
-        st.metric("Insurance validity", value)
-    else:
-        st.metric("Insurance validity", "no policy on record")
+            return ("Insurance validity", UNAVAILABLE)
+        return ("Insurance validity", "no policy on record")
+    if ins_status in ("VALID", "EXPIRED"):
+        return ("Insurance validity",
+                f"{ins_status}" + (f" (expires {expiry})" if expiry else ""))
+    return ("Insurance validity", "no policy on record")
 
 
-def _puc_line(profile: dict, availability: dict) -> None:
+def _puc_line(profile: dict, availability: dict) -> tuple[str, str] | None:
     """PUC only appears when a PUC source is in the catalog (Task 2.4: "if PUC in catalog")."""
     if "PUC" not in get_source_catalog():
-        return
+        return None
     expiry = profile.get("puc_expiry")
     if availability.get("PUC") in _DOWN:
-        st.metric("PUC validity", UNAVAILABLE)
-        return
+        return ("PUC validity", UNAVAILABLE)
     if not expiry:
-        st.metric("PUC validity", "no certificate on record")
-        return
+        return ("PUC validity", "no certificate on record")
     try:
         exp_date = datetime.strptime(str(expiry), "%Y-%m-%d").date()
         valid = exp_date >= REFERENCE_TODAY
     except Exception:
-        st.metric("PUC validity", f"on record (expiry {expiry})")
-        return
-    st.metric("PUC validity", f"{'VALID' if valid else 'EXPIRED'} (expires {expiry})")
+        return ("PUC validity", f"on record (expiry {expiry})")
+    return ("PUC validity", f"{'VALID' if valid else 'EXPIRED'} (expires {expiry})")
 
 
-def _stolen_line(profile: dict, availability: dict) -> None:
+def _stolen_line(profile: dict, availability: dict) -> tuple[str, str]:
     stolen = profile.get("stolen_status")
     if stolen in (None, "UNKNOWN"):
         if availability.get("THEFT") in _DOWN or "THEFT" not in availability:
-            st.metric("Reported stolen?", UNAVAILABLE)
-        else:
-            st.metric("Reported stolen?", "unknown")
-    elif stolen == "STOLEN":
-        st.metric("Reported stolen?", "yes")
-    elif stolen == "RECOVERED":
-        st.metric("Reported stolen?", "no (recovered)")
-    else:  # NOT_REPORTED
-        st.metric("Reported stolen?", "no")
+            return ("Reported stolen?", UNAVAILABLE)
+        return ("Reported stolen?", "unknown")
+    if stolen == "STOLEN":
+        return ("Reported stolen?", "yes")
+    if stolen == "RECOVERED":
+        return ("Reported stolen?", "no (recovered)")
+    return ("Reported stolen?", "no")  # NOT_REPORTED
 
 
 def _minimisation_caption(plan_trace: dict) -> None:
     asked = list(plan_trace.get("sources_contacted") or [])
     catalog_ids = list(get_source_catalog().keys())
     sources_detail = plan_trace.get("sources_detail") or {}
+    group_label("Who was asked")
     _chip_row(sources_detail, asked, catalog_ids)
     not_asked = [s for s in catalog_ids if s not in asked]
     st.caption(
@@ -201,9 +175,9 @@ def _dispute_outcome(case: dict) -> None:
 
 
 def _dispute_block() -> None:
-    st.subheader("Dispute a challan")
-    st.caption("Enter the case number printed on your e-challan. The whole check is re-run live "
-               "against the sources; if anything has changed since it was issued, it is cancelled.")
+    section("Dispute a challan",
+            "Enter the case number printed on your e-challan. The whole check is re-run live "
+            "against the sources; if anything has changed since it was issued, it is cancelled.")
     case_id = st.number_input("Challan case number", key="sc_case_id", min_value=0, step=1, value=0)
     reason = st.text_area("Why do you believe this challan is wrong?", key="sc_reason",
                           placeholder="e.g. I renewed my policy before that date")
@@ -224,9 +198,12 @@ def _dispute_block() -> None:
 
 
 def _lookup_block() -> None:
-    st.subheader("Check your own vehicle")
-    st.caption("Check your own vehicle — no personal data is shown")
+    section("Check your own vehicle",
+            "Your own plate, and only the four answers you need about it: is it registered, is it "
+            "insured, does its pollution certificate hold, has it been reported stolen. No owner "
+            "record and no sighting data is shown, because none of it is requested.")
 
+    group_label("Your plate")
     plate = st.text_input("Your vehicle's license plate number", key="sc_plate")
     check = st.button("Check my vehicle", key="sc_check")
 
@@ -247,15 +224,11 @@ def _lookup_block() -> None:
 
     availability = profile.get("source_availability") or {}
 
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        _registration_line(profile, availability)
-    with col2:
-        _insurance_line(profile, availability)
-    with col3:
-        _puc_line(profile, availability)
-    with col4:
-        _stolen_line(profile, availability)
+    answers = [_registration_line(profile, availability),
+               _insurance_line(profile, availability),
+               _puc_line(profile, availability),
+               _stolen_line(profile, availability)]
+    kpi_row([answer for answer in answers if answer])
 
     _minimisation_caption(plan_trace)
 

@@ -264,8 +264,6 @@ def test_no_tab_uses_a_markdown_pseudo_heading():
     `components.section`, so a tab body may no longer contain them."""
     offenders = []
     for path in sorted((ROOT / "app" / "tabs").glob("*.py")):
-        if path.name in ("self_check.py", "challan_guard.py"):
-            continue  # another workstream owns these; Task C1 restyles them
         text = path.read_text(encoding="utf-8")
         if "st.subheader(" in text or 'st.markdown("#' in text or "st.markdown(f\"#" in text:
             offenders.append(path.name)

@@ -63,14 +63,8 @@ from tabs.catalog_tab import render as render_catalog  # noqa: E402
 from tabs.reports import render as render_reports  # noqa: E402
 from tabs.watchlist import render as render_watchlist  # noqa: E402
 from tabs.self_check import render as render_self_check  # noqa: E402
+from tabs.challan_guard import render as render_challan_guard  # noqa: E402
 from theme import inject, masthead  # noqa: E402
-
-# Challan Guard is built in its own workstream. Guarding the import keeps the page renderable
-# from the moment its tab exists, rather than making the whole GUI wait on one module.
-try:
-    from tabs.challan_guard import render as render_challan_guard  # noqa: E402
-except ImportError:
-    render_challan_guard = None
 
 # The whole look of the page comes from app/theme.py: tokens -> CSS variables, injected once.
 inject()
@@ -111,10 +105,7 @@ with tab_investigate:
     render_investigate()
 
 with tab_challan:
-    if render_challan_guard is None:
-        st.info("Challan Guard not installed yet")
-    else:
-        render_challan_guard()
+    render_challan_guard()
 
 with tab_watchlist:
     render_watchlist()
