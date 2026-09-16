@@ -313,6 +313,14 @@ pytest -q -m live                          # the contract test against the real 
 streamlit run app/app.py                   # or: python run_system.py
 ```
 
+**5. Pre-download the plate-OCR model (laptop 1 only, once, while you still have internet).** The
+Investigate tab's photo upload (Task 2.1) uses EasyOCR, and EasyOCR fetches its English detection
+and recognition weights (~100 MB) on first use — which on demo day means a hotspot with no
+internet and a spinner that never ends. Warm the cache in advance with `pip install easyocr`
+followed by `python -c "import easyocr; easyocr.Reader(['en'])"`; it takes a few minutes and
+leaves the models in `~/.EasyOCR/model`. Nothing else depends on it: without easyocr the upload
+slot shows an install hint and typing the plate works exactly as before.
+
 ---
 
 ## 5. Demo-day checklist

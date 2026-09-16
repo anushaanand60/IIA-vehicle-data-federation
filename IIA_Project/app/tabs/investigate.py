@@ -29,6 +29,7 @@ from components import (conflict_panel, decision_banner, profile_sections,  # no
                         provenance_table, risk_placeholder, source_chips)
 from mediator.core import run_global_query  # noqa: E402
 from mediator.report import file_ministry_report, generate_report_pdf  # noqa: E402
+from tabs.ocr_upload import render_ocr_slot  # noqa: E402
 from tabs.onboarding import is_unknown, render_unknown_plate  # noqa: E402
 
 DEFAULT_PLATE = "DL01AB1234"
@@ -67,10 +68,14 @@ def _search_hero() -> tuple[str, str]:
 
     st.session_state.setdefault("inv_plate", st.session_state["selected_plate"])
 
+    # The OCR slot must render *before* the text input: picking a candidate writes `inv_plate`,
+    # and Streamlit forbids setting a widget's key after that widget has been instantiated.
+    with st.container(key="inv_ocr_slot"):
+        render_ocr_slot()
+
     c_plate, c_scope = st.columns([3, 2])
     plate = c_plate.text_input("License plate number (any format)", key="inv_plate")
     scope = c_scope.selectbox("Query scope", SCOPES, key="inv_scope")
-    st.container(key="inv_ocr_slot")  # Task 2.1 renders the photo upload here
     return plate, scope
 
 

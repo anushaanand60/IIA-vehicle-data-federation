@@ -1,0 +1,6 @@
+# Plate images for tests/test_plate_ocr.py are rendered by PIL at runtime (600x160, black on
+# white) and dropped here so a failing OCR assertion can be eyeballed. They are reproducible, so
+# nothing binary is committed.
+*.png
+*.jpg
+*.jpeg

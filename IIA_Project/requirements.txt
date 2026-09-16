@@ -19,6 +19,11 @@ plotly>=5.20
 altair>=5.0
 reportlab>=4.0         # Ministry report PDFs (mediator/report.py)
 
+# optional: plate OCR (Task 2.1); torch CPU wheels are large
+# Only laptop 1 (the GUI) needs it. Without it the upload slot shows an install hint and the
+# rest of the app is unaffected -- mediator/plate_ocr.py imports it lazily.
+easyocr>=1.7
+
 # --- Synthetic data generation (run once, then the CSVs are committed) ---
 faker>=25.0
 
