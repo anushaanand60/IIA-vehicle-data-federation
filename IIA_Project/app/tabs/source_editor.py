@@ -17,10 +17,14 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:  # `streamlit run` puts only this file's folder on sys.path
     sys.path.insert(0, str(ROOT))
+_APP_DIR = Path(__file__).resolve().parents[1]
+if str(_APP_DIR) not in sys.path:
+    sys.path.insert(0, str(_APP_DIR))
 
 import httpx  # noqa: E402
 import streamlit as st  # noqa: E402
 
+from components import group_label, section  # noqa: E402
 from mediator.catalog import get_source_catalog  # noqa: E402
 
 ACTIONS_TIMEOUT_S = 3.0
@@ -86,7 +90,9 @@ def _apply(source_id: str, base: str, action: str, plate: str, params: dict[str,
 
 def render_sidebar() -> None:
     with st.sidebar:
-        st.markdown("### Source Editor (writes go to the agency's own database)")
+        section("Source editor",
+                "Writes go to the agency's own database, through its wrapper's named admin "
+                "actions — never arbitrary SQL, never a direct connection.")
 
         catalog = get_source_catalog()
         if not catalog:
@@ -138,10 +144,10 @@ def render_sidebar() -> None:
             if value != "":
                 params[name] = value
 
-        st.caption("CLI fallback (run on the laptop that owns this source):")
+        group_label("CLI fallback — run on the laptop that owns this source")
         st.code(_cli_line(source_id, action, plate, params), language="bash")
 
-        if st.button("Apply", key="se_apply", type="primary"):
+        if st.button("Apply", key="se_apply", type="primary", width="stretch"):
             _apply(source_id, base, action, plate, params)
 
 

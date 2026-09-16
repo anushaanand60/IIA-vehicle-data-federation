@@ -26,7 +26,8 @@ if str(_APP_DIR) not in sys.path:
 import streamlit as st  # noqa: E402
 
 from components import (alert_banner, conflict_panel, decision_banner,  # noqa: E402
-                        profile_sections, provenance_table, risk_placeholder, source_chips)
+                        group_label, profile_sections, provenance_table, risk_placeholder,
+                        section, source_chips)
 from mediator import watchlist  # noqa: E402
 from mediator.core import run_global_query  # noqa: E402
 from mediator.report import file_ministry_report, generate_report_pdf  # noqa: E402
@@ -55,7 +56,7 @@ UC1_ATTRS = ["insurance_status", "insurance_expiry"]
 
 def _search_hero() -> tuple[str, str]:
     """Plate + scope + demo chips + the slot Task 2.1's OCR upload drops into."""
-    st.markdown("**Quick demo scenarios (named test plates)**")
+    group_label("Demo scenarios")
     demo_cols = st.columns(len(DEMO_PLATES))
     st.session_state.setdefault("selected_plate", DEFAULT_PLATE)
 
@@ -74,16 +75,20 @@ def _search_hero() -> tuple[str, str]:
     with st.container(key="inv_ocr_slot"):
         render_ocr_slot()
 
+    group_label("Plate and scope")
     c_plate, c_scope = st.columns([3, 2])
-    plate = c_plate.text_input("License plate number (any format)", key="inv_plate")
+    plate = c_plate.text_input("Plate number, in any format", key="inv_plate")
     scope = c_scope.selectbox("Query scope", SCOPES, key="inv_scope")
     return plate, scope
 
 
 def _actions(profile: dict, plan_trace: dict) -> None:
+    section("Act on this decision",
+            "Filing writes the verdict and its evidence bundle to the Ministry audit log. "
+            "Watching a plate makes every later query on it raise a timestamped alert.")
     with st.container(horizontal=True, key="inv_actions"):
-        file_report = st.button("📑 File report to Ministry", key="inv_file_report",
-                                type="secondary")
+        file_report = st.button("File report to the Ministry", key="inv_file_report",
+                                type="primary")
         # One button, two states -- the marker is a toggle, so the page can never show "add" for
         # a plate that is already watched. The reason travels with every alert the plate raises,
         # which is why an unexplained marker is not offered.
@@ -92,7 +97,7 @@ def _actions(profile: dict, plan_trace: dict) -> None:
                                placeholder="why this plate is being watched",
                                label_visibility="collapsed", disabled=watched)
         toggle_watch = st.button(
-            "🚫 Remove from watchlist" if watched else "👁️ Add to watchlist",
+            "Remove from watchlist" if watched else "Add to watchlist",
             key="inv_watch",
             help="Every later query on a watched plate files a timestamped alert.")
     if toggle_watch:
@@ -109,7 +114,7 @@ def _actions(profile: dict, plan_trace: dict) -> None:
     st.success(f"Report MOT-{report_id:06d} filed in the Ministry audit log and rendered to PDF.")
     with open(pdf_path, "rb") as handle:
         st.download_button(
-            label=f"⬇️ Download official Ministry audit PDF (MOT-{report_id:06d})",
+            label=f"Download the official Ministry audit PDF (MOT-{report_id:06d})",
             data=handle.read(),
             file_name=os.path.basename(pdf_path),
             mime="application/pdf",
@@ -119,7 +124,10 @@ def _actions(profile: dict, plan_trace: dict) -> None:
 
 def render() -> None:
     """Draw the whole Investigate tab. Called once from `app/app.py`."""
-    st.subheader("Vehicle compliance investigation")
+    section("Investigate a vehicle",
+            "One plate in, one defensible decision out. Every answer below is fetched from the "
+            "agencies now — registration, insurance, police and camera — and nothing is "
+            "copied into the mediator.")
     plate, scope = _search_hero()
     if not plate:
         st.info("Enter a plate above, or pick one of the demo scenarios, to run a global query.")
@@ -131,13 +139,19 @@ def render() -> None:
     plan_trace = result["plan_trace"]
     st.session_state["latest_result"] = result  # the Plan Trace tab reads this
 
+    section("Decision", "The verdict, its confidence, and every reason it rests on.")
     decision_banner(profile)
     alert_banner(profile.get("alerts"))  # watchlist / hotlist hits raised by this very query
+
+    section("Who answered", "A source that returned zero rows still answered: that is data, "
+                            "not a failure. A source that is down leaves the answer partial.")
     source_chips(plan_trace.get("sources_detail", {}))
 
     if is_unknown(profile):  # plate in no asked source: onboard it live (Task 0.5)
         render_unknown_plate(profile["plate_number"], profile)
 
+    section("Integrated vehicle profile",
+            "One row per authority, each attribute attributed to the source that supplied it.")
     profile_sections(profile)
     conflict_panel(profile.get("conflicts", []))
     provenance_table(profile.get("provenance", {}))

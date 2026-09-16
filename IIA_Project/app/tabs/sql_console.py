@@ -14,11 +14,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:  # `streamlit run` puts only this file's folder on sys.path
     sys.path.insert(0, str(ROOT))
+_APP_DIR = Path(__file__).resolve().parents[1]
+if str(_APP_DIR) not in sys.path:
+    sys.path.insert(0, str(_APP_DIR))
 
 import httpx  # noqa: E402
 import pandas as pd  # noqa: E402
 import streamlit as st  # noqa: E402
 
+from components import group_label, section  # noqa: E402
 from mediator.catalog import get_source_catalog  # noqa: E402
 
 # Loose enough to catch a plate in any of the four house spellings (space or hyphen separated,
@@ -203,15 +207,18 @@ def _render_requery() -> None:
 
 
 def render() -> None:
-    st.subheader("SQL Console — one source, its own SQL")
-    st.caption("Runs on the agency's own database through its wrapper. Reads use the read-only "
-               "/query; writes use the opt-in /admin/sql. The mediator itself never writes.")
+    section("SQL console — one source, its own SQL",
+            "The statement runs inside that agency's database through its wrapper. Reads use "
+            "the read-only /query; writes use the opt-in /admin/sql. The mediator itself never "
+            "writes and holds no copy.")
 
     catalog = get_source_catalog()
     if not catalog:
         st.warning("No sources are registered in the catalog.", icon=":material/warning:")
         return
-    source_id = st.selectbox("Source", list(catalog), key="sqlc_source")
+    group_label("Source")
+    source_id = st.selectbox("Source", list(catalog), key="sqlc_source",
+                             label_visibility="collapsed")
     meta = catalog[source_id]
     base = _base_url(meta)
     st.caption(f"{meta.get('display_name', source_id)} · {meta.get('dbms', '?')} · `{base}`")
@@ -228,18 +235,19 @@ def render() -> None:
 
     _render_history()  # may set sqlc_sql from a "Load" click -- must run before the widget below
 
-    sql = st.text_area("SQL statement", key="sqlc_sql", height=160)
+    group_label("Statement")
+    sql = st.text_area("SQL", key="sqlc_sql", height=160, label_visibility="collapsed")
 
     c_read, c_write = st.columns(2)
     run = c_read.button("Run SELECT", key="sqlc_run", type="primary", width="stretch")
-    write = c_write.button("Execute write (INSERT/UPDATE/DELETE)", key="sqlc_write",
+    write = c_write.button("Execute write (INSERT / UPDATE / DELETE)", key="sqlc_write",
                            width="stretch")
     if run or write:
         statement = (sql or "").strip()
         if not statement:
             st.error("Nothing to run: the statement is empty.")
         else:
-            st.markdown(f"**Sent to {source_id} at `{base}`**")
+            section("Result", f"Sent to {source_id} at {base}.")
             st.code(statement, language="sql")
             ok = _run_select(source_id, base, statement) if run else _run_write(source_id, base, statement)
             _push_history(source_id, statement, "read" if run else "write", ok)

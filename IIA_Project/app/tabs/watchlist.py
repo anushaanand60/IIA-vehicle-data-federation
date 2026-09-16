@@ -23,20 +23,21 @@ if str(_APP_DIR) not in sys.path:
 import pandas as pd  # noqa: E402
 import streamlit as st  # noqa: E402
 
+from components import group_label, section  # noqa: E402
 from mediator import watchlist  # noqa: E402
 
 ALERT_LIMIT = 50
 
 
 def _add_form() -> None:
-    st.markdown("**Add a plate to the watchlist**")
+    group_label("Add a plate")
     c_plate, c_reason, c_button = st.columns([2, 4, 1])
     plate = c_plate.text_input("Plate", key="wl_plate",
                                placeholder="DL05CD9876 / dl-05 cd 9876")
     reason = c_reason.text_input("Reason (recorded with every alert)", key="wl_reason",
                                  placeholder="e.g. repeat uninsured offender, patrol request")
-    c_button.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-    if c_button.button("➕ Add", key="wl_add", width="stretch"):
+    c_button.markdown("<div style='height:30px'></div>", unsafe_allow_html=True)
+    if c_button.button("Add", key="wl_add", type="primary", width="stretch"):
         if not plate.strip():
             st.warning("Enter a plate to watch.")
             return
@@ -47,30 +48,35 @@ def _add_form() -> None:
 
 
 def _watched_table() -> None:
+    """The marker list. Drawn as a column grid rather than `components.styled_table` because
+    each row carries its own Remove button, and a button cannot live inside an HTML table."""
     rows = watchlist.listing()
-    st.markdown(f"**Watched plates ({len(rows)})**")
+    section(f"Watched plates ({len(rows)})",
+            "A marker is an enforcement record, so it always carries the reason it was added.")
     if not rows:
         st.caption("No plate is being watched. Adding one makes every later query on it file an "
                    "alert, with the reason you give here.")
         return
     header = st.columns([2, 4, 2, 2, 1])
     for column, label in zip(header, ("Plate", "Reason", "Added by", "Added at", "")):
-        column.markdown(f"<span style='color:var(--fm-ink_muted);font-size:0.8rem;'>{label}"
-                        "</span>", unsafe_allow_html=True)
+        with column:
+            group_label(label or "\u00a0")
     for index, row in enumerate(rows):
         c_plate, c_reason, c_by, c_at, c_rm = st.columns([2, 4, 2, 2, 1])
         c_plate.markdown(f"`{row.get('plate', '')}`")
         c_reason.write(row.get("reason") or "—")
         c_by.write(row.get("added_by") or "—")
         c_at.write(str(row.get("added_at") or "")[:19] or "—")
-        if c_rm.button("✕", key=f"wl_rm_{index}", help="Remove from watchlist"):
+        if c_rm.button("Remove", key=f"wl_rm_{index}", help="Remove from watchlist"):
             watchlist.remove(row.get("plate", ""))
             st.rerun()
 
 
 def _alert_table() -> None:
     alerts = watchlist.alerts(ALERT_LIMIT)
-    st.markdown(f"**Recent alerts ({len(alerts)})**")
+    section(f"Recent alerts ({len(alerts)})",
+            "Filed by the mediator during a normal federated query; reading this page contacts "
+            "no laptop and caches no source row.")
     if not alerts:
         st.caption("No alert has been raised yet. Alerts are filed when a watched plate is "
                    "queried, or when any query returns a stolen or scrapped verdict.")
@@ -94,14 +100,13 @@ def _alert_table() -> None:
 
 def render() -> None:
     """Draw the whole Watchlist & Alerts tab. Called once from `app/app.py`."""
-    st.subheader("Watchlist & alerts")
-    st.caption(
-        "A marked plate raises a timestamped alert on every later query, carrying whatever camera "
-        "evidence the sighting sources returned — the mediator's analogue of the UK MIB's "
-        "Operation Tutelage marker. A stolen or scrapped verdict alerts on its own, watched or not."
+    section(
+        "Watchlist and alerts",
+        "A marked plate raises a timestamped alert on every later query, carrying whatever "
+        "camera evidence the sighting sources returned — the mediator's analogue of the UK "
+        "MIB's Operation Tutelage marker. A stolen or scrapped verdict alerts on its own, "
+        "watched or not.",
     )
     _add_form()
-    st.divider()
     _watched_table()
-    st.divider()
     _alert_table()

@@ -17,9 +17,13 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parents[2]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
+_APP_DIR = Path(__file__).resolve().parents[1]
+if str(_APP_DIR) not in sys.path:
+    sys.path.insert(0, str(_APP_DIR))
 
 import streamlit as st  # noqa: E402
 
+from components import group_label  # noqa: E402
 from mediator.plate_ocr import (INSTALL_HINT, OCRUnavailable,  # noqa: E402
                                 normalise_candidates, read_plate)
 
@@ -35,8 +39,9 @@ def _pick(plate: str) -> None:
 
 def render_ocr_slot() -> None:
     """Draw the uploader + candidate buttons. Safe to call anywhere; never raises."""
+    group_label("Plate photo (optional)")
     upload = st.file_uploader("Photo of a number plate", type=["png", "jpg", "jpeg"],
-                              key="ocr_file")
+                              key="ocr_file", label_visibility="collapsed")
     if upload is None:
         st.caption("Optional: upload a plate photo (ANPR-style) instead of typing the number.")
         return
@@ -60,7 +65,7 @@ def render_ocr_slot() -> None:
         st.info("No plate-like text found in that photo. Try a closer, straighter shot.")
         return
 
-    st.caption("OCR candidates — pick one to investigate:")
+    group_label("OCR candidates — pick one to investigate")
     with st.container(horizontal=True, key="ocr_candidates"):
         for index, guess in enumerate(guesses[:MAX_SHOWN]):
             if st.button(f"{guess.text} ({guess.confidence:.0%})", key=f"ocr_pick_{index}"):
@@ -70,7 +75,7 @@ def render_ocr_slot() -> None:
     variants = [v for v in normalise_candidates(top) if v != top][:MAX_VARIANTS]
     if not variants:
         return
-    st.caption("Did you mean (OCR confusions O↔0, I↔1, B↔8, S↔5, Z↔2, G↔6):")
+    group_label("Did you mean — OCR confusions O↔0, I↔1, B↔8, S↔5, Z↔2, G↔6")
     with st.container(horizontal=True, key="ocr_variants"):
         for offset, variant in enumerate(variants, start=MAX_SHOWN):
             if st.button(variant, key=f"ocr_pick_{offset}"):
