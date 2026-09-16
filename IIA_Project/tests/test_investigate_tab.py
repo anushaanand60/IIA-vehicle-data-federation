@@ -234,10 +234,13 @@ def test_three_reruns_raise_nothing(cluster):
     assert at.session_state["inv_plate"] == PLATE  # state survives the reruns unchanged
 
 
-def test_watchlist_action_is_a_disabled_placeholder(cluster):
+def test_watchlist_action_is_live(cluster):
+    # Task 2.3 turned the placeholder into a working toggle; the behaviour it gained is asserted
+    # end-to-end in tests/test_watchlist.py.
     at = run_tab()
     watch = at.button(key="inv_watch")
-    assert watch.disabled is True
+    assert watch.disabled is False
+    assert "watchlist" in watch.label.lower()
 
 
 # --------------------------------------------- (5) an unknown plate offers onboarding

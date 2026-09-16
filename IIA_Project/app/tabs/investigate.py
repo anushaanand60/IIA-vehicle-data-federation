@@ -25,8 +25,9 @@ if str(_APP_DIR) not in sys.path:
 
 import streamlit as st  # noqa: E402
 
-from components import (conflict_panel, decision_banner, profile_sections,  # noqa: E402
-                        provenance_table, risk_placeholder, source_chips)
+from components import (alert_banner, conflict_panel, decision_banner,  # noqa: E402
+                        profile_sections, provenance_table, risk_placeholder, source_chips)
+from mediator import watchlist  # noqa: E402
 from mediator.core import run_global_query  # noqa: E402
 from mediator.report import file_ministry_report, generate_report_pdf  # noqa: E402
 from tabs.ocr_upload import render_ocr_slot  # noqa: E402
@@ -83,8 +84,24 @@ def _actions(profile: dict, plan_trace: dict) -> None:
     with st.container(horizontal=True, key="inv_actions"):
         file_report = st.button("📑 File report to Ministry", key="inv_file_report",
                                 type="secondary")
-        st.button("👁️ Add to watchlist", key="inv_watch", disabled=True,
-                  help="coming in Task 2.3")
+        # One button, two states -- the marker is a toggle, so the page can never show "add" for
+        # a plate that is already watched. The reason travels with every alert the plate raises,
+        # which is why an unexplained marker is not offered.
+        watched = watchlist.is_watched(profile.get("plate_number") or "")
+        reason = st.text_input("Watchlist reason", key="inv_watch_reason",
+                               placeholder="why this plate is being watched",
+                               label_visibility="collapsed", disabled=watched)
+        toggle_watch = st.button(
+            "🚫 Remove from watchlist" if watched else "👁️ Add to watchlist",
+            key="inv_watch",
+            help="Every later query on a watched plate files a timestamped alert.")
+    if toggle_watch:
+        if watched:
+            watchlist.remove(profile.get("plate_number") or "")
+        else:
+            watchlist.add(profile.get("plate_number") or "",
+                          reason.strip() or "No reason recorded")
+        st.rerun()  # re-query so the banner and the button both reflect the new state
     if not file_report:
         return
     report_id = file_ministry_report(profile, plan_trace)
@@ -115,6 +132,7 @@ def render() -> None:
     st.session_state["latest_result"] = result  # the Plan Trace tab reads this
 
     decision_banner(profile)
+    alert_banner(profile.get("alerts"))  # watchlist / hotlist hits raised by this very query
     source_chips(plan_trace.get("sources_detail", {}))
 
     if is_unknown(profile):  # plate in no asked source: onboard it live (Task 0.5)

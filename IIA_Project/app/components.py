@@ -259,9 +259,76 @@ def provenance_table(provenance: dict | None) -> None:
 
 # ------------------------------------------------------------- risk (Task 2.3)
 
-def risk_placeholder() -> None:
-    """Reserved slot for the explainable risk score and watchlist alerts (Task 2.3).
+_RISK_TOKEN = {
+    "LOW": "var(--fm-decision_clear)",
+    "MEDIUM": "var(--fm-decision_suspicious)",
+    "HIGH": "var(--fm-decision_report)",
+    "CRITICAL": "var(--fm-decision_alert)",
+}
 
-    Deliberately renders nothing: an empty gauge would be a claim the mediator cannot yet make.
+
+def risk_gauge(risk: dict | None) -> None:
+    """The 0–100 risk score as a bar, with the factors that add up to it.
+
+    The factor list is not decoration: `mediator/risk.py` guarantees the points sum exactly to the
+    value, so the bar can be read as arithmetic rather than as an opaque index. An empty gauge
+    would be a claim, so nothing renders when there is no score.
     """
-    return None
+    if not risk:
+        return
+    value = int(risk.get("value") or 0)
+    level = str(risk.get("level") or "LOW").upper()
+    token = _RISK_TOKEN.get(level, "var(--fm-ink_muted)")
+    factors = risk.get("factors") or []
+    rows = "".join(
+        f'<div style="display:flex;gap:10px;justify-content:space-between;padding:2px 0;'
+        f'font-size:0.85rem;">'
+        f'<span style="color:var(--fm-ink_muted);">{html.escape(str(f.get("name", "")))}'
+        f'<span style="display:block;font-size:0.75rem;opacity:0.8;">'
+        f'{html.escape(str(f.get("note", "")))}</span></span>'
+        f'<span style="color:var(--fm-ink);font-family:var(--fm-mono);font-weight:600;">'
+        f'{int(f.get("points", 0)):+d}</span></div>'
+        for f in factors
+    )
+    st.markdown(
+        f'<div class="fm-card">'
+        f'<p class="fm-card-title">📈 Risk score: {value}/100 · {html.escape(level)}</p>'
+        f'<div class="fm-risk-bar" style="background:var(--fm-paper2);border-radius:999px;'
+        f'height:12px;overflow:hidden;margin:6px 0 10px 0;">'
+        f'<div style="width:{max(0, min(100, value))}%;height:100%;background:{token};"></div>'
+        f"</div>{rows}</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def alert_banner(alerts: list[dict] | None) -> None:
+    """Watchlist / hotlist hits raised by this query, with the evidence that came back with them."""
+    alerts = alerts or []
+    if not alerts:
+        return
+    items = "".join(
+        "<li>"
+        f'<strong>{html.escape(fmt(a.get("plate")))}</strong> — {html.escape(fmt(a.get("reason")))}'
+        f' · seen at {html.escape(fmt(a.get("location")))} ({html.escape(fmt(a.get("seen_at")))})'
+        f' · raised {html.escape(str(a.get("ts") or "")[:19])}'
+        "</li>"
+        for a in alerts
+    )
+    st.markdown(
+        f'<div class="fm-banner fm-banner--alert">'
+        f'<p class="fm-banner-title">🚨 Watchlist hit ({len(alerts)})</p>'
+        f"<ul>{items}</ul></div>",
+        unsafe_allow_html=True,
+    )
+
+
+def risk_placeholder(profile: dict | None = None) -> None:
+    """The risk slot on the Investigate page.
+
+    Takes the profile when the caller has it; otherwise it reads the last query out of
+    `latest_result`, the session key the Investigate tab already publishes for the Plan Trace tab.
+    That keeps the call site in `app/tabs/investigate.py` unchanged while the gauge becomes real.
+    """
+    if profile is None:
+        profile = (st.session_state.get("latest_result") or {}).get("profile") or {}
+    risk_gauge(profile.get("risk"))

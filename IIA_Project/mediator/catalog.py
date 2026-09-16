@@ -136,6 +136,31 @@ def init_meta_db():
     );
     """)
 
+    # Task 2.3. Both tables are mediator-side *policy and audit*, never source data: the watchlist
+    # says which plates an operator cares about, the alert log says when the mediator noticed one.
+    # Caching a source row here would contradict the freshness thesis; a marker and a timestamp
+    # do not.
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS WATCHLIST (
+        plate TEXT PRIMARY KEY,
+        reason TEXT,
+        added_by TEXT,
+        added_at TEXT
+    );
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS ALERT_LOG (
+        alert_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        plate TEXT,
+        reason TEXT,
+        seen_at TEXT,      -- the camera timestamp, when a sighting source answered
+        location TEXT,     -- the camera location, when a sighting source answered
+        decision TEXT,
+        ts TEXT            -- when the mediator raised the alert
+    );
+    """)
+
     # Seed default sources if empty
     cur.execute("SELECT COUNT(*) FROM SOURCE_CATALOG;")
     if cur.fetchone()[0] == 0:
@@ -246,6 +271,78 @@ def set_identity_authority(source_id: str, is_authority: bool = True) -> None:
     conn.execute("UPDATE SOURCE_CATALOG SET identity_authority = ? WHERE source_id = ?;", (int(is_authority), source_id))
     conn.commit()
     conn.close()
+
+# --------------------------------------------------------------- watchlist & alerts (Task 2.3)
+# Plain accessors only: what counts as "watched" and what deserves an alert is policy, and policy
+# lives in mediator/watchlist.py. This module just stores rows.
+
+def watchlist_upsert(plate: str, reason: str, added_by: str, added_at: str) -> None:
+    """Mark a plate. Re-marking updates the reason rather than duplicating the plate."""
+    init_meta_db()
+    conn = sqlite3.connect(META_DB_PATH)
+    conn.execute("""
+    INSERT INTO WATCHLIST (plate, reason, added_by, added_at) VALUES (?, ?, ?, ?)
+    ON CONFLICT(plate) DO UPDATE SET
+        reason = excluded.reason,
+        added_by = excluded.added_by,
+        added_at = excluded.added_at;
+    """, (plate, reason, added_by, added_at))
+    conn.commit()
+    conn.close()
+
+
+def watchlist_delete(plate: str) -> None:
+    init_meta_db()
+    conn = sqlite3.connect(META_DB_PATH)
+    conn.execute("DELETE FROM WATCHLIST WHERE plate = ?;", (plate,))
+    conn.commit()
+    conn.close()
+
+
+def watchlist_all() -> List[Dict[str, Any]]:
+    init_meta_db()
+    conn = sqlite3.connect(META_DB_PATH)
+    conn.row_factory = sqlite3.Row
+    rows = [dict(r) for r in conn.execute(
+        "SELECT * FROM WATCHLIST ORDER BY added_at DESC;").fetchall()]
+    conn.close()
+    return rows
+
+
+def watchlist_get(plate: str) -> Optional[Dict[str, Any]]:
+    init_meta_db()
+    conn = sqlite3.connect(META_DB_PATH)
+    conn.row_factory = sqlite3.Row
+    row = conn.execute("SELECT * FROM WATCHLIST WHERE plate = ?;", (plate,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def log_alert(plate: str, reason: str, seen_at: Optional[str], location: Optional[str],
+              decision: Optional[str], ts: str) -> int:
+    init_meta_db()
+    conn = sqlite3.connect(META_DB_PATH)
+    cur = conn.cursor()
+    cur.execute("""
+    INSERT INTO ALERT_LOG (plate, reason, seen_at, location, decision, ts)
+    VALUES (?, ?, ?, ?, ?, ?);
+    """, (plate, reason, seen_at, location, decision, ts))
+    alert_id = int(cur.lastrowid)
+    conn.commit()
+    conn.close()
+    return alert_id
+
+
+def get_alerts(limit: int = 50) -> List[Dict[str, Any]]:
+    """Newest first — an alert log is read from the top."""
+    init_meta_db()
+    conn = sqlite3.connect(META_DB_PATH)
+    conn.row_factory = sqlite3.Row
+    rows = [dict(r) for r in conn.execute(
+        "SELECT * FROM ALERT_LOG ORDER BY alert_id DESC LIMIT ?;", (int(limit),)).fetchall()]
+    conn.close()
+    return rows
+
 
 if __name__ == "__main__":
     init_meta_db()
