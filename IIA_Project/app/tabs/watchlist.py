@@ -23,21 +23,22 @@ if str(_APP_DIR) not in sys.path:
 import pandas as pd  # noqa: E402
 import streamlit as st  # noqa: E402
 
-from components import group_label, section  # noqa: E402
+from components import group_label, page_head, panel, section  # noqa: E402
 from mediator import watchlist  # noqa: E402
 
 ALERT_LIMIT = 50
 
 
 def _add_form() -> None:
-    group_label("Add a plate")
-    c_plate, c_reason, c_button = st.columns([2, 4, 1])
+    section("Mark a plate",
+            "A marker is an enforcement record. It carries the reason it was added, and that "
+            "reason travels with every alert the plate later raises.")
+    c_plate, c_reason = st.columns([2, 3])
     plate = c_plate.text_input("Plate", key="wl_plate",
                                placeholder="DL05CD9876 / dl-05 cd 9876")
     reason = c_reason.text_input("Reason (recorded with every alert)", key="wl_reason",
                                  placeholder="e.g. repeat uninsured offender, patrol request")
-    c_button.markdown("<div style='height:30px'></div>", unsafe_allow_html=True)
-    if c_button.button("Add", key="wl_add", type="primary", width="stretch"):
+    if st.button("Add to the watchlist", key="wl_add", type="primary"):
         if not plate.strip():
             st.warning("Enter a plate to watch.")
             return
@@ -99,14 +100,16 @@ def _alert_table() -> None:
 
 
 def render() -> None:
-    """Draw the whole Watchlist & Alerts tab. Called once from `app/app.py`."""
-    section(
+    """Draw the whole Watchlist and alerts page. Called once from `app/app.py`."""
+    page_head(
         "Watchlist and alerts",
         "A marked plate raises a timestamped alert on every later query, carrying whatever "
-        "camera evidence the sighting sources returned — the mediator's analogue of the UK "
-        "MIB's Operation Tutelage marker. A stolen or scrapped verdict alerts on its own, "
-        "watched or not.",
+        "camera evidence the sighting sources returned. A stolen or scrapped verdict alerts on "
+        "its own, watched or not.",
     )
-    _add_form()
-    _watched_table()
-    _alert_table()
+    with panel("wl_add"):
+        _add_form()
+    with panel("wl_watched"):
+        _watched_table()
+    with panel("wl_alerts"):
+        _alert_table()

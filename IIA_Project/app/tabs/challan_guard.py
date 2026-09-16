@@ -26,7 +26,7 @@ if str(_APP_DIR) not in sys.path:
 import streamlit as st  # noqa: E402
 
 from components import (chip, chip_strip, group_label, kpi_row,  # noqa: E402
-                        section, stepper, styled_table)
+                        page_head, panel, section, stepper, styled_table)
 from mediator import challan_guard  # noqa: E402
 from scripts.seed_challan_cases import cameras, seed  # noqa: E402
 from theme import TOKENS  # noqa: E402
@@ -99,6 +99,7 @@ def _verdict_line(case: dict) -> None:
 
 
 def _detail(case: dict) -> None:
+    """The verdict on the left, the evidence it was read off on the right."""
     section(f"Case #{case['case_id']} — read as {case['plate_read']}",
             "The verdict, the steps that produced it, and every source answer it rests on.")
     with st.container(horizontal=True, key="cg_status_row"):
@@ -107,27 +108,28 @@ def _detail(case: dict) -> None:
             st.markdown(f"resolved to **{case['plate_resolved']}**")
     _verdict_line(case)
 
-    group_label("Verification steps")
-    _steps(case)
-
-    with st.expander("Evidence bundle (what each source said, and when)"):
-        st.json(case.get("evidence") or {})
-
-    group_label("Case history")
-    for event in challan_guard.events(case["case_id"]):
-        note = (event.get("evidence") or {}).get("reason") or ""
-        st.markdown(f"- `{event['at']}` **{event['event']}** by {event['actor']} {note}")
+    steps_col, evidence_col = st.columns([3, 2])
+    with steps_col:
+        group_label("Verification steps")
+        _steps(case)
+    with evidence_col:
+        group_label("Evidence and history")
+        with st.expander("Evidence bundle (what each source said, and when)"):
+            st.json(case.get("evidence") or {})
+        for event in challan_guard.events(case["case_id"]):
+            note = (event.get("evidence") or {}).get("reason") or ""
+            st.markdown(f"- `{event['at']}` **{event['event']}** by {event['actor']} {note}")
 
 
 def _actions(case_id: int) -> None:
-    group_label("Operator actions")
+    section("Actions",
+            "Verify queries every source live for this sighting. The three overrides exist so a "
+            "human can disagree with the guard and leave a named, timestamped trace of doing so.")
     verify_col, issue_col, reject_col, hold_col = st.columns(4)
     if verify_col.button("Verify (live)", key="cg_verify", type="primary", width="stretch"):
         with st.spinner("Querying every source for this sighting…"):
             challan_guard.verify(case_id, actor="operator")
         st.rerun()
-    # The three overrides exist because a human must be able to disagree with the guard and leave
-    # a named, timestamped trace of having done so — not because the guard is advisory.
     if issue_col.button("Issue anyway", key="cg_issue", width="stretch"):
         challan_guard.issue(case_id, "operator", "issued by operator override")
         st.rerun()
@@ -140,7 +142,7 @@ def _actions(case_id: int) -> None:
 
 
 def _new_candidate_form() -> None:
-    section("File a new candidate from a sighting",
+    section("Add a candidate sighting",
             "This is the ANPR event, not a fine: what a camera read, where and when.")
     known = cameras()
     by_label = {f"{c['camera_id']} — {c['location']}": c for c in known}
@@ -169,44 +171,52 @@ def _new_candidate_form() -> None:
 
 
 def render() -> None:
-    """Draw the whole Challan Guard tab. Never raises: a broken lookup shows an error, not a stack."""
-    section("Challan Guard — verify before you fine",
-            "No e-challan leaves this queue until identity, clone signal, theft status and "
-            "insurance on the day of the sighting have all been confirmed live. If a source "
-            "cannot be reached, the fine is held rather than guessed.")
+    """Draw the whole Challan Guard page. Never raises: a broken lookup shows an error, not a stack."""
+    page_head("Challan Guard",
+              "No e-challan leaves this queue until identity, clone signal, theft status and "
+              "insurance on the day of the sighting have all been confirmed live. If a source "
+              "cannot be reached, the fine is held rather than guessed.")
 
-    try:
-        _kpis()
-        cases = challan_guard.queue(limit=200)
-    except Exception as exc:  # a broken meta.db must not take the whole app down
-        st.error(f"Could not read the challan queue: {exc}")
-        return
+    with panel("cg_kpis"):
+        section("Where the queue stands")
+        try:
+            _kpis()
+            cases = challan_guard.queue(limit=200)
+        except Exception as exc:  # a broken meta.db must not take the whole app down
+            st.error(f"Could not read the challan queue: {exc}")
+            return
 
-    group_label("Queue controls")
-    seed_col, refresh_col = st.columns(2)
-    if seed_col.button("Seed demo candidates", key="cg_seed", width="stretch"):
-        seed()
-        st.rerun()
-    if refresh_col.button("Refresh", key="cg_refresh", width="stretch"):
-        st.rerun()
+    with panel("cg_queue"):
+        section("Sightings waiting on a decision",
+                "One row per ANPR event. A case is only a fine once the guard says so.")
+        seed_col, refresh_col = st.columns(2)
+        if seed_col.button("Seed demo candidates", key="cg_seed", width="stretch"):
+            seed()
+            st.rerun()
+        if refresh_col.button("Refresh", key="cg_refresh", width="stretch"):
+            st.rerun()
+        if not cases:
+            st.info("The queue is empty. Press “Seed demo candidates” for the five demo "
+                    "sightings, or file one below.")
+        else:
+            _queue_table(cases)
+            labels = {_label(case): case for case in cases}
+            chosen = st.selectbox("Case", key="cg_case", options=list(labels))
 
     if not cases:
-        st.info("The queue is empty. Press “Seed demo candidates” for the five demo sightings, "
-                "or file one below.")
-        _new_candidate_form()
+        with panel("cg_new"):
+            _new_candidate_form()
         return
 
-    section("Sightings waiting on a decision",
-            "One row per ANPR event. A case is only a fine once the guard says so.")
-    _queue_table(cases)
-    labels = {_label(case): case for case in cases}
-    chosen = st.selectbox("Case", key="cg_case", options=list(labels))
     case = labels.get(chosen) or cases[0]
+    with panel("cg_actions"):
+        _actions(int(case["case_id"]))
 
-    _actions(int(case["case_id"]))
-    try:
-        _detail(challan_guard.get(int(case["case_id"])) or case)
-    except Exception as exc:
-        st.error(f"Could not render case #{case['case_id']}: {exc}")
+    with panel("cg_detail"):
+        try:
+            _detail(challan_guard.get(int(case["case_id"])) or case)
+        except Exception as exc:
+            st.error(f"Could not render case #{case['case_id']}: {exc}")
 
-    _new_candidate_form()
+    with panel("cg_new"):
+        _new_candidate_form()

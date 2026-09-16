@@ -53,10 +53,10 @@ def test_the_tab_renders_the_queue_without_exceptions(queued):
 
 
 def test_kpis_count_the_queue(queued):
-    """Since Task C1 the KPIs are one `components.kpi_row` grid rather than four `st.metric`
-    cards, so the labels are read off that block."""
+    """The KPIs are one `components.kpi_row` grid rather than four `st.metric` cards, so the
+    labels are read off that block."""
     at = run_tab()
-    kpis = " ".join(str(m.value) for m in at.markdown if "vz-kpi" in str(m.value))
+    kpis = " ".join(str(m.value) for m in at.markdown if "cv-kpi" in str(m.value))
     assert all(label in kpis for label in ("Candidates", "Held", "Issued", "Rejected")), kpis
     assert "prevent" in kpis.lower()
 

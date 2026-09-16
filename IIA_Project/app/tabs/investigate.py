@@ -26,8 +26,8 @@ if str(_APP_DIR) not in sys.path:
 import streamlit as st  # noqa: E402
 
 from components import (alert_banner, conflict_panel, decision_banner,  # noqa: E402
-                        group_label, profile_sections, provenance_table, risk_placeholder,
-                        section, source_chips)
+                        group_label, page_head, panel, profile_sections, provenance_table,
+                        risk_placeholder, section, source_chips)
 from mediator import watchlist  # noqa: E402
 from mediator.core import run_global_query  # noqa: E402
 from mediator.report import file_ministry_report, generate_report_pdf  # noqa: E402
@@ -54,31 +54,42 @@ SCOPES = [
 UC1_ATTRS = ["insurance_status", "insurance_expiry"]
 
 
-def _search_hero() -> tuple[str, str]:
-    """Plate + scope + demo chips + the slot Task 2.1's OCR upload drops into."""
-    group_label("Demo scenarios")
-    demo_cols = st.columns(len(DEMO_PLATES))
-    st.session_state.setdefault("selected_plate", DEFAULT_PLATE)
+def _demo_panel() -> None:
+    """Five equal buttons, one per story vehicle, each with the case it demonstrates beneath it."""
+    with panel("inv_demo"):
+        section("Try a demo scenario",
+                "Five vehicles that exercise the whole decision space. Each is spelled the way a "
+                "human would actually type it, so normalisation is demonstrated rather than dodged.")
+        st.session_state.setdefault("selected_plate", DEFAULT_PLATE)
+        for column, (plate, description, raw) in zip(st.columns(len(DEMO_PLATES)), DEMO_PLATES):
+            if column.button(plate, key=f"inv_demo_{plate}", width="stretch"):
+                st.session_state["selected_plate"] = raw
+                # The text input is created further down in this same run, so seeding its key
+                # here is enough -- no rerun needed, and the widget cannot go stale behind
+                # selected_plate.
+                st.session_state["inv_plate"] = raw
+            column.markdown(
+                f'<p style="color:var(--cv-ink2);font-size:0.95rem;margin:6px 0 0;">'
+                f"{description}</p>", unsafe_allow_html=True)
 
-    for column, (plate, description, raw) in zip(demo_cols, DEMO_PLATES):
-        if column.button(f"**{plate}**\n\n_{description}_", key=f"inv_demo_{plate}",
-                         width="stretch"):
-            st.session_state["selected_plate"] = raw
-            # The text input is created further down in this same run, so seeding its key here is
-            # enough -- no rerun needed, and the widget cannot go stale behind selected_plate.
-            st.session_state["inv_plate"] = raw
 
-    st.session_state.setdefault("inv_plate", st.session_state["selected_plate"])
+def _search_panel() -> tuple[str, str]:
+    """Plate + scope, with the photo upload folded away until it is wanted."""
+    with panel("inv_search"):
+        section("Enter a plate",
+                "Any spelling is accepted — the mediator normalises it to the canonical form "
+                "before it asks anyone.")
+        st.session_state.setdefault("inv_plate", st.session_state["selected_plate"])
 
-    # The OCR slot must render *before* the text input: picking a candidate writes `inv_plate`,
-    # and Streamlit forbids setting a widget's key after that widget has been instantiated.
-    with st.container(key="inv_ocr_slot"):
-        render_ocr_slot()
+        # The OCR slot must render *before* the text input: picking a candidate writes
+        # `inv_plate`, and Streamlit forbids setting a widget's key after that widget has been
+        # instantiated.
+        with st.expander("Or upload a plate photo", expanded=False):
+            render_ocr_slot()
 
-    group_label("Plate and scope")
-    c_plate, c_scope = st.columns([3, 2])
-    plate = c_plate.text_input("Plate number, in any format", key="inv_plate")
-    scope = c_scope.selectbox("Query scope", SCOPES, key="inv_scope")
+        c_plate, c_scope = st.columns([3, 2])
+        plate = c_plate.text_input("Plate number, in any format", key="inv_plate")
+        scope = c_scope.selectbox("Query scope", SCOPES, key="inv_scope")
     return plate, scope
 
 
@@ -123,12 +134,13 @@ def _actions(profile: dict, plan_trace: dict) -> None:
 
 
 def render() -> None:
-    """Draw the whole Investigate tab. Called once from `app/app.py`."""
-    section("Investigate a vehicle",
-            "One plate in, one defensible decision out. Every answer below is fetched from the "
-            "agencies now — registration, insurance, police and camera — and nothing is "
-            "copied into the mediator.")
-    plate, scope = _search_hero()
+    """Draw the whole Investigate page. Called once from `app/app.py`."""
+    page_head("Investigate a vehicle",
+              "One plate in, one defensible decision out. Every answer below is fetched from the "
+              "agencies now — registration, insurance, police and camera — and nothing is copied "
+              "into the mediator.")
+    _demo_panel()
+    plate, scope = _search_panel()
     if not plate:
         st.info("Enter a plate above, or pick one of the demo scenarios, to run a global query.")
         return
@@ -137,23 +149,28 @@ def render() -> None:
     result = run_global_query(plate, requested_attrs)
     profile = result["profile"]
     plan_trace = result["plan_trace"]
-    st.session_state["latest_result"] = result  # the Plan Trace tab reads this
+    st.session_state["latest_result"] = result  # the Plan Trace page reads this
 
-    section("Decision", "The verdict, its confidence, and every reason it rests on.")
-    decision_banner(profile)
-    alert_banner(profile.get("alerts"))  # watchlist / hotlist hits raised by this very query
-
-    section("Who answered", "A source that returned zero rows still answered: that is data, "
-                            "not a failure. A source that is down leaves the answer partial.")
-    source_chips(plan_trace.get("sources_detail", {}))
+    with panel("inv_decision"):
+        section("Decision", "The verdict, its confidence, and every reason it rests on.")
+        decision_banner(profile)
+        alert_banner(profile.get("alerts"))  # watchlist / hotlist hits raised by this query
+        group_label("Who answered")
+        st.caption("A source that returned zero rows still answered: that is data, not a "
+                   "failure. A source that is down leaves the answer partial.")
+        source_chips(plan_trace.get("sources_detail", {}))
 
     if is_unknown(profile):  # plate in no asked source: onboard it live (Task 0.5)
-        render_unknown_plate(profile["plate_number"], profile)
+        with panel("inv_onboard"):
+            render_unknown_plate(profile["plate_number"], profile)
 
-    section("Integrated vehicle profile",
-            "One row per authority, each attribute attributed to the source that supplied it.")
-    profile_sections(profile)
-    conflict_panel(profile.get("conflicts", []))
-    provenance_table(profile.get("provenance", {}))
-    risk_placeholder()
-    _actions(profile, plan_trace)
+    with panel("inv_profile"):
+        section("Integrated vehicle profile",
+                "One card per authority, each attribute attributed to the source that supplied it.")
+        profile_sections(profile)
+        conflict_panel(profile.get("conflicts", []))
+        provenance_table(profile.get("provenance", {}))
+        risk_placeholder()
+
+    with panel("inv_actions_panel"):
+        _actions(profile, plan_trace)
