@@ -75,6 +75,7 @@ _APP_DIR = os.path.dirname(os.path.abspath(__file__))
 if _APP_DIR not in sys.path:
     sys.path.insert(0, _APP_DIR)
 from tabs.sql_console import render as render_sql_console
+from tabs.source_editor import render_sidebar as render_source_editor_sidebar
 
 # Navigation tabs
 tab_investigate, tab_plantrace, tab_matcher, tab_catalog, tab_reports, tab_sqlconsole = st.tabs([
@@ -87,102 +88,14 @@ tab_investigate, tab_plantrace, tab_matcher, tab_catalog, tab_reports, tab_sqlco
 ])
 
 # Each wrapper's /query connection is read-only by construction (CLAUDE.md §5.1) -- that boundary
-# is never touched here. What changed: live_update.py wrote straight to sources/<id>/<id>.db on
-# THIS laptop, which is the source only while every source is this machine's local SQLite file.
-# Once a source is PostgreSQL/MySQL or lives on another laptop, that write lands in a file nothing
-# queries, and the sidebar reported success it never achieved.
-#
-# Fix: call the source's own /admin/mutate over HTTP -- a fixed, named menu of writes the wrapper
-# itself exposes (sources/wrapper_template.py, ADMIN_ACTIONS), never arbitrary SQL, and disabled
-# by default (404) unless that laptop set <SOURCE>_ADMIN_URL. The mediator still cannot write
-# through /query; this is the agency's own operator console, reached like any other endpoint.
-def apply_mutation(source_id: str, action: str, plate: str, params: dict, success_msg: str,
-                   cli_cmd: str, kind=st.success) -> None:
-    import httpx as _httpx
-    meta = get_source_catalog().get(source_id, {})
-    base = str(meta.get("base_url") or "").rstrip("/")
-    if not base:
-        st.error(f"{source_id} is not in the catalog.")
-        return
-    try:
-        r = _httpx.post(f"{base}/admin/mutate",
-                        json={"action": action, "plate": plate, "params": params}, timeout=8.0)
-    except Exception as exc:
-        st.error(f"Could not reach {source_id} at {base}: {type(exc).__name__}: {exc}")
-        return
-    if r.status_code == 404:
-        # The source has not opted in to an admin console -- fall back to naming the CLI command,
-        # which always works because it talks to the database directly rather than over HTTP.
-        st.error(f"Not applied over the GUI. {source_id} has not enabled an admin console "
-                 f"({source_id}_ADMIN_URL is not set on the laptop that owns it).")
-        st.caption("Ask whoever owns that laptop to run this instead, then re-query here:")
-        st.code(cli_cmd, language="bash")
-        return
-    if r.status_code != 200:
-        st.error(f"{source_id} rejected the mutation: {r.json().get('error', r.text)}")
-        return
-    body = r.json()
-    kind(f"{success_msg}  ({body.get('detail', '')})")
+# is never touched here. Writes go through the source editor sidebar (app/tabs/source_editor.py),
+# which asks each wrapper's own GET /admin/actions what it can do and posts to /admin/mutate --
+# never arbitrary SQL, and disabled wherever that laptop set <SOURCE>_ADMIN=off. The mediator still
+# cannot write through /query; this is the agency's own operator console, reached like any other
+# endpoint.
+render_source_editor_sidebar()
 
-
-# Sidebar: Live Source Mutation (For Real-Time Demo / Prof Testing)
 with st.sidebar:
-    st.markdown("### ⚡ Live Source Data Mutator")
-    st.markdown("Use this to simulate real-time edits inside the autonomous source databases on stage.")
-
-    mut_action = st.selectbox(
-        "Simulation Action",
-        [
-            "Renew Insurance Policy (INS)",
-            "Expire Insurance Policy (INS)",
-            "Report Vehicle Stolen (THEFT)",
-            "Log Camera Sighting (CAM)",
-            "Register New Vehicle (REG)"
-        ]
-    )
-
-    mut_plate = st.text_input("Target Plate", "DL05CD9876", key="mut_plate")
-
-    if "Renew" in mut_action:
-        new_exp = st.text_input("New Expiry Date (DD/MM/YYYY)", "31/12/2027")
-        if st.button("Apply Renewal to INS DB", type="primary"):
-            apply_mutation("INS", "renew", mut_plate, {"until": new_exp},
-                           f"Applied: {mut_plate} renewed until {new_exp}. Re-run the query.",
-                           f"python scripts/mutate_source.py renew INS {mut_plate} --until {new_exp} --url <owner-url>")
-    elif "Expire" in mut_action:
-        old_exp = st.text_input("Expired Date (DD/MM/YYYY)", "10/01/2026")
-        if st.button("Expire Policy in INS DB", type="primary"):
-            apply_mutation("INS", "expire", mut_plate, {"until": old_exp},
-                           f"Applied: {mut_plate} expired on {old_exp}. Re-run the query.",
-                           f"python scripts/mutate_source.py expire INS {mut_plate} --until {old_exp} --url <owner-url>", st.warning)
-    elif "Stolen" in mut_action:
-        fir = st.text_input("FIR Number", "FIR-LIVE-101/2026")
-        if st.button("Log Theft in THEFT DB", type="primary"):
-            apply_mutation("THEFT", "steal", mut_plate, {"fir_no": fir},
-                           f"Applied: {mut_plate} reported STOLEN. Re-run the query.",
-                           f"python scripts/mutate_source.py steal THEFT {mut_plate} --url <owner-url>", st.error)
-    elif "Sighting" in mut_action:
-        c_make = st.text_input("Observed Make", "Hyundai")
-        c_model = st.text_input("Observed Model", "Creta")
-        c_col = st.text_input("Observed Colour", "White")
-        if st.button("Record Sighting in CAM DB", type="primary"):
-            apply_mutation("CAM", "sight", mut_plate,
-                           {"make": c_make, "model": c_model, "colour": c_col},
-                           f"Applied: {mut_plate} sighted by camera just now. Re-run the query.",
-                           f"python scripts/mutate_source.py sight CAM {mut_plate} --make {c_make} --model {c_model} "
-                           f"--colour {c_col} --url <owner-url>", st.info)
-    elif "Register" in mut_action:
-        r_owner = st.text_input("Owner Name", "Rajesh Khanna")
-        r_make = st.text_input("Make", "Maruti Suzuki")
-        r_model = st.text_input("Model", "Swift")
-        r_col = st.text_input("Colour", "White")
-        if st.button("Register in REG DB", type="primary"):
-            apply_mutation("REG", "register", mut_plate,
-                           {"owner": r_owner, "make": r_make, "model": r_model, "colour": r_col},
-                           f"Applied: {mut_plate} registered for {r_owner}. Re-run the query.",
-                           f'python scripts/mutate_source.py register REG {mut_plate} --owner "{r_owner}" --make {r_make} '
-                           f"--model {r_model} --colour {r_col} --url <owner-url>")
-
     st.markdown("---")
     st.caption("Freshness Rule: The mediator holds no source data. Edits in the source databases reflect instantly upon re-querying without ETL.")
 

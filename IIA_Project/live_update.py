@@ -2,6 +2,7 @@
 Live Source Mutator (Demonstrating Freshness & Virtual Integration).
 Allows you to insert or update rows directly in the autonomous source databases
 during a live evaluation to prove that data is queried live without ETL or caching.
+CLI only; the GUI uses each wrapper's /admin endpoints.
 """
 
 import sqlite3
