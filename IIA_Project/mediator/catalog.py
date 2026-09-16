@@ -135,6 +135,12 @@ def init_meta_db():
         generated_at TEXT
     );
     """)
+    # Task 2.2 evidence-bundle columns, added in place: every laptop already has a meta.db
+    # with rows filed under the old schema, and this migration must not lose them.
+    report_log_columns = [row[1] for row in cur.execute("PRAGMA table_info(REPORT_LOG);").fetchall()]
+    for extra_col in ("plan_trace_json", "risk_json", "rule_fired", "mediator_commit"):
+        if extra_col not in report_log_columns:
+            cur.execute(f"ALTER TABLE REPORT_LOG ADD COLUMN {extra_col} TEXT;")
 
     # Task 2.3. Both tables are mediator-side *policy and audit*, never source data: the watchlist
     # says which plates an operator cares about, the alert log says when the mediator noticed one.

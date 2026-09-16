@@ -37,6 +37,10 @@ def render() -> None:
         ):
             st.write(f"**Audit Timestamp:** {rep['generated_at']}")
             st.write(f"**Sources Contacted:** {', '.join(rep.get('sources_used', []))}")
+            st.write(f"**Rule Fired:** {rep.get('rule_fired') or '—'}")
+            risk = rep.get("risk")
+            risk_text = f"{risk['value']} ({risk['level']})" if risk else "—"
+            st.write(f"**Risk Score:** {risk_text}")
             st.markdown("**Reasons:**")
             for r in rep.get("reasons", []):
                 st.markdown(f"- {r}")
