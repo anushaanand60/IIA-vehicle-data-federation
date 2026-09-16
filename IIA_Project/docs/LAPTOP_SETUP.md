@@ -100,6 +100,14 @@ git add -f *.csv && git commit -m "Regenerate synthetic data"
 
 ## 2. Rehearsal mode — the whole federation on one laptop
 
+**One-command bring-up.** Instead of exporting `<ID>_DB_URL` / `<ID>_PORT` by hand, run
+`python scripts/serve.py <SRC> --db-url "<your SQLAlchemy URL>"` once on that laptop (e.g.
+`python scripts/serve.py INS --db-url "mysql+pymysql://iia:pw@127.0.0.1:3306/insdb"`). It writes those settings to
+`sources/<id>/laptop.env` (gitignored) and starts the wrapper; every later run, after a reboot or a `git pull`, is just
+`python scripts/serve.py <SRC>`. `--port N` overrides the port, `--readonly-admin` disables `/admin/*` on that laptop
+(`<ID>_ADMIN=off`), `--check` verifies the demo plates exist in the configured database without serving. On start it
+prints this laptop's IP address(es) and the exact `python scripts/configure_cluster.py --set <SRC>=<ip>` line for laptop 1.
+
 Do this first. It is the same wrappers, registry, executor, integrator and GUI as the four-laptop
 deployment; only the database URLs differ.
 
