@@ -317,17 +317,116 @@ Add a block "Dispute a challan": inputs case id (`key="sc_case_id"`), reason (`k
 ## Workstream C — Integration, docs, cross-laptop confirmation (after A and B)
 
 ### Task C1: Restyle Challan Guard + Citizen Check on the primitives; wire tab
-- Replace `st.subheader`/captions in `app/tabs/challan_guard.py` and `self_check.py` with `section`, `kpi_row`, `styled_table`, `stepper`, `chip`. Remove the ImportError guard in `app/app.py`. Full suite green. Commit `style(ui): Challan Guard + Citizen Check on Visibility primitives`.
+- [x] Replace `st.subheader`/captions in `app/tabs/challan_guard.py` and `self_check.py` with `section`, `kpi_row`, `styled_table`, `stepper`, `chip`. Remove the ImportError guard in `app/app.py`. Full suite green. Commit `style(ui): Challan Guard + Citizen Check on Visibility primitives`.
 
 ### Task C2: Cross-laptop write confirmation
-- `docs/LAPTOP_SETUP.md`: add section "Open the wrapper port" with `netsh advfirewall firewall add rule name="IIA wrapper 8002" dir=in action=allow protocol=TCP localport=8002` (one per laptop/port) and the check from laptop 1: `python scripts\configure_cluster.py --probe` (must show `admin: on` per source — extend `--probe` to also GET `/admin/actions` and print `admin on/off/unreachable`). Test: `tests/test_serve.py` or a new small test asserting `--probe` output includes `admin`.
-- Commit `feat(ops): probe reports admin reachability; firewall notes`.
+- [x] `docs/LAPTOP_SETUP.md`: add section "Open the wrapper port" with `netsh advfirewall firewall add rule name="IIA wrapper 8002" dir=in action=allow protocol=TCP localport=8002` (one per laptop/port) and the check from laptop 1: `python scripts\configure_cluster.py --probe` (must show `admin: on` per source — extend `--probe` to also GET `/admin/actions` and print `admin on/off/unreachable`). Test: `tests/test_serve.py` or a new small test asserting `--probe` output includes `admin`.
+- [x] Commit `feat(ops): probe reports admin reachability; firewall notes`.
 
 ### Task C3: Docs + viva
-- `docs/FIELD_RESEARCH.md`: add facts 12–15 with these URLs: Delhi online challan dispute 2025 (https://fatehlegacy.in/blogs/contest-wrong-traffic-challan-delhi-2025), ANPR misread ~90% of wrong challans (https://mparivahanguide.com/wrong-challan-complaint/), Hyderabad clone-plate e-challan racket (https://the420.in/hyderabad-clone-number-plate-racket-busted-anpr-cctv/), impossible-travel patent GB2448780A (https://patents.google.com/patent/GB2448780A/en), Met Police ANPR (https://www.met.police.uk/advice/advice-and-information/rs/road-safety/automatic-number-plate-recognition-anpr/), Vahan Samanvay recovery lag (https://sudhirrao.com/how-to-remove-a-vehicle-from-the-ncrb/). Add a "Challan Guard" row to the feature table and two viva lines.
-- `docs/demo_script.md`: new 5-minute segment "Challan Guard" with the six demo cases (misread→correct vehicle fined; misread→wrongful fine prevented; clone HOLD; stolen→police; DL09KL3321 issued → teammate on laptop 2 runs `python scripts\mutate_source.py INS add_policy DL09KL3321 --expiry 2027-01-01` → citizen disputes → CANCELLED; kill INS → HOLD).
-- `README.md` + `STUDY_GUIDE.md`: one paragraph each on Challan Guard and the Visibility UI.
-- Commit `docs: Challan Guard workflow, field research, demo script`.
+- [x] `docs/FIELD_RESEARCH.md`: add facts 12–15 with these URLs: Delhi online challan dispute 2025 (https://fatehlegacy.in/blogs/contest-wrong-traffic-challan-delhi-2025), ANPR misread ~90% of wrong challans (https://mparivahanguide.com/wrong-challan-complaint/), Hyderabad clone-plate e-challan racket (https://the420.in/hyderabad-clone-number-plate-racket-busted-anpr-cctv/), impossible-travel patent GB2448780A (https://patents.google.com/patent/GB2448780A/en), Met Police ANPR (https://www.met.police.uk/advice/advice-and-information/rs/road-safety/automatic-number-plate-recognition-anpr/), Vahan Samanvay recovery lag (https://sudhirrao.com/how-to-remove-a-vehicle-from-the-ncrb/). Add a "Challan Guard" row to the feature table and two viva lines.
+- [x] `docs/demo_script.md`: new 5-minute segment "Challan Guard" with the six demo cases (misread→correct vehicle fined; misread→wrongful fine prevented; clone HOLD; stolen→police; DL09KL3321 issued → teammate on laptop 2 runs `python scripts\mutate_source.py INS add_policy DL09KL3321 --expiry 2027-01-01` → citizen disputes → CANCELLED; kill INS → HOLD).
+- [x] `README.md` + `STUDY_GUIDE.md`: one paragraph each on Challan Guard and the Visibility UI.
+- [x] Commit `docs: Challan Guard workflow, field research, demo script`.
 
 ## Outcome
-(fill after execution: commit hashes, test count, screenshots)
+
+Executed 16 Sep 2026, three workstreams, all on `main`, **no `Co-Authored-By` trailer on any
+commit** (`git log --format=%b -30 | grep -ci co-authored` → `0`).
+
+### Commits
+
+**Workstream A — Visibility UI**
+
+| Hash | Commit |
+|---|---|
+| `6f4f115` | style: port AirSentinel Visibility tokens; fix primary button label contrast |
+| `8401871` | feat(ui): shared Visibility primitives (section, kpi_row, styled_table, stepper, chip) |
+| `c959ef1` | style(ui): recompose plan trace, matcher, catalog and reports on Visibility primitives |
+| `bdfdc0a` | style(ui): recompose investigate, watchlist, sql console, onboarding, ocr and source editor |
+| `de8f104` | style(ui): nine-tab shell in narration order, Challan Guard slot, new masthead |
+| `50ef6ff` | docs(plan): tick Workstream A (Visibility UI) steps |
+
+**Workstream B — Challan Guard**
+
+| Hash | Commit |
+|---|---|
+| `5802428` | feat(guard): challan case store in meta.db |
+| `37c9cdf` | feat(guard): confusable-character plate resolution |
+| `0b16f26` | feat(guard): impossible-travel clone check |
+| `01bb9bd` | feat(guard): demo cameras, misread/clone captures, candidate seed |
+| `1763198` | feat(guard): Challan Guard verify / issue / dispute workflow |
+| `2494203` | feat(guard): Challan Guard tab |
+| `e609477` | feat(guard): citizen dispute loop |
+| `756475c` | docs(guard): tick Workstream B in the implementation plan |
+
+**Workstream C — integration, ops, docs**
+
+| Hash | Commit |
+|---|---|
+| `1f3961a` | style(ui): Challan Guard + Citizen Check on Visibility primitives |
+| `45e949f` | fix: ASCII-safe run_system banner |
+| `6bbd080` | feat(ops): probe reports admin reachability; firewall notes |
+| `5869ba8` | docs: Challan Guard workflow, field research, demo script |
+| `4ad5abb` | style(ui): case status chips carry the case number; dispute outcome as a status chip |
+
+### Verification
+
+* `python -m pytest -q` from the repo root: **641 passed, 3 deselected** (the `live` marker), 0
+  failed. Up from 546 at the time the plan was written.
+* `python scripts/evaluate_ground_truth.py`: **621/621 = 100.0%** — unchanged, so none of the new
+  demo captures moved a story decision.
+* `git log --format=%b -30 | grep -ci co-authored` → `0`; working tree clean; nothing pushed.
+
+### The six demo cases, with their exact verdict strings
+
+All six are produced live by `mediator/challan_guard.verify()` / `.dispute()` against the running
+federation; `REFERENCE_TODAY = 2026-09-04`. Operator prep is
+`python scripts\seed_challan_cases.py`, then **Challan Guard → select case → "Verify (live)"**.
+
+| # | Case | Verdict | Exact reason string |
+|---|---|---|---|
+| 1 | read `DL05CD9B76` → resolved `DL05CD9876` | **ISSUED ₹2000** | `uninsured on 2026-09-04: policy expired 2026-06-10` (misread B→8 corrected, the *correct* vehicle is fined) |
+| 2 | read `DLO1AB1234` → resolved `DL01AB1234` | **REJECTED** | `insured on 2026-09-04 (policy valid to 2027-01-14) — no offence` (wrongful fine prevented) |
+| 3 | `UP16GH1122` | **HOLD** | `impossible travel: Sector 29 Crossing → Yamuna Expressway Toll, Agra in 30 min (340 km/h) — cloned plate suspected` |
+| 4 | `HR26EF4455` | **REJECTED** | `vehicle reported stolen before sighting — route to police, do not fine owner` |
+| 5 | `DL01AB0002` (registered, no policy) | **ISSUED ₹2000** | `uninsured on 2026-09-04: no policy on record` |
+| 5b | teammate on laptop 2: `python scripts\mutate_source.py add_policy INS DL01AB0002 --start 01/01/2026 --until 01/01/2027`, then Citizen Check → Dispute case 5 | **CANCELLED** | `record changed since issue: insurance_expiry was none now 2027-01-01` — undo with `python scripts\mutate_source.py delete_policies INS DL01AB0002` |
+| 6 | INS wrapper stopped, verify any case | **HOLD** | `INS unreachable — refusing to fine on partial evidence` |
+
+### Deviations from the plan as written
+
+1. **Demo plate for the dispute case: `DL09KL3321` → `DL01AB0002`.** The plan (Task B4/B5) named
+   `DL09KL3321` as the "no policy at all" vehicle. In the generated data it is not registered as an
+   ACTIVE vehicle suitable for the dispute story, so the builders used `DL01AB0002` — registered,
+   ACTIVE, correctly read, and genuinely uninsured — which is the case the Supreme Court order is
+   actually about and which therefore makes the dispute demo land. `docs/demo_script.md` and
+   `data/challan_candidates.json` both use `DL01AB0002`.
+2. **`camera_lat` / `camera_lon` live in `scripts/seed_mappings.py::EXTRA_MAPPINGS`, not in
+   `data/gold_mapping.json`.** The plan said to add both. `gold_mapping.json` is the *matcher
+   evaluation oracle* (`scripts/evaluate_matcher.py` grades discovered correspondences against it),
+   and the two camera-geometry mappings are hand-validated join-path mappings the matcher cannot
+   and should not discover — adding them to the oracle would have broken the 1.00/1.00
+   precision/recall claim. They are seeded through `EXTRA_MAPPINGS` instead, so they reach
+   `MAPPING_REGISTRY` without being claimed as matcher output.
+3. **`app/tabs/challan_guard.py` is ~211 lines and `mediator/challan_guard.py` is 316**, against
+   the plan's "≤ ~220 lines" guidance. The mediator module carries all six verification steps plus
+   the dispute diff; splitting it would have put one decision across two files for no reader's
+   benefit, so it was left whole and the step functions kept short.
+4. **`plate_resolve` gained a "a registered read resolves to itself" clause** that the plan's
+   scoring rules did not state: if the plate exactly as read is itself registered, it is never
+   rewritten to a confusable neighbour. Without it, a Hyundai registration photographed as a Kia
+   would go looking for a *different* registration — but that mismatch is a clone signal for step 3,
+   not a reason to doubt the read. Documented in the module docstring.
+5. **Task C1 changed one assertion in `tests/test_challan_tab.py`.** `test_kpis_count_the_queue`
+   read `at.metric` labels; the KPIs now render through `components.kpi_row` (one markdown grid, as
+   on every other tab), so the test reads the labels off that block instead. Every `cg_*` / `sc_*`
+   widget key is unchanged and every other assertion in `test_challan_tab.py` and
+   `test_self_check.py` passes untouched.
+6. **Extra fix folded in: `fix: ASCII-safe run_system banner` (`45e949f`).** `run_system.py` died
+   with `UnicodeEncodeError` before starting a single wrapper whenever stdout was a cp1252 pipe,
+   because of an emoji in the banner. The banner is plain ASCII now and `sys.stdout`/`sys.stderr`
+   are reconfigured with `errors="replace"`.
+7. **`tests/test_configure_cluster.py` is new** (the plan suggested extending `tests/test_serve.py`).
+   The probe test needs real wrappers with admin on, admin off and a dead port, which is a fixture
+   `test_serve.py` deliberately does not have — it never binds a port.
