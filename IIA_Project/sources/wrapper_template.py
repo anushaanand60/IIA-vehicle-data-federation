@@ -2,11 +2,11 @@
 
 GET /health, GET /schema, POST /query — identical on all four sources; only the URL and whitelist differ.
 
-Optional: POST /admin/mutate — a fixed, named set of writes (renew a policy, log a sighting, ...),
-never arbitrary SQL. Disabled unless the wrapper is given a *second*, writable connection via
-<SOURCE_ID>_ADMIN_URL. /query's connection stays read-only regardless: this does not reopen that
-door, it adds a second, narrower one for the agency's own operator console. Returns 404 when no
-admin URL was configured, so a laptop that never sets the env var behaves exactly as before.
+POST /admin/mutate — a fixed, named set of writes (renew a policy, log a sighting, ...), never
+arbitrary SQL. ON by default (Task 0.1): the wrapper is given a *second*, writable connection,
+derived automatically from `db_url` unless `<SOURCE_ID>_ADMIN_URL` overrides it. /query's connection
+stays read-only regardless: this does not reopen that door, it adds a second, narrower one for the
+agency's own operator console. Set `<SOURCE_ID>_ADMIN=off` to disable it; only then do /admin/* 404.
 
 POST /admin/sql is the same door, one notch wider: the agency's own SQL console, accepting a single
 INSERT/UPDATE/DELETE against the tables this wrapper already publishes (see write_guard_sql). It
@@ -146,7 +146,7 @@ def _referenced_tables(sql: str) -> list[str]:
 
 def create_app(db_url: str, *, source_id: str, dbms: str, tables: Iterable[str],
                statement_timeout_s: float = 3.0, row_limit: int = 200,
-               admin_url: str | None = None) -> FastAPI:
+               admin_url: str | None = None, admin_enabled: bool = True) -> FastAPI:
     whitelist = list(tables)
     app = FastAPI(title=f"{source_id} wrapper")
     app.state.source_id = source_id
@@ -162,14 +162,22 @@ def create_app(db_url: str, *, source_id: str, dbms: str, tables: Iterable[str],
 
     # A second, writable engine, entirely separate from the one /query uses. /query's connection
     # keeps its read-only pragma/session regardless of whether this exists (see _make_engine): an
-    # agency choosing to enable its own admin console never widens what the mediator can do.
+    # agency's admin console never widens what the mediator can do. Task 0.1: on by default —
+    # <SOURCE_ID>_ADMIN=off is the only way back to a read-only wrapper.
     admin_engine: Engine | None = None
-    if admin_url:
+    if admin_enabled:
         try:
-            admin_engine = create_engine(admin_url, pool_pre_ping=True)
+            admin_engine = create_engine(admin_url or _derive_admin_url(db_url), pool_pre_ping=True)
         except Exception as exc:
             app.state.admin_engine_error = _short(exc)
     actions = ADMIN_ACTIONS.get(source_id, {})
+
+    def _admin_disabled_message() -> str:
+        message = (f"{source_id} has no admin URL configured ({source_id}_ADMIN_URL) — "
+                   f"this wrapper is read-only")
+        if not admin_enabled:
+            message += f"; set {source_id}_ADMIN=on"
+        return message
 
     @app.exception_handler(RequestValidationError)
     async def _bad_body(_: Request, exc: RequestValidationError) -> JSONResponse:
@@ -220,8 +228,7 @@ def create_app(db_url: str, *, source_id: str, dbms: str, tables: Iterable[str],
     @app.post("/admin/mutate")
     def admin_mutate(req: MutateRequest) -> JSONResponse:
         if admin_engine is None:
-            return _error(404, f"{source_id} has no admin URL configured "
-                               f"({source_id}_ADMIN_URL) — this wrapper is read-only")
+            return _error(404, _admin_disabled_message())
         fn = actions.get(req.action)
         if fn is None:
             return _error(400, f"{source_id} supports no admin action {req.action!r}; "
@@ -238,8 +245,7 @@ def create_app(db_url: str, *, source_id: str, dbms: str, tables: Iterable[str],
         # The agency's own SQL console: arbitrary *writes*, but only INSERT/UPDATE/DELETE against
         # the tables this wrapper already publishes, and only on the separate writable engine.
         if admin_engine is None:
-            return _error(404, f"{source_id} has no admin URL configured "
-                               f"({source_id}_ADMIN_URL) — this wrapper is read-only")
+            return _error(404, _admin_disabled_message())
         try:
             sql = write_guard_sql(req.sql, whitelist)
         except QueryRejected as exc:
@@ -258,24 +264,44 @@ def create_app(db_url: str, *, source_id: str, dbms: str, tables: Iterable[str],
 def from_env(source_id: str, *, default_url: str, default_dbms: str, default_tables: list[str]) -> FastAPI:
     """Build a wrapper configured by <SOURCE_ID>_DB_URL, <SOURCE_ID>_DBMS and <SOURCE_ID>_TABLES.
 
-    <SOURCE_ID>_ADMIN_URL is optional and separate: it opens /admin/mutate with a writable
-    connection. Omit it (the default) and the wrapper behaves exactly as it always has.
+    Admin writes are ON by default (Task 0.1): <SOURCE_ID>_ADMIN_URL picks an explicit writable
+    connection when the read URL is not itself writable; <SOURCE_ID>_ADMIN=off turns writes back
+    off, restoring the original read-only wrapper.
     """
     def env(key: str, default: str) -> str:
         return os.environ.get(f"{source_id}_{key}", default)
     tables = [t.strip() for t in env("TABLES", ",".join(default_tables)).split(",") if t.strip()]
     url = env("DB_URL", default_url)
+    admin_enabled = os.environ.get(f"{source_id}_ADMIN", "on").lower() not in ("off", "0", "false")
     # /health must not claim PostgreSQL while serving the SQLite fallback, so the label follows
     # the URL unless the agency overrides it explicitly.
     return create_app(url, source_id=source_id, dbms=env("DBMS", _engine_label(url) or default_dbms),
                       tables=tables, statement_timeout_s=float(os.environ.get("WRAPPER_STATEMENT_TIMEOUT_S", "3")),
-                      admin_url=os.environ.get(f"{source_id}_ADMIN_URL"))
+                      admin_url=os.environ.get(f"{source_id}_ADMIN_URL"), admin_enabled=admin_enabled)
 
 
 def _engine_label(url: str) -> str:
     scheme = url.split(":", 1)[0].split("+", 1)[0].lower()
     return {"sqlite": "SQLite", "postgresql": "PostgreSQL", "postgres": "PostgreSQL",
             "mysql": "MySQL", "mariadb": "MariaDB"}.get(scheme, scheme)
+
+
+def _derive_admin_url(db_url: str) -> str:
+    """A writable URL for the same database `db_url` reads from, when no explicit
+    <SOURCE_ID>_ADMIN_URL is given. /query's read-only guarantee comes from _make_engine's
+    session pragmas/settings, not from the URL text, so reusing the URL is safe for
+    PostgreSQL/MySQL. A SQLite read-only URI (`sqlite:///file:path?mode=ro&uri=true`) is the one
+    case where the URL itself blocks writes, so that form is stripped back to a plain path.
+    """
+    if not db_url.startswith("sqlite"):
+        return db_url
+    prefix, sep, rest = db_url.partition(":///")
+    if not sep:
+        return db_url
+    path = rest.split("?", 1)[0]
+    if path.startswith("file:"):
+        path = path[len("file:"):]
+    return f"{prefix}{sep}{path}"
 
 
 def serve(app: FastAPI, default_port: int) -> None:

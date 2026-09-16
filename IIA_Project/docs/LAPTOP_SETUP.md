@@ -139,6 +139,11 @@ Loading needs to create tables; serving must not. So each source laptop uses **t
 * an **owner** account for `scripts/load_source.py` (one-off), and
 * a **read-only** account in `<SOURCE>_DB_URL` for the wrapper (what runs during the demo).
 
+**Admin writes are on by default.** Each wrapper now derives its own writable connection from
+`<SOURCE>_DB_URL` and serves `/admin/mutate` and `/admin/sql` without any extra setup — no
+`<SOURCE>_ADMIN_URL` step needed. To turn a wrapper back into the original read-only server, set
+`$env:<SOURCE>_ADMIN = "off"` (PowerShell) / `export <SOURCE>_ADMIN=off` (bash) before starting it.
+
 ---
 
 ### 3.1 Laptop 1 — REG, PostgreSQL, port 8001
