@@ -11,11 +11,20 @@ import subprocess
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT_DIR)
 
+# Piped stdout on Windows is cp1252, which cannot encode an emoji: printing one killed start-up
+# with UnicodeEncodeError before a single wrapper had booted. The banner is plain ASCII now, and
+# stdout is told to replace anything it still cannot map rather than raise.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(errors="replace")
+    except (AttributeError, ValueError):  # already-wrapped or non-reconfigurable stream
+        pass
+
 from sources.server_manager import get_cluster
 
 def main():
     print("==================================================================")
-    print("🚗 Starting Federated Mediator System: Uninsured Vehicle Detection")
+    print("Starting Federated Mediator System: Uninsured Vehicle Detection")
     print("==================================================================")
 
     # 1. Start source cluster
