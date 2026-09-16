@@ -13,6 +13,13 @@ REFERENCE_TODAY = date(2026, 9, 4)
 # wizard (app/tabs/onboarding.py) on exactly this decision, without matching on prose.
 UNKNOWN_VEHICLE = "UNKNOWN VEHICLE — NOT REGISTERED"
 
+# The sources a full profile question rests on. A decision may only claim facts about the ones
+# this particular question asked, and only when they actually answered.
+CORE_SOURCES = ("REG", "INS", "THEFT", "CAM")
+
+# A source in any of these states gave us no answer; absence of a row from it is not evidence.
+FAILED_STATUSES = ("DOWN", "TIMEOUT", "ERROR")
+
 def evaluate_vehicle_decision(profile: Dict[str, Any], requested_sources: List[str]) -> Tuple[str, str, List[str]]:
     """
     Evaluates vehicle profile against the 7 ordered rules (§10.2).
@@ -21,18 +28,20 @@ def evaluate_vehicle_decision(profile: Dict[str, Any], requested_sources: List[s
     reasons: List[str] = []
     source_avail = profile.get("source_availability", {})
 
-    # Rule 1: THEFT source down or INS source down and question needs it
-    if "THEFT" in requested_sources and source_avail.get("THEFT") in ("DOWN", "TIMEOUT"):
+    # Rule 1: THEFT source down or INS source down and question needs it. ERROR counts as a
+    # failure too: a wrapper that answered 400/500 told us nothing, so treating it as "no record"
+    # would turn our own bug into an accusation against the citizen.
+    if "THEFT" in requested_sources and source_avail.get("THEFT") in FAILED_STATUSES:
         return (
             "UNDETERMINED",
             "LOW",
             [f"THEFT records source is currently {source_avail.get('THEFT')}; cannot verify crime/stolen status safely."]
         )
-    if "INS" in requested_sources and source_avail.get("INS") in ("DOWN", "TIMEOUT"):
+    if "INS" in requested_sources and source_avail.get("INS") in FAILED_STATUSES:
         return (
             "UNDETERMINED",
             "LOW",
-            [f"Insurance records source is currently {source_avail.get('INS')}; cannot verify insurance status safely."]
+            [f"Insurance records source INS is currently {source_avail.get('INS')}; cannot verify insurance status safely."]
         )
 
     # Rule 2: stolen_status = STOLEN and case OPEN
@@ -68,7 +77,17 @@ def evaluate_vehicle_decision(profile: Dict[str, Any], requested_sources: List[s
     # Rule 3: Plate seen by CAM but absent in REG
     cam_seen = profile.get("last_seen_time") is not None
     reg_present = profile.get("registration_status") is not None
-    if cam_seen and not reg_present:
+    reg_avail = source_avail.get("REG")
+    reg_asked_ok = "REG" in requested_sources and reg_avail == "OK"
+    # A sighting with no registration row only means "unregistered" if REG was asked *and*
+    # answered; if the registry never spoke we must refuse rather than accuse.
+    if cam_seen and not reg_present and "REG" in requested_sources and reg_avail != "OK":
+        return (
+            "UNDETERMINED",
+            "LOW",
+            [f"Registration source REG is currently {reg_avail}; cannot tell whether the plate seen by camera is registered."]
+        )
+    if cam_seen and not reg_present and reg_asked_ok:
         loc = profile.get("last_seen_location", "road camera")
         ts = profile.get("last_seen_time", "")
         reasons.append(f"Vehicle plate sighted by camera at {loc} ({ts}) but has NO official registration record in REG authority.")
@@ -80,7 +99,6 @@ def evaluate_vehicle_decision(profile: Dict[str, Any], requested_sources: List[s
     # vehicle of being uninsured when no authority has ever heard of it is the wrong claim: the
     # right answer is "we have nothing on this plate -- onboard it or check the spelling".
     # Requires REG asked *and* OK: absence is only evidence when the source actually answered.
-    reg_asked_ok = "REG" in requested_sources and source_avail.get("REG") == "OK"
     no_theft_record = profile.get("last_incident_date") is None and profile.get("case_status") is None
     no_insurance_record = not profile.get("insurance_expiry") and not profile.get("insurer_name")
     if reg_asked_ok and not reg_present and not cam_seen and no_theft_record and no_insurance_record:
@@ -130,16 +148,28 @@ def evaluate_vehicle_decision(profile: Dict[str, Any], requested_sources: List[s
         reasons.append(f"Vehicle registration status is {reg_status} (not ACTIVE).")
         return ("REGISTRATION INVALID — REPORT", "HIGH", reasons)
 
-    # Rule 7: Otherwise -> CLEAR
-    confidence = "HIGH" if cam_seen else "MEDIUM"
-    reasons.append("Vehicle registration is ACTIVE.")
+    # Rule 7: Otherwise -> CLEAR, stating only what this question actually checked. Full
+    # confidence needs a live sighting *and* every core source asked and answering; a narrower
+    # question (UC1) can still be CLEAR, but only at MEDIUM, and it names what it skipped.
+    not_asked = [s for s in CORE_SOURCES if s not in requested_sources]
+    all_core_answered = all(
+        s in requested_sources and source_avail.get(s) == "OK" for s in CORE_SOURCES
+    )
+    confidence = "HIGH" if cam_seen and all_core_answered else "MEDIUM"
+    if reg_status == "ACTIVE":
+        reasons.append("Vehicle registration is ACTIVE.")
     if profile.get("insurance_status") == "VALID":
         reasons.append(f"Insurance is VALID until {profile.get('insurance_expiry')}.")
     if stolen_status in ("NOT_REPORTED", "RECOVERED"):
         reasons.append(f"Theft status is {stolen_status}.")
-    if not cam_seen:
-        reasons.append("No recent camera capture observed (confidence downgraded to MEDIUM).")
-    else:
-        reasons.append(f"Camera sighting matches registered vehicle specifications.")
+    if "CAM" in requested_sources:
+        if cam_seen and reg_status:
+            reasons.append("Camera sighting matches registered vehicle specifications.")
+        elif cam_seen:
+            reasons.append(f"Seen by camera at {profile.get('last_seen_location')} ({profile.get('last_seen_time')}).")
+        else:
+            reasons.append("No recent camera capture observed (confidence downgraded to MEDIUM).")
+    if not_asked:
+        reasons.append(f"Sources not checked in this query: {', '.join(not_asked)}.")
 
     return ("CLEAR", confidence, reasons)

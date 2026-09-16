@@ -132,9 +132,11 @@ def integrate_results(execution_results: Dict[str, Any], canonical_plate: str, r
             profile["_theft_case_status"] = chosen_row.get("case_status")
 
     # Step 4: Compute derived attributes
-    # 4.1 Insurance status
+    # 4.1 Insurance status (derived only when this question asked INS)
     ins_status_avail = profile["source_availability"].get("INS")
-    if ins_status_avail in ("DOWN", "TIMEOUT"):
+    if "INS" not in requested_sources:
+        profile["insurance_status"] = None  # not asked: no claim either way
+    elif ins_status_avail in ("DOWN", "TIMEOUT", "ERROR"):  # a failed answer is not "no policy"
         profile["insurance_status"] = "UNKNOWN"
     elif "INS" in requested_sources and (not sources_data.get("INS", {}).get("rows")):
         profile["insurance_status"] = "NONE"
@@ -149,9 +151,11 @@ def integrate_results(execution_results: Dict[str, Any], canonical_plate: str, r
             except Exception:
                 profile["insurance_status"] = "UNKNOWN"
 
-    # 4.2 Stolen status
+    # 4.2 Stolen status (derived only when this question asked THEFT)
     theft_status_avail = profile["source_availability"].get("THEFT")
-    if theft_status_avail in ("DOWN", "TIMEOUT"):
+    if "THEFT" not in requested_sources:
+        profile["stolen_status"] = None  # not asked: no claim either way
+    elif theft_status_avail in ("DOWN", "TIMEOUT", "ERROR"):  # a failed answer is not "not reported"
         profile["stolen_status"] = "UNKNOWN"
     elif "THEFT" in requested_sources and (not sources_data.get("THEFT", {}).get("rows")):
         profile["stolen_status"] = "NOT_REPORTED"
