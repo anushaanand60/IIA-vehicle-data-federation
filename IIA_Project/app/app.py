@@ -4,15 +4,18 @@ Identifying Uninsured Vehicles Across Autonomous Heterogeneous Databases.
 
 Every tab body lives in its own `app/tabs/*.py` module (`render()`, Plan Trace's is
 `render_tab()`); this file is only setup, theme, masthead, cluster start-up, the sidebar and
-the tab shells. 8 Tabs:
-  1. Investigate         (tabs/investigate.py)
-  2. Plan Trace          (tabs/plan_trace.py)
-  3. Matcher & Heatmap   (tabs/matcher_tab.py)
-  4. Catalog & Registry  (tabs/catalog_tab.py)
-  5. Ministry Reports    (tabs/reports.py)
-  6. SQL Console         (tabs/sql_console.py)
-  7. Watchlist & Alerts  (tabs/watchlist.py)
-  8. Citizen Self-Check  (tabs/self_check.py)
+the tab shells. The order below is the order the demo is narrated in — the two things an
+operator does (investigate a plate, decide whether a challan is safe to issue) first, the
+machinery that proves how it was done last. 9 tabs:
+  1. Investigate     (tabs/investigate.py)
+  2. Challan Guard   (tabs/challan_guard.py)
+  3. Watchlist       (tabs/watchlist.py)
+  4. Reports         (tabs/reports.py)
+  5. Citizen Check   (tabs/self_check.py)
+  6. Plan Trace      (tabs/plan_trace.py)
+  7. Catalog         (tabs/catalog_tab.py)
+  8. Matcher         (tabs/matcher_tab.py)
+  9. SQL Console     (tabs/sql_console.py)
 """
 
 import sys
@@ -27,7 +30,7 @@ if ROOT_DIR not in sys.path:
 from sources.server_manager import get_cluster
 
 st.set_page_config(
-    page_title="Federated Mediator",
+    page_title="Uninsured Vehicle Identification",
     page_icon="🚗",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -62,24 +65,33 @@ from tabs.watchlist import render as render_watchlist  # noqa: E402
 from tabs.self_check import render as render_self_check  # noqa: E402
 from theme import inject, masthead  # noqa: E402
 
+# Challan Guard is built in its own workstream. Guarding the import keeps the page renderable
+# from the moment its tab exists, rather than making the whole GUI wait on one module.
+try:
+    from tabs.challan_guard import render as render_challan_guard  # noqa: E402
+except ImportError:
+    render_challan_guard = None
+
 # The whole look of the page comes from app/theme.py: tokens -> CSS variables, injected once.
 inject()
 masthead(
-    "Federated Mediator",
-    "Uninsured vehicle detection across autonomous government and observational authorities",
+    "Uninsured Vehicle Identification",
+    "Live federated check across registration, insurance, police, camera and PUC records. "
+    "Nothing is copied; every answer is fetched now.",
 )
 
 # Navigation tabs
-(tab_investigate, tab_plantrace, tab_matcher, tab_catalog, tab_reports, tab_sqlconsole,
- tab_watchlist, tab_selfcheck) = st.tabs([
-    "🔍 1. Investigate",
-    "🗺️ 2. Plan Trace",
-    "🧬 3. Matcher & Heatmap",
-    "📚 4. Catalog & Registry",
-    "📑 5. Ministry Reports",
-    "🧪 6. SQL Console",
-    "🚨 7. Watchlist & Alerts",
-    "🙋 8. Citizen Self-Check",
+(tab_investigate, tab_challan, tab_watchlist, tab_reports, tab_selfcheck, tab_plantrace,
+ tab_catalog, tab_matcher, tab_sqlconsole) = st.tabs([
+    "Investigate",
+    "Challan Guard",
+    "Watchlist",
+    "Reports",
+    "Citizen Check",
+    "Plan Trace",
+    "Catalog",
+    "Matcher",
+    "SQL Console",
 ])
 
 # Each wrapper's /query connection is read-only by construction -- that boundary is never touched
@@ -90,32 +102,37 @@ masthead(
 render_source_editor_sidebar()
 
 with st.sidebar:
-    st.markdown("---")
     st.caption(
-        "Freshness Rule: The mediator holds no source data. Edits in the source databases "
-        "reflect instantly upon re-querying without ETL."
+        "Freshness rule: the mediator holds no source data. Edits in the source databases "
+        "reflect instantly upon re-querying, without ETL."
     )
 
 with tab_investigate:
     render_investigate()
 
-with tab_plantrace:
-    render_plan_trace()
-
-with tab_matcher:
-    render_matcher()
-
-with tab_catalog:
-    render_catalog()
-
-with tab_reports:
-    render_reports()
-
-with tab_sqlconsole:
-    render_sql_console()
+with tab_challan:
+    if render_challan_guard is None:
+        st.info("Challan Guard not installed yet")
+    else:
+        render_challan_guard()
 
 with tab_watchlist:
     render_watchlist()
 
+with tab_reports:
+    render_reports()
+
 with tab_selfcheck:
     render_self_check()
+
+with tab_plantrace:
+    render_plan_trace()
+
+with tab_catalog:
+    render_catalog()
+
+with tab_matcher:
+    render_matcher()
+
+with tab_sqlconsole:
+    render_sql_console()
