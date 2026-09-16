@@ -229,16 +229,24 @@ def create_app(db_url: str, *, source_id: str, dbms: str, tables: Iterable[str],
     def admin_mutate(req: MutateRequest) -> JSONResponse:
         if admin_engine is None:
             return _error(404, _admin_disabled_message())
-        fn = actions.get(req.action)
-        if fn is None:
+        spec = actions.get(req.action)
+        if spec is None:
             return _error(400, f"{source_id} supports no admin action {req.action!r}; "
                                f"has: {', '.join(actions) or '(none)'}")
         try:
-            result = fn(admin_engine, req.plate, req.params)
+            result = spec["fn"](admin_engine, req.plate, req.params)
         except Exception as exc:
             return _error(400, f"mutation failed: {_short(exc)}")
         return JSONResponse(content={"source_id": source_id, "action": req.action,
                                      "fetched_at": _now(), **result})
+
+    @app.get("/admin/actions")
+    def admin_actions() -> JSONResponse:
+        # 200 even when admin is disabled (enabled: false): this is a menu, not a write, so a GUI
+        # can show *why* nothing is possible instead of just a dead 404 on first contact.
+        listed = {name: {"params": spec["params"], "help": spec["help"]} for name, spec in actions.items()}
+        return JSONResponse(content={"source_id": source_id, "enabled": admin_engine is not None,
+                                     "actions": listed})
 
     @app.post("/admin/sql")
     def admin_sql(req: QueryRequest) -> JSONResponse:
@@ -405,6 +413,12 @@ def _error(status: int, message: str) -> JSONResponse:
 # --- Admin mutations: a fixed, named menu per source, never arbitrary SQL --------------------
 # Mirrors scripts/mutate_source.py's logic exactly, so the CLI and the GUI change data the same
 # way; the CLI stays the fallback for a source that has no ADMIN_URL set.
+#
+# Each action below builds a short list of parameterised statements and runs them inside one
+# transaction (portable across SQLite/PostgreSQL/MySQL: no `||`, no dialect-specific functions),
+# then returns the summed rowcount plus a human `detail` naming the values written. A new row's id
+# is looked up with `SELECT COALESCE(MAX(id), 0) + 1` in Python *before* the insert, rather than
+# leaning on a dialect's autoincrement/RETURNING syntax.
 
 def _canon(plate: str) -> str:
     return re.sub(r"[^A-Za-z0-9]", "", plate).upper()
@@ -414,81 +428,310 @@ def _where_plate(column: str) -> str:
     return f"UPPER(REPLACE(REPLACE({column}, '-', ''), ' ', '')) = :plate"
 
 
+def _theft_spelling(plate: str) -> str:
+    """THEFT stores plates lower-case and space-grouped ('hr 26 ef 4455')."""
+    p = _canon(plate)
+    return f"{p[0:2]} {p[2:4]} {p[4:6]} {p[6:]}".lower() if len(p) == 10 else plate.lower()
+
+
+def _next_id(conn: Connection, table: str, id_col: str) -> int:
+    return int(conn.execute(text(f"SELECT COALESCE(MAX({id_col}), 0) + 1 FROM {table}")).scalar() or 1)
+
+
+def _today_iso() -> str:
+    from datetime import date
+    return date.today().isoformat()
+
+
+def _today_ddmmyyyy() -> str:
+    from datetime import date
+    return date.today().strftime("%d/%m/%Y")
+
+
+def _one_year_from_today() -> str:
+    from datetime import date
+    today = date.today()
+    try:
+        return today.replace(year=today.year + 1).isoformat()
+    except ValueError:  # 29 Feb on a non-leap target year
+        return today.replace(year=today.year + 1, day=28).isoformat()
+
+
+def _parse_ddmmyyyy(value: str):
+    from datetime import datetime
+    return datetime.strptime(value, "%d/%m/%Y").date()
+
+
+def _run(engine: Engine, statements: list[tuple[str, dict[str, Any]]]) -> int:
+    """Execute (sql, params) pairs in one transaction; return the summed rowcount."""
+    total = 0
+    with engine.begin() as conn:
+        for sql, params in statements:
+            total += max(conn.execute(text(sql), params).rowcount, 0)
+    return total
+
+
+def _spec(fn: Any, params: list[tuple[str, Any, str]], help_text: str) -> dict[str, Any]:
+    return {"fn": fn, "help": help_text,
+            "params": [{"name": n, "default": d, "help": h} for n, d, h in params]}
+
+
+# ------------------------------------------------- REG: register / set_status / unregister ----
+
+def _reg_register(engine: Engine, plate: str, params: dict[str, Any]) -> dict[str, Any]:
+    p = _canon(plate)
+    owner = params.get("owner", "Live Demo Owner")
+    address, city = params.get("address", "Live Demo Address"), params.get("city", "New Delhi")
+    make, model = params.get("make", "Maruti Suzuki"), params.get("model", "Swift")
+    colour, fuel_type = params.get("colour", "White"), params.get("fuel_type", "PETROL")
+    registered_on = params.get("registered_on", _today_iso())
+    rto_code = params.get("rto_code", p[:4])
+    with engine.begin() as conn:
+        owner_id = _next_id(conn, "OWNERS", "owner_id")
+        reg_id = _next_id(conn, "VEHICLE_REGISTRATION", "registration_id")
+        n1 = conn.execute(text("INSERT INTO OWNERS (owner_id, full_name, address_line, city) "
+                               "VALUES (:i, :n, :a, :c)"),
+                          {"i": owner_id, "n": owner, "a": address, "c": city}).rowcount
+        n2 = conn.execute(text(
+            "INSERT INTO VEHICLE_REGISTRATION (registration_id, registration_no, owner_id, make, "
+            "model, colour, fuel_type, registered_on, reg_status, rto_code) "
+            "VALUES (:r, :p, :o, :mk, :md, :cl, :ft, :d, 'ACTIVE', :rto)"),
+            {"r": reg_id, "p": p, "o": owner_id, "mk": make, "md": model, "cl": colour,
+             "ft": fuel_type, "d": registered_on, "rto": rto_code}).rowcount
+    return {"rows_affected": max(n1, 0) + max(n2, 0),
+            "detail": f"registered {p} to {owner} ({make} {model}, {colour}); owner {owner_id}, "
+                     f"registration {reg_id}, reg_status ACTIVE"}
+
+
+def _reg_set_status(engine: Engine, plate: str, params: dict[str, Any]) -> dict[str, Any]:
+    status = str(params.get("status", "ACTIVE")).upper()
+    if status not in {"ACTIVE", "SUSPENDED", "CANCELLED"}:
+        raise ValueError(f"status must be one of ACTIVE, SUSPENDED, CANCELLED; got {status!r}")
+    n = _run(engine, [(f"UPDATE VEHICLE_REGISTRATION SET reg_status = :s WHERE "
+                       f"{_where_plate('registration_no')}", {"s": status, "plate": _canon(plate)})])
+    return {"rows_affected": n, "detail": f"reg_status = {status}"}
+
+
+def _reg_unregister(engine: Engine, plate: str, params: dict[str, Any]) -> dict[str, Any]:
+    p = _canon(plate)
+    with engine.begin() as conn:
+        owner_ids = conn.execute(text(f"SELECT owner_id FROM VEHICLE_REGISTRATION WHERE "
+                                      f"{_where_plate('registration_no')}"), {"plate": p}).scalars().all()
+        n = conn.execute(text(f"DELETE FROM VEHICLE_REGISTRATION WHERE "
+                              f"{_where_plate('registration_no')}"), {"plate": p}).rowcount
+        orphaned = 0
+        for owner_id in {o for o in owner_ids if o is not None}:
+            orphaned += conn.execute(text(
+                "DELETE FROM OWNERS WHERE owner_id = :o AND owner_id NOT IN "
+                "(SELECT owner_id FROM VEHICLE_REGISTRATION)"), {"o": owner_id}).rowcount
+    return {"rows_affected": n + orphaned,
+            "detail": f"removed {n} vehicle row(s), {orphaned} orphaned owner row(s) for {p}"}
+
+
+# --------------------------------------------- INS: renew / expire / add_policy / delete ------
+
 def _ins_renew(engine: Engine, plate: str, params: dict[str, Any]) -> dict[str, Any]:
     until = params.get("until", "31/12/2027")
-    with engine.begin() as conn:
-        n = conn.execute(text(f"UPDATE POLICY_RECORDS SET policy_until = :u, is_active = 1 "
-                              f"WHERE {_where_plate('vehicle_reg')}"),
-                         {"u": until, "plate": _canon(plate)}).rowcount
+    n = _run(engine, [(f"UPDATE POLICY_RECORDS SET policy_until = :u, is_active = 1 WHERE "
+                       f"{_where_plate('vehicle_reg')}", {"u": until, "plate": _canon(plate)})])
     return {"rows_affected": n, "detail": f"policy_until = {until}, is_active = 1"}
 
 
 def _ins_expire(engine: Engine, plate: str, params: dict[str, Any]) -> dict[str, Any]:
     until = params.get("until", "10/01/2026")
-    with engine.begin() as conn:
-        n = conn.execute(text(f"UPDATE POLICY_RECORDS SET policy_until = :u, is_active = 0 "
-                              f"WHERE {_where_plate('vehicle_reg')}"),
-                         {"u": until, "plate": _canon(plate)}).rowcount
+    n = _run(engine, [(f"UPDATE POLICY_RECORDS SET policy_until = :u, is_active = 0 WHERE "
+                       f"{_where_plate('vehicle_reg')}", {"u": until, "plate": _canon(plate)})])
     return {"rows_affected": n, "detail": f"policy_until = {until}, is_active = 0"}
 
 
-def _theft_steal(engine: Engine, plate: str, params: dict[str, Any]) -> dict[str, Any]:
+def _ins_add_policy(engine: Engine, plate: str, params: dict[str, Any]) -> dict[str, Any]:
     p = _canon(plate)
-    spaced = f"{p[0:2]} {p[2:4]} {p[4:6]} {p[6:]}".lower() if len(p) == 10 else plate.lower()
+    policy_type = params.get("policy_type", "COMPREHENSIVE")
+    start = params.get("start", _today_ddmmyyyy())
+    until = params.get("until", "31/12/2027")
+    premium = params.get("premium", "15000.00")
+    try:
+        is_active = 1 if _parse_ddmmyyyy(until) >= _parse_ddmmyyyy(_today_ddmmyyyy()) else 0
+    except ValueError:
+        is_active = 1  # unparseable date: don't block the write, downstream date parsing decides
     with engine.begin() as conn:
-        next_id = (conn.execute(text("SELECT MAX(incident_id) FROM CRIME_RECORDS")).scalar() or 0) + 1
-        conn.execute(text(
+        insurer_id = params.get("insurer_id")
+        if insurer_id is None:
+            insurer_id = conn.execute(text("SELECT MIN(insurer_id) FROM INSURERS")).scalar() or 1
+        policy_id = _next_id(conn, "POLICY_RECORDS", "policy_id")
+        n = conn.execute(text(
+            "INSERT INTO POLICY_RECORDS (policy_id, vehicle_reg, insurer_id, policy_type, "
+            "policy_start, policy_until, is_active, premium_inr) "
+            "VALUES (:i, :p, :ins, :pt, :s, :u, :a, :prem)"),
+            {"i": policy_id, "p": p, "ins": int(insurer_id), "pt": policy_type, "s": start,
+             "u": until, "a": is_active, "prem": premium}).rowcount
+    return {"rows_affected": max(n, 0),
+            "detail": f"policy {policy_id}: {policy_type} {start}..{until}, is_active={is_active}"}
+
+
+def _ins_delete_policies(engine: Engine, plate: str, params: dict[str, Any]) -> dict[str, Any]:
+    n = _run(engine, [(f"DELETE FROM POLICY_RECORDS WHERE {_where_plate('vehicle_reg')}",
+                       {"plate": _canon(plate)})])
+    return {"rows_affected": n, "detail": f"removed {n} policy row(s)"}
+
+
+# ----------------------------------------- THEFT: steal / clear / shred / delete --------------
+
+def _theft_steal(engine: Engine, plate: str, params: dict[str, Any]) -> dict[str, Any]:
+    spaced = _theft_spelling(plate)
+    with engine.begin() as conn:
+        next_id = _next_id(conn, "CRIME_RECORDS", "incident_id")
+        n = conn.execute(text(
             "INSERT INTO CRIME_RECORDS (incident_id, vehicle_number, fir_no, reported_date, "
             "incident_type, stolen_flag, recovered_flag, case_status, police_station) "
             "VALUES (:i, :p, :f, :d, 'THEFT', 'Y', 'N', 'OPEN', :ps)"),
             {"i": next_id, "p": spaced, "f": params.get("fir_no", f"FIR{next_id:05d}/2026"),
-             "d": int(time.time()), "ps": params.get("police_station", "Live Demo PS")})
-    return {"rows_affected": 1, "detail": f"incident {next_id}: {spaced!r} STOLEN, case OPEN"}
+             "d": int(time.time()), "ps": params.get("police_station", "Live Demo PS")}).rowcount
+    return {"rows_affected": max(n, 0), "detail": f"incident {next_id}: {spaced!r} STOLEN, case OPEN"}
 
 
 def _theft_clear(engine: Engine, plate: str, params: dict[str, Any]) -> dict[str, Any]:
-    with engine.begin() as conn:
-        n = conn.execute(text(f"DELETE FROM CRIME_RECORDS WHERE {_where_plate('vehicle_number')} "
-                              f"AND police_station = 'Live Demo PS'"),
-                         {"plate": _canon(plate)}).rowcount
+    n = _run(engine, [(f"DELETE FROM CRIME_RECORDS WHERE {_where_plate('vehicle_number')} "
+                       f"AND police_station = 'Live Demo PS'", {"plate": _canon(plate)})])
     return {"rows_affected": n, "detail": "demo incident row(s) removed"}
 
 
-def _cam_sight(engine: Engine, plate: str, params: dict[str, Any]) -> dict[str, Any]:
+def _theft_shred(engine: Engine, plate: str, params: dict[str, Any]) -> dict[str, Any]:
+    spaced = _theft_spelling(plate)
     with engine.begin() as conn:
-        next_id = (conn.execute(text("SELECT MAX(capture_id) FROM PLATE_CAPTURES")).scalar() or 0) + 1
-        camera = conn.execute(text("SELECT camera_id FROM CAMERAS")).scalar()
-        conn.execute(text(
+        next_id = _next_id(conn, "CRIME_RECORDS", "incident_id")
+        n = conn.execute(text(
+            "INSERT INTO CRIME_RECORDS (incident_id, vehicle_number, fir_no, reported_date, "
+            "incident_type, stolen_flag, recovered_flag, case_status, police_station) "
+            "VALUES (:i, :p, :f, :d, 'SHREDDING', 'N', 'N', 'CLOSED', :ps)"),
+            {"i": next_id, "p": spaced, "f": params.get("fir_no", f"SHR{next_id:05d}/2026"),
+             "d": int(time.time()), "ps": params.get("police_station", "Live Demo PS")}).rowcount
+    return {"rows_affected": max(n, 0),
+            "detail": f"incident {next_id}: {spaced!r} SHREDDING, stolen N, recovered N, case CLOSED"}
+
+
+def _theft_delete_incidents(engine: Engine, plate: str, params: dict[str, Any]) -> dict[str, Any]:
+    n = _run(engine, [(f"DELETE FROM CRIME_RECORDS WHERE {_where_plate('vehicle_number')}",
+                       {"plate": _canon(plate)})])
+    return {"rows_affected": n, "detail": f"removed {n} incident row(s)"}
+
+
+# ----------------------------------------------------- CAM: sight / delete_sightings ----------
+
+def _cam_sight(engine: Engine, plate: str, params: dict[str, Any]) -> dict[str, Any]:
+    p = _canon(plate)
+    ocr_confidence = params.get("ocr_confidence", 0.95)
+    make, model, colour = (params.get("make", "Maruti Suzuki"), params.get("model", "Swift"),
+                           params.get("colour", "White"))
+    with engine.begin() as conn:
+        next_id = _next_id(conn, "PLATE_CAPTURES", "capture_id")
+        camera = params.get("camera_id") or conn.execute(text("SELECT camera_id FROM CAMERAS")).scalar()
+        n = conn.execute(text(
             "INSERT INTO PLATE_CAPTURES (capture_id, plate_id, camera_id, captured_at, "
             "observed_make, observed_model, observed_colour, ocr_confidence) "
-            "VALUES (:i, :p, :c, :t, :mk, :md, :cl, 0.95)"),
-            {"i": next_id, "p": _canon(plate), "c": camera, "t": _now()[:19],
-             "mk": params.get("make", "Maruti Suzuki"), "md": params.get("model", "Swift"),
-             "cl": params.get("colour", "White")})
-    return {"rows_affected": 1, "detail": f"capture {next_id}: seen just now"}
+            "VALUES (:i, :p, :c, :t, :mk, :md, :cl, :oc)"),
+            {"i": next_id, "p": p, "c": camera, "t": _now()[:19], "mk": make, "md": model,
+             "cl": colour, "oc": ocr_confidence}).rowcount
+    return {"rows_affected": max(n, 0),
+            "detail": f"capture {next_id}: seen just now at {camera} as {make} {model} {colour} "
+                     f"(confidence {ocr_confidence})"}
 
 
-def _reg_register(engine: Engine, plate: str, params: dict[str, Any]) -> dict[str, Any]:
-    from datetime import date
-    with engine.begin() as conn:
-        owner_id = (conn.execute(text("SELECT MAX(owner_id) FROM OWNERS")).scalar() or 0) + 1
-        reg_id = (conn.execute(text("SELECT MAX(registration_id) FROM VEHICLE_REGISTRATION")).scalar() or 0) + 1
-        owner = params.get("owner", "Rajesh Khanna")
-        conn.execute(text("INSERT INTO OWNERS (owner_id, full_name, address_line, city) "
-                          "VALUES (:i, :n, 'Live Demo Address', 'New Delhi')"), {"i": owner_id, "n": owner})
-        conn.execute(text(
-            "INSERT INTO VEHICLE_REGISTRATION (registration_id, registration_no, owner_id, make, "
-            "model, colour, fuel_type, registered_on, reg_status, rto_code) "
-            "VALUES (:r, :p, :o, :mk, :md, :cl, 'PETROL', :d, 'ACTIVE', :rto)"),
-            {"r": reg_id, "p": _canon(plate), "o": owner_id, "mk": params.get("make", "Maruti Suzuki"),
-             "md": params.get("model", "Swift"), "cl": params.get("colour", "White"),
-             "d": date.today().isoformat(), "rto": _canon(plate)[:4]})
-    return {"rows_affected": 1, "detail": f"registered to {owner} (registration {reg_id})"}
+def _cam_delete_sightings(engine: Engine, plate: str, params: dict[str, Any]) -> dict[str, Any]:
+    n = _run(engine, [(f"DELETE FROM PLATE_CAPTURES WHERE {_where_plate('plate_id')}",
+                       {"plate": _canon(plate)})])
+    return {"rows_affected": n, "detail": f"removed {n} sighting row(s)"}
 
 
-ADMIN_ACTIONS: dict[str, dict[str, Any]] = {
-    "INS": {"renew": _ins_renew, "expire": _ins_expire},
-    "THEFT": {"steal": _theft_steal, "clear": _theft_clear},
-    "CAM": {"sight": _cam_sight},
-    "REG": {"register": _reg_register},
+# --------------------------------------------------------------- PUC: issue / revoke ----------
+
+def _puc_issue(engine: Engine, plate: str, params: dict[str, Any]) -> dict[str, Any]:
+    p = _canon(plate)
+    cert_no = params.get("cert_no") or f"PUC-{p}-{int(time.time())}"
+    valid_upto = params.get("valid_upto", _one_year_from_today())
+    tested_at = params.get("tested_at", "Live Demo Test Centre")
+    emission_norm = params.get("emission_norm", "BS-VI")
+    n = _run(engine, [(
+        "INSERT INTO POLLUTION_CERT (cert_no, regn_number, valid_upto, tested_at, emission_norm) "
+        "VALUES (:c, :p, :v, :t, :e)",
+        {"c": cert_no, "p": p, "v": valid_upto, "t": tested_at, "e": emission_norm})])
+    return {"rows_affected": n, "detail": f"cert {cert_no}: {p} valid until {valid_upto} ({emission_norm})"}
+
+
+def _puc_revoke(engine: Engine, plate: str, params: dict[str, Any]) -> dict[str, Any]:
+    n = _run(engine, [(f"DELETE FROM POLLUTION_CERT WHERE {_where_plate('regn_number')}",
+                       {"plate": _canon(plate)})])
+    return {"rows_affected": n, "detail": f"removed {n} certificate row(s)"}
+
+
+ADMIN_ACTIONS: dict[str, dict[str, dict[str, Any]]] = {
+    "REG": {
+        "register": _spec(_reg_register, [
+            ("owner", "Live Demo Owner", "owner full name"),
+            ("address", "Live Demo Address", "owner address line"),
+            ("city", "New Delhi", "owner city"),
+            ("make", "Maruti Suzuki", "vehicle make"),
+            ("model", "Swift", "vehicle model"),
+            ("colour", "White", "vehicle colour"),
+            ("fuel_type", "PETROL", "fuel type"),
+            ("registered_on", "<today>", "registration date, YYYY-MM-DD"),
+            ("rto_code", "<first 4 chars of plate>", "RTO code"),
+        ], "register a new owner + vehicle for this plate"),
+        "set_status": _spec(_reg_set_status, [
+            ("status", "ACTIVE", "one of ACTIVE, SUSPENDED, CANCELLED"),
+        ], "change reg_status for this plate"),
+        "unregister": _spec(_reg_unregister, [],
+                            "delete the vehicle row(s) for this plate, then any now-orphaned owner"),
+    },
+    "INS": {
+        "renew": _spec(_ins_renew, [
+            ("until", "31/12/2027", "new policy_until, DD/MM/YYYY"),
+        ], "extend the matching policy and mark it active"),
+        "expire": _spec(_ins_expire, [
+            ("until", "10/01/2026", "new policy_until, DD/MM/YYYY"),
+        ], "backdate the matching policy and mark it inactive"),
+        "add_policy": _spec(_ins_add_policy, [
+            ("insurer_id", "<first insurer>", "INSURERS.insurer_id"),
+            ("policy_type", "COMPREHENSIVE", "policy type"),
+            ("start", "<today>", "policy_start, DD/MM/YYYY"),
+            ("until", "31/12/2027", "policy_until, DD/MM/YYYY"),
+            ("premium", "15000.00", "premium_inr"),
+        ], "insert a brand-new policy row; is_active derived from until vs today"),
+        "delete_policies": _spec(_ins_delete_policies, [],
+                                 "delete every policy row for this plate"),
+    },
+    "THEFT": {
+        "steal": _spec(_theft_steal, [
+            ("fir_no", "<generated>", "FIR number"),
+            ("police_station", "Live Demo PS", "police station"),
+        ], "open a new incident, stolen Y, case OPEN"),
+        "clear": _spec(_theft_clear, [],
+                       "remove the demo incident row(s) opened by 'steal'/'shred'"),
+        "shred": _spec(_theft_shred, [
+            ("fir_no", "<generated>", "FIR number"),
+            ("police_station", "Live Demo PS", "police station"),
+        ], "log a SHREDDING incident, stolen N, recovered N, case CLOSED"),
+        "delete_incidents": _spec(_theft_delete_incidents, [],
+                                  "delete every incident row for this plate"),
+    },
+    "CAM": {
+        "sight": _spec(_cam_sight, [
+            ("camera_id", "<any known camera>", "CAMERAS.camera_id"),
+            ("make", "Maruti Suzuki", "observed make"),
+            ("model", "Swift", "observed model"),
+            ("colour", "White", "observed colour"),
+            ("ocr_confidence", 0.95, "OCR confidence, 0-1"),
+        ], "insert a fresh capture, seen just now"),
+        "delete_sightings": _spec(_cam_delete_sightings, [],
+                                  "delete every capture row for this plate"),
+    },
+    "PUC": {
+        "issue": _spec(_puc_issue, [
+            ("cert_no", "<generated>", "certificate number"),
+            ("valid_upto", "<one year from today>", "valid_upto, YYYY-MM-DD"),
+            ("tested_at", "Live Demo Test Centre", "test centre"),
+            ("emission_norm", "BS-VI", "emission norm"),
+        ], "issue a new pollution certificate"),
+        "revoke": _spec(_puc_revoke, [], "delete every certificate row for this plate"),
+    },
 }
