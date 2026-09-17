@@ -8,7 +8,7 @@ repository.
 | Document | What it holds |
 |---|---|
 | this file | tools, workflow, a phase-by-phase map of prompts to code, file inventory, reproduction steps |
-| [`docs/ai/PROMPTS.md`](docs/ai/PROMPTS.md) | every prompt we typed, in order, word for word |
+| [`docs/ai/PROMPTS.md`](docs/ai/PROMPTS.md) | every prompt we typed, in order, word for word, with Claude's reply to each |
 | [`docs/superpowers/plans/`](docs/superpowers/plans/) | the implementation plans the AI wrote before coding, with outcomes recorded |
 | [`docs/DEMO_GUIDE.md`](docs/DEMO_GUIDE.md) | how to run, test and demo the system |
 | `git log` | every AI-produced change, commit by commit |
@@ -174,7 +174,7 @@ An audit found no fake plates in the app, scripts or seed data.
 per-database read-only grants, an environment variable redirecting a data load. Led to `5ca0b51` and
 `a33ca78` (guide corrections) and a successful live cross-laptop test run by the team.
 
-**Prompt 56.** This document.
+**Prompts 56–60.** This document, the prompt and reply log, and viva preparation (`docs/VIVA_JUSTIFICATIONS.md`).
 
 ## 5. File inventory
 
