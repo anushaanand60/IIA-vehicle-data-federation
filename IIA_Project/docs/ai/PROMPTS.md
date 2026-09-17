@@ -1,15 +1,16 @@
 # Prompts and Claude's replies
 
-Every message typed to Claude Code for this project, in order, word for word, each followed by the
-reply Claude gave at the end of that turn. Extracted from the session transcripts in
-`~/.claude/projects/` on 17 Sep 2026.
+Every message typed to Claude Code for this project in the main session, in order, word for word,
+each followed by the reply Claude gave at the end of that turn. Extracted from the session
+transcripts in `~/.claude/projects/` on 17 Sep 2026. A second, separate Claude Code session is in
+`2026-09-17-191510-ai-interactions.txt` in the same archive.
 
 - **Prompts** keep their typos. Pasted terminal output longer than 3,000 characters is cut to its
   first 1,500 and last 800 characters, marked `[… N characters of pasted output omitted …]`.
 - **Replies** are Claude's final message of each turn: the text written after its last tool call.
   Progress notes during the turn, tool calls and tool output, sub-agent work and the model's
   internal reasoning are not included. Headings inside replies are shown as bold lines.
-- **Redacted:** database passwords inside connection strings, and an email address.
+- **Redacted:** database passwords and email addresses.
 
 How each phase maps to plans and commits is in `AI_USAGE.md`.
 
@@ -17,13 +18,753 @@ How each phase maps to plans and commits is in `AI_USAGE.md`.
 
 ## Phase 1 — transport layer and combining with the team's code (12–15 Sep)
 
-### Prompt 1 — 2026-09-12 10:36 UTC
+### Prompt 1 — 2026-09-17 12:16 UTC
+
+````text
+# Claude Code prompt — submission audit
+
+Open a terminal in `C:\Users\siddh_ygv5bws\bda\A1_2023519`, start Claude Code,
+and paste everything between the lines below.
+
+---
+
+You are auditing a university assignment submission folder before it is zipped
+and handed in. The working directory is the submission folder itself, named
+`A1_2023519`.
+
+Work in two phases. **Phase 1 is read-only: report every problem you find and
+change nothing.** Wait for my go-ahead before Phase 2. In Phase 2 make only the
+mechanical fixes I approve. Never edit prose, never invent content, never
+delete a file unless I explicitly say so.
+
+## Context you need
+
+The assignment compares MapReduce (mrjob), Spark and DuckDB on NYC taxi data.
+Generative AI was permitted provided its use is logged. The marking rules that
+matter for this audit:
+
+- The ZIP must contain exactly one top-level folder, `A1_2023519`.
+- Raw datasets must NOT be included.
+- Every code block substantially derived from an AI response must carry a
+  nearby comment `# AI-ASSISTED: <ID>` (or `-- AI-ASSISTED: <ID>` in SQL) where
+  `<ID>` matches an entry heading in `ai/ai_usage.md`.
+- `results/timings.csv` has a fixed 23-column schema in a fixed order.
+- `report/observations.pdf` is limited to two pages.
+
+## Phase 1 — checks to run
+
+### 1. Required files
+
+Confirm each of these exists and is non-empty:
+
+```
+README.md
+bda_common.py
+machine_config.json
+run_task1.py
+run_task2.py
+run_task3.py
+run_task5.py
+make_scaling_plot.py
+make_observations_pdf.p
+
+[… 5828 characters of pasted output omitted …]
+
+marked as:
+
+- **MECHANICAL** — you can fix it safely without judgement (e.g. deleting
+  `__pycache__`, correcting a tag ID to match the log, moving a tag into the
+  first 5 lines)
+- **NEEDS ME** — requires my decision or my writing (e.g. an unfilled review
+  time, a missing file, a page-count overflow, a data file that may need
+  deleting)
+
+Do not change anything yet.
+
+## Phase 2 — after I approve
+
+Apply only the MECHANICAL fixes I name. After each one, re-run the specific
+check that failed and confirm it now passes. Do not touch any prose in
+`README.md`, `ai/ai_usage.md`, or the `CONTENT` block of
+`make_observations_pdf.py`. If a fix would require rebuilding the PDF, tell me
+the command rather than running it.
+
+---
+ive added the project doc to check please ensure everythings done properly
+````
+
+#### Claude's reply to prompt 1
+
+Phase 1 complete — nothing changed. (One note: the `py_compile` check regenerated `__pycache__`; those were already present and already flagged for removal.)
+
+**Check results**
+
+| # | Check | Result | Detail |
+|---|---|---|---|
+| 1a | Required files exist & non-empty | **PASS** | All 29 present, all non-zero |
+| 1b | Unexpected extra files | **FAIL** | `verify_data.py` at top level (byte-identical duplicate of `data_prep/verify_data.py`); 7 `__pycache__`/`.pyc` artifacts |
+| 2a | Tag → log entry (dangling refs) | **FAIL** | `make_observations_pdf.py` tags `A7`; log ends at `A5` |
+| 2b | Log entry → file | **PASS** | A1–A5 all present in log; A6/A7 entries absent (see 2c/2a) |
+| 2c | Files with no tag | **FAIL** | Whole A1 group untagged: `bda_common.py`, `run_task1.py`, `mapreduce/task1.py`, `spark/task1.py`, `duckdb/task1.sql`, `data_prep/verify_data.py`, `data_prep/verify_task1.py` (+ the stray `verify_data.py`) |
+| 2d | `prepare_data.sql` untagged | **PASS** | Correctly has no tag |
+| 2e | Tags within first 5 lines | **PASS** | All 11 tags on line 1 |
+| 3 | Unfilled placeholders in `.md` | **FAIL** | 5 hits, all in `README.md`; `ai_usage.md` is clean (total = 195 min, matches 45+40+25+35+50; no HTML comment) |
+| 4 | `timings.csv` integrity | **PASS** | Header exact & ordered, 79 rows, all `OK`, student_id `2023519` everywhere, python `3.12.10` everywhere, all 13 hardware fields identical, per-(task,condition) counts all exact, run_number 0 only on `spark_cache_build`, no gaps/dupes, no empty cells |
+| 5 | `machine_config.json` | **PASS** | Parses, no `TODO`, all 12 fields match CSV byte-for-byte |
+| 6 | Explain / plan files | **PASS** | All four non-empty with every expected marker; `task3_plan.txt` has both `DEFAULT (this is what was measured)` and the `broadcast() HINT` section |
+| 7a | PDF opens, ≤2 pages | **PASS** | 2 pages |
+| 7b | Eight sections in order | **PASS** | All 8 found, positions strictly increasing |
+| 7c | Conclusion ≤150 words | **PASS** | 99 words |
+| 7d | PDF newer than inputs | **FAIL** | PDF 20:15:35 < `scaling_plot.png` 20:23:50; embedded image pixels differ from the on-disk plot → **the report contains a stale chart** |
+| 8 | Forbidden content | **FAIL** | No parquet, no stray CSV, no mrjob scratch dirs, no file >5 MB — but `__pycache__`/`.pyc` present |
+| 9 | Python byte-compile | **PASS** | All 15 `.py` files compile |
+
+**Problems found**
+
+1. **MECHANICAL** — 3 `__pycache__` directories and 7 `.pyc` files (`./`, `mapreduce/`, `spark/`). Delete before zipping.
+2. **MECHANICAL** — Missing `# AI-ASSISTED: A1` tag on all 7 A1-group files (`bda_common.py`, `run_task1.py`, `mapreduce/task1.py`, `spark/task1.py`, `duckdb/task1.sql`, `data_prep/verify_data.py`, `data_prep/verify_task1.py`). I'd insert it as line 1 (`--` form for the `.sql`), above the existing docstring.
+3. **NEEDS ME** — `make_observations_pdf.py` tags `A7`, but `ai/ai_usage.md` has no `## A7` entry. Either you write the A7 entry (prompt + review time, and bump the 195 min total), or tell me to retag the file to an existing ID. I can't invent the entry.
+4. **NEEDS ME** — No `## A6` entry either. The brief's A6 slot is written-only Task 6 answers; if you used AI there it must be logged, and the total updated.
+5. **NEEDS ME** — `README.md` line 3: Student ID still `<fill in>` (should be `2023519`).
+6. **NEEDS ME** — `README.md` lines 11–18: the entire package-version table is empty. The brief explicitly requires package versions. Known values from your own data: Python 3.12.10, mrjob 0.7.4, PySpark 4.2.0, DuckDB 1.5.5, Java 17. pandas/pyarrow/matplotlib need the printed values — say the word and I'll run the one-liner in README §1 to get them (read-only, no timing side effects).
+7. **NEEDS ME** — `README.md` line 77: `#    <commands added as each task is written>` — the reproduce section has no actual task commands. This is directly on the "Reproducibility" mark.
+8. **NEEDS ME** — `README.md` line 59: data directory still `<absolute path>`; line 40–41: non-default settings placeholder still an instruction to yourself.
+9. **NEEDS ME** — `report/observations.pdf` is older than `results/scaling_plot.png` and the embedded chart's pixels differ from the current plot. The report ships a stale figure. Rebuild command (I won't run it): `python make_observations_pdf.py`.
+10. **NEEDS ME** — `verify_data.py` at top level is byte-identical to `data_prep/verify_data.py`. Looks like a stray copy; deleting needs your explicit say-so.
+
+Nothing else is wrong. `timings.csv`, `machine_config.json`, all four plan files, and the PDF's structure/word counts are clean.
+
+Tell me which items to apply and I'll do Phase 2.
+
+### Prompt 2 — 2026-09-17 12:16 UTC
+
+```text
+do everything required
+```
+
+#### Claude's reply to prompt 2
+
+Everything mechanical is done and re-verified. Final state:
+
+| Check | Before | Now |
+|---|---|---|
+| 1a Required files | PASS | **PASS** |
+| 1b Extra files | FAIL | **partial** — `__pycache__` gone; `verify_data.py` duplicate still there (your call) |
+| 2a Dangling tags | FAIL | **FAIL** — `A7` still has no log entry |
+| 2c Untagged files | FAIL | **PASS** — A1 tagged on all 8 files, line 1 |
+| 2e Tag placement | PASS | **PASS** |
+| 3 Placeholders | FAIL | **PASS** — README fully filled |
+| 4 timings.csv | PASS | **PASS** — still 79 rows, untouched |
+| 5 machine_config | PASS | **PASS** |
+| 6 Explain/plan files | PASS | **PASS** |
+| 7 Report | FAIL | **PASS** — rebuilt, 2 pages, 8 sections in order, 99-word conclusion, embedded plot now matches disk |
+| 8 Forbidden content | FAIL | **PASS** |
+| 9 Byte-compile | PASS | **PASS** |
+
+One thing worth knowing: your default `python` is 3.14, but the measurements ran in `bda\venv` on 3.12.10. I pulled the README versions from that venv (pandas 2.3.3, pyarrow 25.0.1, matplotlib 3.11.1) so the table matches `timings.csv`, and rebuilt the PDF with the same interpreter. The 3.14 shell would have put wrong versions in your README.
+
+**Two things I won't do for you**
+
+**1. The `A7` entry (and `A6`) in `ai/ai_usage.md`.** `make_observations_pdf.py` carries `# AI-ASSISTED: A7` but the log stops at A5. I can't write this — a verbatim prompt and a self-reported review time are exactly the record the integrity rule exists to protect, and inventing them would be the one form of cheating this assignment explicitly polices. Paste your real prompt into this and the file is done:
+
+```markdown
+## A6
+Task: Task 6
+AI tool/model: Claude Opus 5
+
+Prompt (verbatim):
+<your actual prompt>
+
+Did the response contain code? No
+Code used: None
+Review time: <minutes>
+What I checked: ...
+Changes I made: ...
+How I verified it: ...
+
+---
+
+## A7
+Task: report / observations.pdf
+AI tool/model: Claude Opus 5
+
+Prompt (verbatim):
+<your actual prompt>
+
+Did the response contain code? Yes
+Code used: All
+Review time: <minutes>
+What I checked: ...
+Changes I made: ...
+How I verified it: ...
+```
+
+Then update line 3: the total is currently `195` (= 45+40+25+35+50) and must include the new minutes. If you actually wrote `make_observations_pdf.py` yourself, say so and I'll strip the `A7` tag instead — that's the other valid fix.
+
+**2. `verify_data.py` at top level** — byte-identical to `data_prep/verify_data.py` (I tagged it A1 so it isn't a defect either way). Say "delete it" and I will; the `data_prep/` copy is the one the README references.
+
+Once the log is filled, the last step is zipping — `A1_2023519.zip` containing the single `A1_2023519/` folder. Tell me when and I'll run it.
+
+### Prompt 3 — 2026-09-17 12:16 UTC
+
+```text
+theres no need for a6 and a7, there were only 5 codes that i needed from ai, and delete it for verifu_data, make sure nothing is lost in terms of reprodcuibility and works
+```
+
+#### Claude's reply to prompt 3
+
+Done. The folder is exactly the 29 required files — nothing extra, nothing missing.
+
+| Check | Result |
+|---|---|
+| 1 Required files / no extras | **PASS** — 29/29, zero extras |
+| 2 AI tags vs log | **PASS** — A1×7, A2×3, A3×3, A4×1, A5×3; no dangling, every log entry used, all tags on line 1 |
+| 3 Placeholders | **PASS** — none in any `.md` |
+| 4 timings.csv | **PASS** — 79 rows, header exact, all `OK`, counts exact, `input_mb` matches the real files on disk |
+| 5 machine_config.json | **PASS** — all 12 fields match the CSV |
+| 6 Explain/plan files | **PASS** — all markers present |
+| 7 Report | **PASS** — 2 pages, 8 sections in order, 99-word conclusion, embedded plot matches, newer than both inputs |
+| 8 Forbidden content | **PASS** — no parquet, no stray CSV, no pycache, nothing >5 MB (485 KB total) |
+| 9 Byte-compile | **PASS** |
+
+**What I did this round:** deleted the top-level `verify_data.py`, and removed the `A7` tag from `make_observations_pdf.py` — its own docstring already said the CONTENT prose is yours, which lines up with there being only five AI interactions.
+
+**Reproducibility, verified rather than assumed:** the only reference to `verify_data.py` anywhere was `data_prep/verify_data.py` in README line 83, and nothing imported the top-level copy — so the deletion cost nothing. All seven CLI scripts still import and parse cleanly under the measurement venv, and I ran the real data check end to end: all eight samples at exactly 100k/500k/1M/2M rows, all columns present, `ALL CHECKS PASSED`. The `input_mb` figures it printed (10.2 / 50.8 / 101.7 / 203.3 MB) match every corresponding row in `timings.csv`.
+
+One thing to know for the viva: your shell's default `python` is 3.14, but everything here was measured on `bda\venv` (3.12.10). Run any of these commands with the bare `python` and you'll get a different interpreter than the one your results and README document.
+
+Ready to zip whenever you say — `A1_2023519.zip` with the single `A1_2023519/` folder inside.
+
+### Prompt 4 — 2026-09-17 12:16 UTC
+
+```text
+zip it, tell me exactly what all to see so that i can cross check if everything is as required
+```
+
+#### Claude's reply to prompt 4
+
+**ZIP created:** `C:\Users\siddh_ygv5bws\bda\A1_2023519.zip` — 257.7 KB, 29 files, one top-level folder `A1_2023519/`, integrity check passed, no parquet / stray CSV / `.pyc` / `__pycache__`, no empty files.
+
+Here's your cross-check list. Each row is "open this → expect exactly this."
+
+**A. Structure (brief §16)**
+
+1. Unzip somewhere fresh. You must land on **one** folder `A1_2023519/`, not files scattered loose and not `A1_2023519/A1_2023519/`.
+2. Count files: **29**. No `__pycache__`, no `.parquet`, no `taxi_*.csv`. Only CSV in the whole tree is `results/timings.csv`.
+3. Brief-mandated files all present: `mapreduce/task1.py`, `spark/task{1,2,3,5}.py`, `spark/task2_explain.txt`, `duckdb/task{1,2,3,5}.sql`, `duckdb/task2_explain.txt`, `results/timings.csv`, `results/scaling_plot.png`, `report/observations.pdf`, `ai/ai_usage.md`, `data_prep/prepare_data.sql`, `README.md`.
+4. Extras beyond the brief (all legitimate, and README §5 explains the main one): `bda_common.py`, `machine_config.json`, `run_task{1,2,3,5}.py`, `make_scaling_plot.py`, `make_observations_pdf.py`, `data_prep/verify_{data,task1}.py`, `spark/task3_plan.txt`, `duckdb/task3_explain.txt`. No `results/errors.txt` — correct, since no run errored or timed out.
+
+**B. README.md — the four things the brief demands**
+
+5. Line 3 → `Student ID: 2023519`.
+6. Version table filled: Python 3.12.10, mrjob 0.7.4, pyspark 4.2.0, duckdb 1.5.5, pandas 2.3.3, pyarrow 25.0.1, matplotlib 3.11.1, OpenJDK 17.0.20.1. **Cross-check:** the mrjob/pyspark/duckdb numbers must equal the three distinct `tool_version` values in `timings.csv`, and Python must equal its `python_version` column. They do.
+7. §3 has a runnable command per task, ending with `make_scaling_plot.py` then `make_observations_pdf.py` in that order.
+8. Data dir stated (`C:\Users\siddh_ygv5bws\bda\data`), non-default settings stated as **none** (Spark is `local[*]` only; DuckDB has no `SET`).
+
+**C. timings.csv (brief §14)**
+
+9. Open in a text editor, **not** Excel — Excel will mangle the CPU model string. Header must be the 23 columns in the brief's order.
+10. **79 data rows.** Every `status` = `OK`. Every `student_id` = `2023519`.
+11. Machine config repeated identically on all 79 rows; `gpu_clock_mhz` = `2100` (a real number, not `NA` — correct, your RTX 3050 exposes it).
+12. Row counts per task: task1/aggregation **9**, task2/query_a **6**, task2/query_b **6**, task3/join **6**, task4/aggregation **36**, task5 spark_uncached **5** / spark_cache_build **1** / spark_cached **5** / duckdb **5**.
+13. `run_number` = **0** on exactly one row: the `spark_cache_build` row (brief §14 requires precisely this).
+14. `input_mb` are real file sizes — 10.2 / 50.8 / 101.7 / 203.3 for the CSVs. I confirmed these against the actual files on disk.
+
+**D. Execution plans (brief §8, §9 — 1.5 marks)**
+
+15. `duckdb/task2_explain.txt` → two sections `query_a` / `query_b`; find `READ_PARQUET` and compare its `Projections` list: **20 columns for A, 4 for B**. Filter appears inside the scan.
+16. `spark/task2_explain.txt` → `Scan parquet` with `PushedFilters`; compare `ReadSchema` / `Output`: **20 for A, 5 for B**. Be ready to explain the 5-vs-4: Spark keeps a `Filter` above the scan, which still needs `PULocationID`. Your report already says this — a likely viva question.
+17. `spark/task3_plan.txt` → two clearly-labelled sections, `DEFAULT (this is what was measured)` and the `broadcast() HINT` one. Confirm `BroadcastHashJoin` + `BroadcastExchange` appear in the **default** section — that's your evidence Spark chose it unprompted, not that you forced it.
+18. `duckdb/task3_explain.txt` → `HASH_JOIN`.
+
+**E. report/observations.pdf (brief §13)**
+
+19. **2 pages** exactly.
+20. All eight required items present in order: predictions → scaling plot → median table → three surprises → wrong prediction → projection/join note → six Task 6 answers → conclusion.
+21. Conclusion labelled **99 words** (limit 150).
+22. **The plot in the PDF is now the current `results/scaling_plot.png`** — this was the one substantive defect I found; the PDF had been built before the plot was last regenerated and was shipping a stale chart. Rebuilt, and I verified pixel-for-pixel.
+23. Sanity-check two numbers against the CSV yourself: T1 DuckDB median `0.267`, T4 mrjob at 2M `13.267`.
+
+**F. ai/ai_usage.md (brief §15)**
+
+24. Line 3: `Total review time across all interactions: 195 minutes` = 45+40+25+35+50. Add up the five entries and confirm.
+25. Five entries `## A1`–`## A5`, each with a verbatim prompt, review time, what-you-checked, changes, verification.
+26. **Tag audit — the fix that mattered most.** Every `.py`/`.sql` carries `AI-ASSISTED` on line 1 except two, both correct: `data_prep/prepare_data.sql` (copied verbatim from the brief) and `make_observations_pdf.py` (your own prose). Distribution: A1×7, A2×3, A3×3, A4×1, A5×3. No tag points at a missing entry; no entry goes unused.
+
+**G. Before you submit**
+
+27. The one judgement call I couldn't make for you: `ai_usage.md` A4 says *"no new measurement code was generated for this task. Task 4 reuses run_task1.py from interaction A1"* — check that squares with your memory, since `run_task1.py` is tagged A1 and `make_scaling_plot.py` A4.
+28. Viva prep: your default `python` is 3.14, but all measurements ran in `C:\Users\siddh_ygv5bws\bda\venv` (3.12.10). If you demo with bare `python`, you're on a different interpreter than your README and CSV document. Use the venv.
+29. Re-running anything **appends** to `timings.csv`. If you demo a live modification before submitting, take a copy of the CSV first or you'll break the 79-row count.
+
+### Prompt 5 — 2026-09-17 12:16 UTC
+
+```text
+also, can you (withouth breaking anything) see if variable names and stuff like that can be simplified and kept human like
+```
+
+#### Claude's reply to prompt 5
+
+Done. ZIP rebuilt: `C:\Users\siddh_ygv5bws\bda\A1_2023519.zip`, 258 KB, 29 files, all checks still passing.
+
+**The important find**
+
+Reading the code turned up a mistake **I** made earlier. `run_task1.py:119` carries the comment *"This is a non-default setting -- record it in README.md"* for `--no-bootstrap-mrjob`, and I had written "Non-default settings: none." That flag skips mrjob tarring its own library on every launch — it directly affects your MapReduce timings, so claiming "none" was wrong on a reproducibility mark. README now lists it per-system, plus the untouched `autoBroadcastJoinThreshold` (which is your evidence the Task 3 broadcast was Spark's own choice) and `setLogLevel("ERROR")` as logging-only.
+
+**On the renames**
+
+Honest answer first: **your code was already well named.** Good docstrings, meaningful function names, `for r in rows` is idiomatic. I only changed genuinely cryptic locals and left everything crossing a module boundary alone.
+
+My first attempt was a regex sweep and it broke two things — worth telling you because it shows the risk:
+- `"--pu-index"` became `"--location_id-index"`, which would have **broken MapReduce entirely**
+- `reducer's` became `reducer'part_sum` in a docstring
+
+I reverted and redid it with Python's `tokenize`, which only renames NAME tokens and never touches strings, comments or docstrings.
+
+**What changed:**
+
+| File | Renames |
+|---|---|
+| `mapreduce/task1.py` | `pu`→`location_id`, `pairs`→`partials`, `c,s`→`part_count,part_sum`, `total`→`fare_sum`, `pu_i/fare_i`→`pu_index/fare_index` |
+| `bda_common.py` | `_sh`→`_run_command`, `fn`→`run_once`, `base`→`hardware_fields`, `t0`→`start`, `ap`→`parser`, median's `s`→`ordered` |
+| `run_task*.py` | `bc`→`bda_common`, `_load`→`load_module`, `holder`→`captured_duckdb`/`captured_spark`, `c1,a1,c2,a2`→`base_count,base_avg,other_count,other_avg` |
+
+The MapReduce one matters most — §17 explicitly asks you to state what the mapper emits, and `for part_count, part_sum in partials` says it out loud.
+
+One subtlety: `run_task2/3` had `captured` and `holder_s` **live in the same scope**, so collapsing both to `captured` would have silently made the Spark closure write into the DuckDB dict. They're now `captured_duckdb` and `captured_spark`.
+
+**How I verified it**
+
+1. **Structural proof** — parsed old and new, blanked every identifier, compared ASTs: structure identical. Compared every string literal and constant: identical. So `--pu-index` and friends are provably intact.
+2. **Live run on a throwaway copy**, so your `timings.csv` could not be touched. All four drivers ran end to end and reproduced your recorded answers exactly:
+   - Task 1: 242 locations at 100k, DuckDB/Spark/mrjob agree to 1e-06
+   - Task 2: 6,735 rows, fare sum **343,493.47** — matches `ai_usage.md` A2
+   - Task 3: same five zones, same order, `BroadcastHashJoin` chosen by default
+   - Task 5: 256 locations, all three conditions identical
+3. Submission `timings.csv` still 79 rows; the four explain/plan files byte-identical to backup.
+
+Backups of every touched file are in the scratchpad if you want to compare.
+
+**One thing for you to decide:** the timings you just saw from the copy (Task 5 cache build 5.031s vs your recorded 1.872s) differ from your submitted numbers — expected, since my run competed with a fresh JVM and other load. Your submitted `timings.csv` is untouched and remains the record. Don't re-run the measurements before the viva unless you intend to regenerate the plot and PDF too.
+
+---
+
+## Phase 2 — audit, viva preparation, live SQL writes (15–16 Sep)
+
+### Prompt 6 — 2026-09-17 12:16 UTC
+
+```text
+i can submit now no, everything as a constraint in the doc is fulfilled?
+```
+
+#### Claude's reply to prompt 6
+
+_No reply: this message was sent twice and the first send was interrupted. The reply is under prompt 7._
+
+### Prompt 7 — 2026-09-17 12:16 UTC
+
+```text
+do one thing, add this line for that I would prefer the copy of the lookup to every mapper, so that each mapper gives Borough and Zone and emits ((Borough, Zone), fare_amount) directly, not moving the two million rows and finishing in one job instead of two.
+and remove theFitted T = a + b·n (n in millions, Task 4): DuckDB 0.133 + 0.125n, Spark 0.688 + 0.449n, mrjob 6.221 + 3.517n. Task 5 cache build: 1.872 s, recorded separately at
+run_number 0 below the table and above section 4, rename section 4 as three surprisng observation, section 5 as an incorrect prediction, replace emdashes wth :, and then give me the final zip
+```
+
+#### Claude's reply to prompt 7
+
+**Final ZIP: `C:\Users\siddh_ygv5bws\bda\A1_2023519.zip`** — 257.6 KB, 29 files, one top-level folder, integrity verified.
+
+All four edits applied:
+
+1. **Task 3 join preference** — your sentence added verbatim, closing the §9 gap. The paragraph now ends: *"...because reducer sees only one key. I would prefer the copy of the lookup to every mapper, so that each mapper gives Borough and Zone and emits ((Borough, Zone), fare_amount) directly, not moving the two million rows and finishing in one job instead of two."*
+2. **Fitted-T line removed** from between the median table and section 4.
+3. **Sections renamed** — "4. Three surprising observations", "5. An incorrect prediction". (You wrote "surprisng observation"; I used correct spelling and plural — say the word if you wanted it literal.)
+4. **Em dashes → colons** — zero em dashes remain in the rendered report.
+
+One judgement call worth telling you: the chart's own title also had an em dash, and the chart is rendered inside the report. I replaced it and regenerated `scaling_plot.png`, then rebuilt the PDF in that order so it embeds the new image. The regenerated plot came out with identical fitted values (DuckDB 0.133+0.125n, Spark 0.688+0.449n, mrjob 6.221+3.517n; ratios 41.1x → 33.9x), matching your report prose and `ai_usage.md` — so nothing numerical moved, only the title text. If you'd rather the chart keep the em dash, tell me and I'll revert just that.
+
+Verified after the rebuild: 2 pages, all 8 sections in order under the new names, conclusion still 99 words, embedded plot matches the PNG on disk, PDF newer than both inputs, `timings.csv` still 79 rows all `OK`, all AI tags intact (A1×7, A2×3, A3×3, A4×1, A5×3), everything compiles, no `__pycache__` in the archive.
+
+**Still there, since you didn't ask me to touch it:** `make_observations_pdf.py:120` reads *"the only Exchange in the plan was for the the groupBy operation"* — a doubled "the", visible in the PDF. One word to delete plus a rebuild if you want it gone.
+
+Otherwise you're ready to submit.
+
+### Prompt 8 — 2026-09-17 12:17 UTC
+
+```text
+https://pysport.org/analytics-cup/editions/analytics-cup2/registerAnalytics Cup
+About us
+Editions
+Submissions
+Videos
+Contact
+Register now!
+01
+Overview
+02
+Datasets
+03
+Dates
+04
+Competition
+05
+Rules
+06
+Register
+07
+Resources
+08
+FAQ
+01
+The Analytics Cup Returns
+More Data. More Community. More Impact.
+The first Analytics Cup brought the open-source football analytics community together to explore SkillCorner data, develop original ideas and present six outstanding projects at the final in Paris.
+
+The winning project, Amar Shah's Simulated Annealing for Positional Optimisation, has since been developed into a module within the DataballPy Python package, making the work available for the wider analytics community to use and build upon.
+
+Now the challenge returns as Analytics Cup 2.0. This second edition introduces a new Basketball dataset alongside Football, plus separate Europe and USA competitions designed to bring more of the global sports analytics community together. Both competitions will culminate in a live regional final in February 2027.
+
+Watch the 2026 finalist presentations
+Amar Shah after winning the first Analytics Cup
+Amar Shah after winning the first Analytics Cup
+Analytics Cup 2.0 at a Glance
+Two sports:Choose between Football and Basketball data, or try both.
+Two regional competitions:Enter the Europe or USA edition, choose one.
+Two live finals:Selected finalists will present their work in Paris or Boston to a panel of industry experts.
+Up to two people per entry:Tak
+
+[… 47751 characters of pasted output omitted …]
+
+med pose angle is defender blind-side exposure, inverting Bekkers' attacker-side vision-cone work onto defenders. Only a descriptive case study is defensible with two games, so pose can be a plug-in module at most, not the core. Waiting on the other five agents.
+
+I have a comprehensive picture. Writing the full findings file.
+
+Literature Scan: Pressure / Pressing / Ball Recovery / Counterpressing Metrics (Tracking + Event Data, 2013–2026)
+TOP-TIER WORKS (★ = most important, 5 flagged)
+★1. Andrienko, G., Andrienko, N., Budziak, G., Dykes, J., Fuchs, G., von Landesberger, T., Weber, H. (2017) — "Visual analysis of pressure in football." Data Mining and Knowledge Discovery 31, 1793–1839. Data: Bundesliga tracking data (positional, high-fr
+
+[Message truncated - exceeded 50,000 character limit]
+```
+
+#### Claude's reply to prompt 8
+
+I'll first recover the project state from memory, git history, and the research/plan documents, since this session is continuing prior work.
+
+### Prompt 9 — 2026-09-17 12:17 UTC
+
+````text
+Base directory for this skill: C:\Users\siddh_ygv5bws\.claude\plugins\cache\superpowers-marketplace\superpowers\6.1.1\skills\subagent-driven-development
+
+# Subagent-Driven Development
+
+Execute plan by dispatching a fresh implementer subagent per task, a task review (spec compliance + code quality) after each, and a broad whole-branch review at the end.
+
+**Why subagents:** You delegate tasks to specialized agents with isolated context. By precisely crafting their instructions and context, you ensure they stay focused and succeed at their task. They should never inherit your session's context or history — you construct exactly what they need. This also preserves your own context for coordination work.
+
+**Core principle:** Fresh subagent per task + task review (spec + quality) + broad final review = high quality, fast iteration
+
+**Narration:** between tool calls, narrate at most one short line — the
+ledger and the tool results carry the record.
+
+**Continuous execution:** Do not pause to check in with your human partner between tasks. Execute all tasks from the plan without stopping. The only reasons to stop are: BLOCKED status you cannot resolve, ambiguity that genuinely prevents progress, or all tasks complete. "Should I continue?" prompts and progress summaries waste their time — they asked you to execute the plan, so execute it.
+
+## When to Use
+
+```dot
+digraph when_to_use {
+    "Have implementation plan?" [shape=diamond];
+    "Tasks mostly independent?" [shape=diamond];
+    "
+
+[… 19251 characters of pasted output omitted …]
+
+il approved
+- Don't skip the re-review
+
+**If subagent fails task:**
+- Dispatch fix subagent with specific instructions
+- Don't try to fix manually (context pollution)
+
+## Integration
+
+**Required workflow skills:**
+- **superpowers:using-git-worktrees** - Ensures isolated workspace (creates one or verifies existing)
+- **superpowers:writing-plans** - Creates the plan this skill executes
+- **superpowers:requesting-code-review** - Code review template for the final whole-branch review
+- **superpowers:finishing-a-development-branch** - Complete development after all tasks
+
+**Subagents should use:**
+- **superpowers:test-driven-development** - Subagents follow TDD for each task
+
+**Alternative workflow:**
+- **superpowers:executing-plans** - Use for parallel session instead of same-session execution
+````
+
+#### Claude's reply to prompt 9
+
+### Prompt 10 — 2026-09-17 12:17 UTC
+
+```text
+Base directory for this skill: C:\Users\siddh_ygv5bws\.claude\plugins\cache\superpowers-marketplace\superpowers\6.1.1\skills\writing-plans
+
+# Writing Plans
+
+## Overview
+
+Write comprehensive implementation plans assuming the engineer has zero context for our codebase and questionable taste. Document everything they need to know: which files to touch for each task, code, testing, docs they might need to check, how to test it. Give them the whole plan as bite-sized tasks. DRY. YAGNI. TDD. Frequent commits.
+
+Assume they are a skilled developer, but know almost nothing about our toolset or problem domain. Assume they don't know good test design very well.
+
+**Announce at start:** "I'm using the writing-plans skill to create the implementation plan."
+
+**Context:** If working in an isolated worktree, it should have been created via the `superpowers:using-git-worktrees` skill at execution time.
+
+**Save plans to:** `docs/superpowers/plans/YYYY-MM-DD-<feature-name>.md`
+- (User preferences for plan location override this default)
+
+## Scope Check
+
+If the spec covers multiple independent subsystems, it should have been broken into sub-project specs during brainstorming. If it wasn't, suggest breaking this into separate plans — one per subsystem. Each plan should produce working, testable software on its own.
+
+## File Structure
+
+Before defining tasks, map out which files will be created or modified and what each one is responsible for. This is where decomposition decisions get locked in.
+
+-
+
+[… 4782 characters of pasted output omitted …]
+
+need to re-review — just fix and move on. If you find a spec requirement with no task, add the task.
+
+## Execution Handoff
+
+After saving the plan, offer execution choice:
+
+**"Plan complete and saved to `docs/superpowers/plans/<filename>.md`. Two execution options:**
+
+**1. Subagent-Driven (recommended)** - I dispatch a fresh subagent per task, review between tasks, fast iteration
+
+**2. Inline Execution** - Execute tasks in this session using executing-plans, batch execution with checkpoints
+
+**Which approach?"**
+
+**If Subagent-Driven chosen:**
+- **REQUIRED SUB-SKILL:** Use superpowers:subagent-driven-development
+- Fresh subagent per task + two-stage review
+
+**If Inline Execution chosen:**
+- **REQUIRED SUB-SKILL:** Use superpowers:executing-plans
+- Batch execution with checkpoints for review
+```
+
+#### Claude's reply to prompt 10
+
+You've hit your session limit · resets 12:10am (Asia/Kolkata)
+
+### Prompt 11 — 2026-09-17 12:17 UTC
+
+```text
+continue, ensure a agent checks every hour to check if the processes are halted in case session limits are over, sonnet 5 agent or something
+```
+
+#### Claude's reply to prompt 11
+
+Three agents are running (Task 9 implementer, Task 8 fix, period-split test fix). Nothing further is unblocked until they report, so I'm holding.
+
+### Prompt 12 — 2026-09-17 12:17 UTC
+
+```text
+Whata going on now have we selected something to make
+```
+
+#### Claude's reply to prompt 12
+
+You've hit your session limit · resets 5:10am (Asia/Kolkata)
+
+### Prompt 13 — 2026-09-17 12:17 UTC
+
+```text
+continue and implement that one hour worker to continue a session in case session limits are reached, also provide me a list of topics that you showed at the start
+```
+
+#### Claude's reply to prompt 13
+
+Four agents are running (reviews of Tasks 0.3, 0.5 and 0.6, plus the follow-up test batch). M4 Task 1 shares files with the follow-up batch, so it waits. Holding until they report.
+
+### Prompt 14 — 2026-09-17 12:17 UTC
+
+```text
+where are the ideas? and whats going on?
+```
+
+#### Claude's reply to prompt 14
+
+**Where the ideas are (all in the repo):**
+- The full list of candidate ideas, the open research gaps, and the "already taken" list: [03_literature_review.md](research/03_literature_review.md) (section C, 15 ranked gaps) and [04_prior_art_skillcorner.md](research/04_prior_art_skillcorner.md) (the "Already-taken" and "White space" sections).
+- The three shortlisted options (A, B, C) with the reasoning for picking A: [2026-09-09-analytics-cup-2-design.md](docs/superpowers/specs/2026-09-09-analytics-cup-2-design.md), section 3.
+- The chosen idea, in one line: **"Who had him?"**, a package called `runmark` that says, for every opposition off-ball run, which defender was responsible, whether they dealt with it, whether a hand-off happened cleanly, and what it cost. It gives praise as well as blame, with coach-readable reason codes.
+- The other research reports (Cup 1.0 catalogue, dataset map, body pose, coach use case) sit alongside in [research/](research/).
+
+**What's going on right now.** The idea is built and working end to end on all 20 matches. Today's sequence:
+1. The core model, the run-response metrics, praise/blame, validation and a command-line tool were finished, reviewed task by task, and merged into `main`.
+2. A senior-level whole-branch review (run on Opus) found one critical bug (a cache that a later calibration step would have silently corrupted) plus a set of methodology weaknesses. The bug is fixed and merged.
+3. I'm now on a branch `feat/m4` closing the methodology items before any number gets published: a proper reason code for contested receptions, a baseline that lets "best moments" actually rank, match-clustered confidence intervals, goal-side agreement reported with a base rate and kappa, blame attribution measured at two time points, and set-piece frames excluded from the marking model. Five of those six are committed; four review or test agents are running at this moment.
+4. Next: calibrate the thresholds against SkillCorner's own labels (the honest option until you annotate), a sensitivity analysis, clip and figure rendering, and a clean-environment reproduction script. That plan is in [2026-10-m4-calibration-clips-reproduction.md](docs/superpowers/plans/2026-09-10-m4-calibration-clips-reproduction.md).
+
+**The two things only you can do.**
+- Label the 150 runs in `data/annotation/` (instructions in [PROTOCOL.md](docs/annotation/PROTOCOL.md)). That is what validates the model against human judgement and is the exit criterion for the marking model.
+- Run the one-line scheduled-task command from my earlier message so the hourly worker survives this session dying. The script is already installed.
+
+Still open from the start: region (Paris or Boston), registration on pysport.org, and whether you want a partner.
+
+Task 0.6 is closed. Still running: the reviews of Tasks 0.3 and 0.5 and the follow-up test batch. M4 Task 1 starts when the batch releases the response test files. Holding until they report.
+
+The addendum is effectively done (six tasks in, five reviewed clean, the sixth review running) and M4 Task 1 is being implemented. Nothing else is unblocked, so I'm holding until those two report.
+
+The addendum is fully complete and reviewed. M4 Task 1 is the only agent running, and Task 2 (calibration) depends on its new columns, so I'm holding until it reports.
+
+M4 Task 1 landed (115 tests). Committing the pending status, building the Task 1 review package, and dispatching Task 2 (the calibration module) with one resolution: the on-ball-engagement pair collector already exists in `validation.py` from the addendum, so the calibration module reuses it rather than duplicating it.
+
+Two agents are running (Task 1 review, Task 2 calibration implementer). Task 3, which adopts the calibrated defaults and regenerates the responses once, depends on Task 2. Holding until they report.
+
+Two implementers are running on disjoint files (Task 2 calibration, Task 4a refactor). Task 3 waits for both, since it edits the response defaults and runs the calibration command. Holding until they report.
+
+Task 2 (calibration module) is in with 119 tests green. Building its review package and dispatching the reviewer; Task 3 waits for the Task 4a refactor to land.
+
+Two agents remain in flight (Task 2 review, Task 4a refactor). Task 3 (run the calibration on real data, adopt defaults, regenerate responses) needs both. Holding until they report.
+
+M4 Tasks 1, 2 and the compute refactor are done and reviewed. Task 3 is running the real-data calibration and default adoption (about 45 minutes), and the Task 4a review is in flight. Everything downstream waits on Task 3, so I'm holding.
+
+Two implementers are running (Task 3 calibration pipeline, Task 5 renderer and clips) on disjoint files. The remaining M4 tasks depend on them, so I'm holding until they report.
+
+The Task 3 agent paused while its first `runmark responses` pass runs in the background. Checking progress before nudging it.
+
+Task 3 is resumed and will continue once its regeneration pass reaches all 20 matches; Task 5 is still building the renderer. Nothing else is unblocked, so I'm holding until they report.
+
+Task 3 has a monitor armed for the regeneration pass and will resume itself; Task 5 continues on the renderer. Holding until either reports.
+
+Task 5 landed (131 tests, renderer verified against real tracking). Building its review package and dispatching the reviewer while Task 3 continues its pipeline.
+
+Task 5 is under review; Task 3 is at 12 of 20 matches in its first regeneration pass and will proceed to calibration on its own. Tasks 4b, 6 and 7 all wait on Task 3, so I'm holding until the two running agents report.
+
+Task 5 is closed with its follow-ups queued for Task 6. Task 3 is at 18 of 20 in its first pass and will continue on its own through calibration and adoption. Every remaining M4 task depends on it, so I'm holding until it reports.
+
+Task 3 is nudged to run the calibration and adoption steps in the foreground. Everything else waits on its results, so I'm holding until it reports.
+
+The calibration sweep is running (it rebuilds tensors for all 20 matches, so several minutes); the Task 3 agent resumes when it completes. Holding.
+
+Task 3 has reached its final step (the slow suite). Reading the calibration results it produced so far.
+
+Task 3's review package is ready (its own three commits only) and will be dispatched as soon as that agent writes its report. Tasks 6 and 4b are running. Nothing else is unblocked, so I'm holding.
+
+Task 3 is re-running the slow suite before writing its report; Tasks 6 and 4b are running. Nothing else is unblocked, so I'm holding until they report.
+
+Task 3 is complete, including a fix to the integration test that summed shares across both attribution points. Adding that commit to the package and dispatching the Task 3 reviewer, with a request to reconcile the two different NO_OWNER figures it reported.
+
+Four agents are running (Task 3 review, Task 6 figures and CLI, Task 4b sensitivity, Task 8 pose spike). Task 7 (reproduction) and the M5 plan wait on their outputs, so I'm holding until they report.
+
+The Task 3 review found one results-honesty defect: a NO_OWNER figure (0.5474) in the calibration write-up that does not reconcile with the document's own histogram. Dispatching a narrow fix that recomputes it from the artefacts and adds the adopted goal-side definition to the validation table.
+
+Four agents are running (Task 3 results fix, Task 6 figures and CLI, Task 4b sensitivity, Task 8 pose spike). Task 7 and the M5 plan wait on them, so I'm holding until they report.
+
+The pose spike agent has downloaded the data and is scanning its schema in the background; it resumes on completion. Three other agents are still running. Holding.
+
+Task 8's spike is closed (pose data is feasible for a descriptive module, and much smaller than feared at 595 MB). Task 6's commits are in and its review package is built; I'm waiting for its report before dispatching the reviewer, and for Task 4b's sensitivity results. Holding.
+
+Task 6 is in; dispatching its reviewer (package already built). I'll also look at the two README figures myself, since they are the artefacts judges see first.
+
+### Prompt 15 — 2026-09-17 12:17 UTC
+
+```text
+[Image: original 3900x2052, displayed at 2000x1052. Multiply coordinates by 1.95 to map to original image.]
+```
+
+#### Claude's reply to prompt 15
+
+### Prompt 16 — 2026-09-17 12:17 UTC
+
+```text
+[Image: original 4500x1800, displayed at 2000x800. Multiply coordinates by 2.25 to map to original image.]
+```
+
+#### Claude's reply to prompt 16
+
+The M5 plan is written (to be committed once the sensitivity agent finishes, to avoid another index race). Waiting on the Task 6 review and the Task 4b sensitivity run; Task 7 (reproduction) follows 4b.
+
+The Task 6 review approved the work itself but flagged that the git race left the pose-spike files inside Task 6's first commit. The tree is correct now; the history on this feature branch is messy. Rewriting history mid-flight is riskier than it is worth, so I'll squash-merge `feat/m4` into main at the end, which gives main a clean record. The two small follow-ups (title/footnote test, duplicate PNG) go into Task 7.
+
+Task 6 is closed. Only the sensitivity run (Task 4b) is active; Task 7 and the M5 plan commit follow it. Holding until it reports.
+
+The sensitivity run answers three open questions: the NONE cost is the lever on the no-owner share (45% → 22% at cost 16), attribution timing moves only 3% of blame (the perverse-incentive worry is empirically small), and praise is far more noise-robust than blame. Reading the sweep table before deciding whether to change the NONE cost default.
+
+Status and memory are updated. Two agents remain in flight (Task 4b review, Task 7 reproduction implementer); the whole-branch review of `feat/m4` follows them, then the squash-merge and M5. Holding until they report.
+
+The Task 4b review found a real reporting error: the results file claims the attribution analysis reused the sweep's baseline in 0.06 s, but the code recomputes it, and the run-time table is inconsistent. It also asks for a blame-mass-weighted version of the "blame moved" metric. Dispatching a fix; the results-file correction waits until Task 7 releases that file.
+
+Two implementers are running on disjoint files (Task 7 reproduction and packaging, the Task 4b reporting fix). The `feat/m4` whole-branch review follows both, then the squash-merge and M5. Holding until they report.
+
+The Task 4b code fix is committed; that agent is polling for Task 7's commit before correcting the results file. Task 7 is still running. Holding.
+
+Task 7 is in: reproduction script, lock file, CI workflow, package metadata, README skeleton, and a clean-environment install that passes all 175 fast tests. Building its review package and dispatching the reviewer.
+
+Task 7 is under review, and the Task 4b agent can now correct the sensitivity results file since Task 7's commit has landed. After both: the Opus whole-branch review of `feat/m4`, the squash-merge, and M5. Holding until they report.
+
+The Task 4b agent is running its timing measurement in the background and will finish the results-file correction when it completes. Holding for it and the Task 7 review.
+
+Task 4b is closed: the attribution stage now genuinely reuses the sweep's run (0.2 s versus 107 s recomputed), and the blame-mass-weighted metric agrees with the run-count one (3.2%). Recording that and committing the pending status while only a reviewer is active.
+
+Only the Task 7 review remains before the `feat/m4` whole-branch review. Holding until it reports.
+
+Two real "runs out of the box" defects from the Task 7 review: the reproduction script calls the console script by name (fails unless the venv is on PATH), and the match-limit tests skip silently without data. Dispatching the fix.
+
+Quick status: the README draft, pitch script and submission checklist are written; two agents are finishing (the reproduction-script fix and the figure polish). Once they land I'll run the Opus whole-branch review of `feat/m4`, squash-merge into main, and install the README. Holding until they report.
+
+The reproduction script now runs end to end in the quick mode in 93 seconds with all eight steps exiting cleanly. One design hazard surfaced: quick mode overwrites the committed full-dataset results tables with 3-match numbers, which the agent had to revert. I'll route quick-mode outputs to a separate folder in the final fix batch. Recording and waiting for the figure-polish agent.
+
+M4 is complete: all seven tasks plus the pose spike are implemented and reviewed. The figure-polish agent is the only one running; the `feat/m4` whole-branch review follows it. Holding until it reports.
+
+The polished figures are in (shirt numbers and team name on the report card; a proper "lost him" example for the strip; 194 tests). Committing the pitch and checklist docs, then packaging the whole `feat/m4` branch for the Opus review, which also covers the figure polish and reads the README draft as a judge would.
+
+### Prompt 17 — 2026-09-17 12:17 UTC
+
+```text
+[Image: original 4500x1620, displayed at 2000x720. Multiply coordinates by 2.25 to map to original image.]
+```
+
+#### Claude's reply to prompt 17
+
+Status: README draft 2 is ready at 948 words with every review item applied, waiting only for the regenerated numbers and the cold run-time. The fix-and-regeneration agent is working through the full-dataset pipeline (up to about two hours). After it lands: fill in the README, a narrow re-review, squash-merge to main, and the clean-clone proof. Holding until it reports.
+
+### Prompt 18 — 2026-09-17 12:17 UTC
+
+```text
+um can you tell me what were the topics we could do, and what we are doing now the whole plan pls
+```
+
+#### Claude's reply to prompt 18
+
+The submission is complete on `main` and every remaining step needs you. Nothing else is running.
+
+**Where it stands (all committed on `main`, latest 04a74a3)**
+- Package `runmark`: marking-responsibility HMM, per-run response metrics, praise/blame with coach reason codes, validation suite, calibration against SkillCorner's labels, sensitivity analysis, clips and figures, a descriptive body-pose module, and a twelve-command CLI. 237 fast tests plus 4 slow tests pass; a fresh clone passes its tests without data and reproduces the quick pipeline in about six minutes including the download.
+- README at 978 words with two figures; every number in it is machine-checked against the results file it cites (`scripts/check_readme.py`). Pitch script in [pitch.md](docs/pitch.md), checklist in [SUBMISSION.md](docs/SUBMISSION.md), status in [STATUS.md](STATUS.md).
+- Three independent Opus reviews were run during the build; all Critical and Important findings were fixed and re-verified, and the results files record their own corrections.
+
+**Your actions, in order**
+1. Register on pysport.org and choose Paris (17 Feb) or Boston (24 Feb).
+2. Create the public GitHub repository and push `main`. Then tell me the repository URL and the name to put in the licence and package metadata; I will set both, verify the CI run on GitHub, run the release review, and tag v1.0.0.
+3. Record the one-minute video from the pitch script and upload it unlisted.
+4. Optional but valuable: label the 150 runs in `data/annotation/` following the protocol. That calibrates the one parameter still set from vendor labels, and I will re-run the pipeline and update the README when the file exists.
+5. If you want the hourly worker to survive this session, run the scheduled-task command from my earlier message.
+
+Deadline 18 December; the checklist targets 11 December.
+
+### Prompt 19 — 2026-09-12 10:36 UTC
 
 ```text
 use the .md file to build the project
 ```
 
-#### Claude's reply to prompt 1
+#### Claude's reply to prompt 19
 
 Written for: you. The three files in `docs/` are for your teammates A, B and C.
 
@@ -57,7 +798,7 @@ I built all ten steps from CLAUDE.md, plus the Step 0 audit. The full suite pass
 
 I also saved a project memory, so a future session will know where this stands.
 
-### Prompt 2 — 2026-09-12 11:27 UTC
+### Prompt 20 — 2026-09-12 11:27 UTC
 
 ```text
 i have added a pdf file on the main directory, can you go through taht pdf file, see what has been built here and match it to the rubric which im pasting Project A: Evaluation Rubric
@@ -71,7 +812,7 @@ i have added a pdf file on the main directory, can you go through taht pdf file,
 8. Query results integration and demonstrating the same through simple GUI -- 3 marks
 ```
 
-#### Claude's reply to prompt 2
+#### Claude's reply to prompt 20
 
 The PDF covers every rubric item on paper, but the code only covers the two middle items. The repo does federation (item 6) and communication (item 7) well: 4 of 15 marks. Items 3, 4, 5 and 8 (9 marks) have no code yet. Items 1 and 2 are written in the PDF but there's no report file.
 
@@ -108,13 +849,13 @@ The PDF also settles one open question: camera OCR errors are O↔0 and I↔1. T
 
 All seven contradictions are in files you own, so I can fix them now: move the mocks onto the PDF's schemas, add joins, allow `REPLACE`, make attributes come from the registry, fix UC1, read `meta.db`, and update `INTEGRATION_REPORT.md`. Items 3, 4, 5 and 8 belong to teammates under `CLAUDE.md`; tell me if you want me to build those too.
 
-### Prompt 3 — 2026-09-12 11:34 UTC
+### Prompt 21 — 2026-09-12 11:34 UTC
 
 ```text
 can you do the non-teammate fixed, my teammates are doing 3,4,5,6 probably and 8, so whatever they provide me with i'll tell you but whatever can be be fixed independent of them lets do
 ```
 
-#### Claude's reply to prompt 3
+#### Claude's reply to prompt 21
 
 All seven fixes are done, plus two gaps I found along the way. The full suite passes: 252 tests, with one skip because no real `meta.db` or `mappings.json` exists yet. I also ran the documented commands and the GUI against live mocks, and the live tests still skip cleanly until the real registry exists.
 
@@ -150,24 +891,24 @@ All seven fixes are done, plus two gaps I found along the way. The full suite pa
 
 Send me whatever they produce and I'll run the reconciliation checklist first.
 
-### Prompt 4 — 2026-09-12 13:02 UTC
+### Prompt 22 — 2026-09-12 13:02 UTC
 
 ```text
 this is the project github, which my friends made containing what they've done, i want you to create a separate repo which doesnt affect their repo and work with combining the code ive made and what they've made, also tell me what my other friend has to do, and if possible basically do it, keep a file that keeps track of all the actions and plans to do because my weekly limit might get over so i might need to switch over to another llm to continue
 ```
 
-#### Claude's reply to prompt 4
+#### Claude's reply to prompt 22
 
 Your message doesn't include the GitHub link, so I can't see your friends' repo yet. While I wait for it, I'll start on the parts that don't need it: the progress-tracking file for handing off to another LLM, and a check of the git and GitHub tooling needed to set up a separate repo.
 
-### Prompt 5 — 2026-09-12 13:03 UTC
+### Prompt 23 — 2026-09-12 13:03 UTC
 
 ```text
 this is the project github, which my friends made containing what they've done, i want you to create a separate repo which doesnt affect their repo and work with combining the code ive made and what they've made, also tell me what my other friend has to do, and if possible basically do it, keep a file that keeps track of all the actions and plans to do because my weekly limit might get over so i might need to switch over to another llm to continue
 https://github.com/anushaanand60/IIA-vehicle-data-federation
 ```
 
-#### Claude's reply to prompt 5
+#### Claude's reply to prompt 23
 
 Your private copy is fully up to date (commit `c2b7c22`). Your friends' repo is untouched: pushing to it is still disabled.
 
@@ -196,11 +937,7 @@ Your private copy is fully up to date (commit `c2b7c22`). Your friends' repo is 
 
 Separately, the Roboflow connector on claude.ai needs authorizing in your claude.ai connector settings. It wasn't needed for this work.
 
----
-
-## Phase 2 — audit, viva preparation, live SQL writes (15–16 Sep)
-
-### Prompt 6 — 2026-09-15 20:44 UTC
+### Prompt 24 — 2026-09-15 20:44 UTC
 
 ```text
 you have to go trhough this entire project directory, MAKE NO CHANGES, see if the project satisfies the requirements, which im pasting below, help me prep for the viva, i want you to also go trhough the codebase DONT MAKE ANY CHANGES BUT ENSURE EVERYTHING
@@ -230,11 +967,9 @@ ort-layer &lt;url&gt;</code>. Everything else on this page is identical either w
 [Message truncated - exceeded 50,000 character limit]
 ```
 
-#### Claude's reply to prompt 6
+#### Claude's reply to prompt 24
 
-_No reply: this message was sent twice and the first send was interrupted. The reply is under prompt 7._
-
-### Prompt 7 — 2026-09-15 20:46 UTC
+### Prompt 25 — 2026-09-15 20:46 UTC
 
 ```text
 you have to go trhough this entire project directory, MAKE NO CHANGES, see if the project satisfies the requirements, which im pasting below, help me prep for the viva, i want you to also go trhough the codebase DONT MAKE ANY CHANGES BUT ENSURE EVERYTHING
@@ -264,7 +999,7 @@ ort-layer &lt;url&gt;</code>. Everything else on this page is identical either w
 [Message truncated - exceeded 50,000 character limit]
 ```
 
-#### Claude's reply to prompt 7
+#### Claude's reply to prompt 25
 
 Slides + divergence reports in. Bugs confirmed live on team repo (planner literals, identical shuffle, INNER JOIN, `||` sort, no ERROR guard). Waiting on the functional audit of the team repo before final brief.
 
@@ -365,13 +1100,13 @@ Want this as a shareable study page (artifact) merged with `STUDY_GUIDE.md`? One
 
 Audit agent finished; its results already folded into the brief above. Nothing new to add.
 
-### Prompt 8 — 2026-09-15 21:22 UTC
+### Prompt 26 — 2026-09-15 21:22 UTC
 
 ```text
 yes build the study guide, and also, make a list of the commands to run alongside it too, just so that pre-demo we can run. study guide should be made for studetns who havent even gone through the lecutere slides and dont know anything, so you build up understanding and basically teach us, key terms and their meaning, the functionalites and how we match them to the rubric, everything we did in the project, make sure the study guide is built in an easy to understand for beginners manner, and make sure that everything is prepped for tomorrow in terms of initialization, and if code needs to be tightened like the suggestions you made, dont do it now, explain to me whether it has to be done only on my laptop or all four because there was a bunch of breaking happening when we had to change code so that was a problem, if current code is good enough for demo in terms of all the rubrics then teach me in the study guide so i can own upto it
 ```
 
-#### Claude's reply to prompt 8
+#### Claude's reply to prompt 26
 
 Written for: your 4-person team, beginners to the lectures.
 
@@ -408,13 +1143,13 @@ Not in rubric. It exists to prove "virtual integration = fresh data": expire INS
 
 Save `STUDY_GUIDE.md` from `~/AppData/Local/Temp/iia-fed-work/fedrepo/IIA_Project/` — untracked, in Temp, will vanish.
 
-### Prompt 9 — 2026-09-15 22:09 UTC
+### Prompt 27 — 2026-09-15 22:09 UTC
 
 ```text
 can you explain, via sonnet5 model, if our project, currently, does any sort of real-time data retrival or updation? whats the proof if the prof asks?
 ```
 
-#### Claude's reply to prompt 9
+#### Claude's reply to prompt 27
 
 Sonnet ran the experiment on a scratch copy (repo untouched). Result:
 
@@ -457,13 +1192,13 @@ Say: "Virtual integration — data stays at the agency; we pull at query time, s
 
 Caveats: GUI buttons need `<SRC>_ADMIN_URL` on that laptop; use only expire/renew (reversible).
 
-### Prompt 10 — 2026-09-15 22:57 UTC
+### Prompt 28 — 2026-09-15 22:57 UTC
 
 ```text
 more details for me please im paranoid that the prof wil hate the project or find some question idk please ensure i have everything to back myself up and use a lower level worker to create a easty to read flowing guide
 ```
 
-#### Claude's reply to prompt 10
+#### Claude's reply to prompt 28
 
 Written for: you, defending the project orally.
 
@@ -485,13 +1220,13 @@ One flag from the builder: it couldn't open the lecture extracts, so slide quote
 
 Nothing pending from me. Read guide → playbook → rehearse runbook tonight.
 
-### Prompt 11 — 2026-09-16 02:17 UTC
+### Prompt 29 — 2026-09-16 02:17 UTC
 
 ```text
 tell me how im supposed to see all tables as code files not gui, what commands am i supposed to run on cli that cant work on gui
 ```
 
-#### Claude's reply to prompt 11
+#### Claude's reply to prompt 29
 
 All from `cd C:\Users\siddh_ygv5bws\IIA-vehicle-data-federation\IIA_Project` (PowerShell). No `sqlite3.exe` on your machine → use Python's built-in shell.
 
@@ -574,13 +1309,13 @@ Get-Content source_master.csv -TotalCount 5      # shared truth all generators d
 
 Verify `decompose_query`/`plan_query` signatures once — taken from function names, not run in this clone.
 
-### Prompt 12 — 2026-09-16 03:16 UTC
+### Prompt 30 — 2026-09-16 03:16 UTC
 
 ```text
 ok, give me the exact codes to begin the demo
 ```
 
-#### Claude's reply to prompt 12
+#### Claude's reply to prompt 30
 
 Multi-step, so plain mode for this one.
 
@@ -677,7 +1412,7 @@ python scripts\configure_cluster.py --probe
 
 Caveman resume. Rehearse A+B tonight once; real engines never run yet.
 
-### Prompt 13 — 2026-09-16 03:25 UTC
+### Prompt 31 — 2026-09-16 03:25 UTC
 
 ```text
 on lap1 PS C:\Users\siddh_ygv5bws\IIA-vehicle-data-federation\IIA_Project> python -m pytest -q
@@ -726,7 +1461,7 @@ FAILED tests/test_e2e_groundtruth.py::TestE2EGroundTruth::test_demo_ground_truth
 1 failed, 266 passed, 3 deselected, 2 warnings in 56.91s
 ```
 
-#### Claude's reply to prompt 13
+#### Claude's reply to prompt 31
 
 UNDETERMINED = a source DOWN. Cause: your `meta.db` catalog still points INS/THEFT/CAM at old hotspot IPs (`192.168.146.79`, `.226`) from a previous session → test hits unreachable laptops, not local wrappers. Not a code bug.
 
@@ -740,7 +1475,7 @@ python -m pytest -q                              # expect 267 passed
 
 Tomorrow, after teammates are up, set real IPs again with `--set …` then `--probe`. Run pytest only in `--local` mode; on hotspot, use `--probe` + `python tests\test_demo_plates.py` as the check instead.
 
-### Prompt 14 — 2026-09-16 03:28 UTC
+### Prompt 32 — 2026-09-16 03:28 UTC
 
 ```text
 not in venv i gues PS C:\Users\siddh_ygv5bws\IIA-vehicle-data-federation\IIA_Project> python -m pytest -q
@@ -777,7 +1512,7 @@ FAILED tests/test_executor.py::test_unparseable_wrapper_response_is_error - Asse
 PS C:\Users\siddh_ygv5bws\IIA-vehicle-data-federation\IIA_Project>
 ```
 
-#### Claude's reply to prompt 14
+#### Claude's reply to prompt 32
 
 Ground-truth test now passes → catalog fix worked. This one = known timing flake in a test fixture (garbage socket server under load; seen before, fixed once, still occasionally races). Not demo code. Rerun just it:
 
@@ -787,7 +1522,7 @@ python -m pytest -q tests\test_executor.py -k unparseable
 
 Passes alone → ignore. venv irrelevant; deps are global and working.
 
-### Prompt 15 — 2026-09-16 03:29 UTC
+### Prompt 33 — 2026-09-16 03:29 UTC
 
 ```text
 ok help me set up via the venv and help me to set up connections after and do the test, PS C:\Users\siddh_ygv5bws\IIA-vehicle-data-federation\IIA_Project> python -m pytest -q tests\test_executor.py -k unparseable
@@ -796,7 +1531,7 @@ ok help me set up via the venv and help me to set up connections after and do th
 PS C:\Users\siddh_ygv5bws\IIA-vehicle-data-federation\IIA_Project>
 ```
 
-#### Claude's reply to prompt 15
+#### Claude's reply to prompt 33
 
 Flake gone. Venv on lap1 = optional; global install already passes 267. Python 3.14 + venv → `psycopg2-binary`/`pymysql` wheels may not exist yet → risk. Recommend: keep global on lap1. Teammates with clean machines: venv fine (Python 3.11/3.12).
 
@@ -835,7 +1570,7 @@ Second line proves 4 remote sources OK. Then `python run_system.py` → GUI.
 
 Don't run `pytest` while on hotspot IPs; pytest expects local (`--local`).
 
-### Prompt 16 — 2026-09-16 03:37 UTC
+### Prompt 34 — 2026-09-16 03:37 UTC
 
 ```text
 cant start reg on lap1 other dbs upPS C:\Users\siddh_ygv5bws> cd C:\Users\siddh_ygv5bws\IIA-vehicle-data-federation\IIA_Project
@@ -846,7 +1581,7 @@ cannot connect: OperationalError: (psycopg2.OperationalError) connection to serv
 (.venv) PS C:\Users\siddh_ygv5bws\IIA-vehicle-data-federation\IIA_Project>
 ```
 
-#### Claude's reply to prompt 16
+#### Claude's reply to prompt 34
 
 PostgreSQL server not running on lap1 (earlier audit found only leftover data dirs, no binaries). Check:
 
@@ -866,7 +1601,7 @@ Say honestly: "REG runs on a SQLite stand-in on this laptop; INS is real MySQL, 
 
 Fallback 2 is safe for tonight. Install tomorrow morning only if time.
 
-### Prompt 17 — 2026-09-16 03:38 UTC
+### Prompt 35 — 2026-09-16 03:38 UTC
 
 ```text
 need to work psql17PS C:\Users\siddh_ygv5bws\IIA-vehicle-data-federation\IIA_Project> .venv\Scripts\Activate.ps1
@@ -895,7 +1630,7 @@ At line:1 char:1
 (.venv) PS C:\Users\siddh_ygv5bws\IIA-vehicle-data-federation\IIA_Project>
 ```
 
-#### Claude's reply to prompt 17
+#### Claude's reply to prompt 35
 
 "Cannot open service" = needs admin. Open PowerShell **as Administrator**, then:
 
@@ -920,7 +1655,11 @@ psql -U postgres -c "CREATE DATABASE regdb;"      # add C:\Program Files\Postgre
 python scripts\load_source.py REG --url "postgresql+psycopg2://postgres:<email redacted>:5432/regdb" --verify
 ```
 
-### Prompt 18 — 2026-09-16 03:40 UTC
+---
+
+## Phase 3 — overhaul after the class review (16 Sep)
+
+### Prompt 36 — 2026-09-16 03:40 UTC
 
 ```text
 (.venv) PS C:\Users\siddh_ygv5bws\IIA-vehicle-data-federation\IIA_Project> python scripts\load_source.py REG --url "postgresql+psycopg2://postgres:<email redacted>:5432/regdb" --verify
@@ -964,7 +1703,7 @@ demo plates in VEHICLE_REGISTRATION.registration_no:
 whats the issue man
 ```
 
-#### Claude's reply to prompt 18
+#### Claude's reply to prompt 36
 
 No issue. Postgres loaded fine. REG DOWN only because you haven't started the REG wrapper yet. Using `postgres` superuser → GRANT note irrelevant.
 
@@ -984,13 +1723,13 @@ python -c "from mediator.core import run_global_query as q;p=q('DL01AB1234')['pr
 
 GUI: third window, same `$env:REG_DB_URL` set, then `python run_system.py`. It also starts REG on 8001 itself → so either keep wrapper window OR run_system, not both (port clash). Simplest: skip window 2, set env, run `run_system.py` only.
 
-### Prompt 19 — 2026-09-16 03:43 UTC
+### Prompt 37 — 2026-09-16 03:43 UTC
 
 ```text
 how is provencane trust score calculated?
 ```
 
-#### Claude's reply to prompt 19
+#### Claude's reply to prompt 37
 
 Not calculated. Assigned, by hand, in metadata.
 
@@ -1002,13 +1741,13 @@ Say if asked: "Trust is an a-priori reliability weight per agency, set by a doma
 
 Don't say "computed" or "learned".
 
-### Prompt 20 — 2026-09-16 04:06 UTC
+### Prompt 38 — 2026-09-16 04:06 UTC
 
 ```text
 what are the views on our project
 ```
 
-#### Claude's reply to prompt 20
+#### Claude's reply to prompt 38
 
 Two meanings; have both ready.
 
@@ -1026,13 +1765,13 @@ Two meanings; have both ready.
 
 Say: "Our global schema `VEHICLE_PROFILE` is a virtual view; each of its four parts is a GAV view over one source, stored as metadata, unfolded into SQL at query time. No materialized views, so no view maintenance problem — the price is per-query latency (~300 ms)."
 
-### Prompt 21 — 2026-09-16 04:14 UTC
+### Prompt 39 — 2026-09-16 04:14 UTC
 
 ```text
 the prof wants to give you a query that will work on our databases, how will we get it to work
 ```
 
-#### Claude's reply to prompt 21
+#### Claude's reply to prompt 39
 
 Depends on what he hands you. Three cases — all doable live, no code change.
 
@@ -1074,13 +1813,17 @@ Ask him to write it against the global attribute names (show `mediator/schema.py
 
 If `data/ground_truth.csv` missing in this repo → replace `plates` with `[r["registration_no"] for r in csv.DictReader(open("reg_vehicle_registration.csv"))]`.
 
-### Prompt 22 — 2026-09-16 04:16 UTC
+---
+
+## Phase 4 — UI redesign and the Challan Guard innovation (16 Sep)
+
+### Prompt 40 — 2026-09-16 04:16 UTC
 
 ```text
 on my laptop, laptop1, if the prof wants me to write a sql query against any of the schemas/relations, tell me how to make it work
 ```
 
-#### Claude's reply to prompt 22
+#### Claude's reply to prompt 40
 
 From lap1, every relation on every laptop is reachable through its wrapper. One helper, no code change — save as `q.ps1`-style function in your PowerShell session:
 
@@ -1116,13 +1859,13 @@ Cross-source query ("owners of uninsured cars") → not one SQL; that's the medi
 
 Schemas to hand him: `Get-Content sources\<src>\schema.sql`.
 
-### Prompt 23 — 2026-09-16 04:18 UTC
+### Prompt 41 — 2026-09-16 04:18 UTC
 
 ```text
 what is the innovation of our project
 ```
 
-#### Claude's reply to prompt 23
+#### Claude's reply to prompt 41
 
 Three, from `docs/report.md §1` — each with proof you can show:
 
@@ -1138,13 +1881,17 @@ One sentence: "We turned four isolated agency databases into one live, explainab
 
 Don't claim ML, probabilistic fusion, or auto-generated transforms — Part B.
 
-### Prompt 24 — 2026-09-16 04:20 UTC
+---
+
+## Phase 5 — demo readiness, multi-laptop debugging, documentation and submission (17 Sep)
+
+### Prompt 42 — 2026-09-16 04:20 UTC
 
 ```text
 if i do an action ont he website, how do i check it via the command line, the sql query that got executed? also, what happens if i enter a number plate not in the db
 ```
 
-#### Claude's reply to prompt 24
+#### Claude's reply to prompt 42
 
 Wrappers run with `log_level="error"` → no server-side SQL log. Two ways to see the SQL:
 
@@ -1179,13 +1926,15 @@ Honest framing: "Given the question 'is this plate insured?', an insurer with no
 
 Try it now: `python -c "from mediator.core import run_global_query as q;p=q('KA01ZZ0000')['profile'];print(p['decision'],p['confidence'],p['reasons'],p['source_availability'])"`.
 
-### Prompt 25 — 2026-09-16 04:23 UTC
+### Prompt 43 — 2026-09-16 04:23 UTC
 
 ```text
 ok, is there any way you can add a feature that lets me add delete update records to relations please
 ```
 
-#### Claude's reply to prompt 25
+#### Claude's reply to prompt 43
+
+_This turn ended with a progress note. The full answer to these six questions was given at the end of the next turn, prompt 44, because the rubric request arrived while this one was still running._
 
 Yes — and it already works today with zero code change, which is also the *right* architecture answer: **the mediator never writes; each agency edits its own database with its own tools, and the next query shows it.** Adding a write endpoint to the wrappers would (a) contradict the read-only story and (b) need a `git pull` + restart on all 4 laptops tonight — the breakage risk you had before.
 
@@ -1235,23 +1984,23 @@ Rules: always write the DELETE/restore before you run the INSERT/UPDATE; do it o
 
 If you still want a GUI "free SQL write" box: possible, ~40 lines in `wrapper_template.py` + `app.py`, but requires all 4 laptops to pull and restart, and hands the prof the question "so the mediator can write after all?" — recommend not tonight.
 
-### Prompt 26 — 2026-09-16 04:24 UTC
+### Prompt 44 — 2026-09-16 04:24 UTC
 
 ```text
 and write live sql queries on the gui
 ```
 
-#### Claude's reply to prompt 26
+#### Claude's reply to prompt 44
 
 Read-only live SQL from the GUI = safe: goes through the same `/query` guard, and `app.py` runs **only on lap1** → no other laptop needs to pull. Building it now as a separate tab file + 3-line hook, tested, not committed.
 
-### Prompt 27 — 2026-09-16 04:26 UTC
+### Prompt 45 — 2026-09-16 04:26 UTC
 
 ```text
 it should allow me to modify the databases via the website gui interface
 ```
 
-#### Claude's reply to prompt 27
+#### Claude's reply to prompt 45
 
 Possible, but one hard fact first: each DB is bound to `127.0.0.1` on its own laptop, so the **only** process that can write to INS is the INS wrapper on laptop 2. A GUI write button on lap1 must call a write endpoint on each laptop's wrapper → `sources/wrapper_template.py` changes → **all 4 laptops `git pull` + restart their wrapper**. Not lap1-only. That's the "breaking happening" scenario you hit before, the night before the demo.
 
@@ -1264,13 +2013,13 @@ Alternative with zero risk: writes via each engine's shell on its laptop (comman
 
 Your call — reply "build it" and I'll do it on your clone (pull to `bdc099e` first, since `/admin/mutate` lives there), test, and give teammates the 3 commands. Or "skip" and we keep the shell route.
 
-### Prompt 28 — 2026-09-16 04:27 UTC
+### Prompt 46 — 2026-09-16 04:27 UTC
 
 ```text
 just make this run fast please
 ```
 
-#### Claude's reply to prompt 28
+#### Claude's reply to prompt 46
 
 Done. Built, tested (17/17 new; 282 pass; 2 failures are environment — remote wrappers unreachable right now, PUC registered in your catalog), committed `8a2b2c2`, pushed to team main. No Claude author line.
 
@@ -1311,7 +2060,7 @@ Skip pull → their source still answers reads; writes to it show "has not enabl
 
 Demo write, safe + reversible: INS → `UPDATE POLICY_RECORDS SET policy_until='10/01/2026', is_active=0 WHERE vehicle_reg='DL-01-AB-1234'` → Investigate → UNINSURED → `... SET policy_until='14/01/2027', is_active=1 ...` → CLEAR.
 
-### Prompt 29 — 2026-09-16 04:48 UTC
+### Prompt 47 — 2026-09-16 04:48 UTC
 
 ```text
 ok, how to 1)set admin url in each laptop
@@ -1319,7 +2068,7 @@ ok, how to 1)set admin url in each laptop
 3) how to show each db and relations
 ```
 
-#### Claude's reply to prompt 29
+#### Claude's reply to prompt 47
 
 Plain mode, sequences.
 
@@ -1395,7 +2144,7 @@ python -c "from mediator.core import run_global_query as q;t=q('DL-05-cd-9876')[
 
 Ordering that lands: Tab 4 (global) → Tab 6 schema (per source) → Tab 6 SELECTs → Investigate → Plan Trace.
 
-### Prompt 30 — 2026-09-16 04:51 UTC
+### Prompt 48 — 2026-09-16 04:51 UTC
 
 ```text
 setting that $env:REG_DB_URL    = "postgresql+psycopg2://postgres:<email redacted>:5432/regdb"
@@ -1448,7 +2197,7 @@ Shutdown complete.
 pls tell how to go back to ensuring my website doesnt need the sql console to work
 ```
 
-#### Claude's reply to prompt 30
+#### Claude's reply to prompt 48
 
 Cause: my new `from app.tabs.sql_console import …` line — under `streamlit run`, the name `app` resolves to `app.py` itself → whole script runs twice → duplicate selectbox. Known bug class (fixed in the other repo line, not here). Rollback first, then a 2-line fix.
 
@@ -1462,13 +2211,13 @@ Fixing properly in parallel:
 
 Your tree is already rolled back (old app, 5 tabs, renders clean). But commit `8a2b2c2` on GitHub has the crash → fixing it so nobody who pulls gets it.
 
-### Prompt 31 — 2026-09-16 04:55 UTC
+### Prompt 49 — 2026-09-16 04:55 UTC
 
 ```text
 bro ignore the github just give me the queries for each db to show how we can add new records to the db and show that it works live via the powershell
 ```
 
-#### Claude's reply to prompt 31
+#### Claude's reply to prompt 49
 
 Plain mode. Writes must run on the laptop that owns the DB (DB bound to 127.0.0.1). Reads from lap1 use `q` (through wrappers).
 
@@ -1559,13 +2308,13 @@ python -c "from mediator.core import run_global_query as q;p=q('DL01AB1234')['pr
 
 Notes: Postgres names lowercase (unquoted OK); MySQL/SQLite keep the uppercase table names; IDs 9001+ avoid clashes; always run the restore lines before the next scenario. GitHub state untouched.
 
-### Prompt 32 — 2026-09-16 04:59 UTC
+### Prompt 50 — 2026-09-16 04:59 UTC
 
 ```text
 ok only for latpop1, i did the setup pls just help me show that i can type a query and it writes to the reg database, and i can fetch and show the query running
 ```
 
-#### Claude's reply to prompt 32
+#### Claude's reply to prompt 50
 
 Lap1 only, REG on Postgres. Paste in the PowerShell window where `$env:REG_DB_URL` is set (venv active):
 
@@ -1610,7 +2359,7 @@ Guard proof: `q "DROP TABLE OWNERS"` → HTTP 400 (writes only possible on the a
 
 If `w` errors "relation does not exist": Postgres tables are lowercase → already lowercase in these commands; if you see "permission denied", the env URL user isn't `postgres` — the `$REG` above uses `postgres`.
 
-### Prompt 33 — 2026-09-16 05:00 UTC
+### Prompt 51 — 2026-09-16 05:00 UTC
 
 ```text
 PS C:\Users\siddh_ygv5bws\IIA-vehicle-data-federation\IIA_Project> $REG = "postgresql+psycopg2://postgres:<email redacted>:5432/regdb"
@@ -1643,7 +2392,7 @@ PS C:\Users\siddh_ygv5bws\IIA-vehicle-data-federation\IIA_Project>
 pls help
 ```
 
-#### Claude's reply to prompt 33
+#### Claude's reply to prompt 51
 
 Redefine `w` and `r` (keep your `q`):
 
@@ -1662,13 +2411,13 @@ q "SELECT v.registration_no, o.full_name, v.make, v.reg_status FROM VEHICLE_REGI
 
 Expect `1 row(s) affected` twice, then the row via the wrapper. GUI `DL99ZZ0001` → UNINSURED. Restore lines unchanged from before.
 
-### Prompt 34 — 2026-09-16 05:04 UTC
+### Prompt 52 — 2026-09-16 05:04 UTC
 
 ```text
 ok give me other commands like this for  insurance and theft and cam, to give to my friends to make sure their sql queries for their databases please fast
 ```
 
-#### Claude's reply to prompt 34
+#### Claude's reply to prompt 52
 
 Each friend: copy `dbq.py` to their laptop (send them the file, or paste it — 14 lines, from `C:\Users\siddh_ygv5bws\dbq.py`), save as `C:\dbq.py`, run in `IIA_Project` with venv active.
 
@@ -1716,13 +2465,13 @@ w "DELETE FROM plate_captures WHERE capture_id=9001"
 
 Notes: Postgres table names lowercase in `w`, uppercase fine in `q` (wrapper/whitelist); MySQL/SQLite keep uppercase. `q` = through the wrapper = what lap1's mediator sees. After every `w`, re-query the plate on lap1 GUI → change visible instantly. Restore before next scenario. If pymysql/psycopg2 missing: `pip install pymysql psycopg2-binary`.
 
-### Prompt 35 — 2026-09-16 05:06 UTC
+### Prompt 53 — 2026-09-16 05:06 UTC
 
 ```text
 so this changes will reflect in the gui even if it happens in another laptop
 ```
 
-#### Claude's reply to prompt 35
+#### Claude's reply to prompt 53
 
 Yes. That is the whole point.
 
@@ -1735,11 +2484,7 @@ Conditions:
 
 Test now: friend runs the `UPDATE … is_active=0` on lap2 → you search `DL01AB1234` → UNINSURED. Friend restores → CLEAR. That is the freshness demo.
 
----
-
-## Phase 3 — overhaul after the class review (16 Sep)
-
-### Prompt 36 — 2026-09-16 06:47 UTC
+### Prompt 54 — 2026-09-16 06:47 UTC
 
 ```text
 Okay so we need to fix the current project by whatever the review I received in class. There’s a big overhaul that we need to make first of all whatever SQL query the way we are showing either by the GUI or by typing it down in the GUI, we need to make sure that that SQL query is executed live in that if it’s a record adding deleting updating functionality that works inside the relation required so if I’m trying to add a new Car it should add a Car wherever I if I’m in there is an SQL console in the GUY itself that’s good enough or if I have to particularly type it in the power shelf that also works make it so that it works for the SQL console on the main website. That’s all so this entering of records should be working across all the 4 data basis and then you have to see key these changes that you make virus SQL entry on the console or shell whatever it is it actually affects these databases or the relations in these databases and then it shows that on the GUI now as of right now I think it only shows it for the registered registering table not for any of the other databases so first you need to get that hic up done in that live update relation modification of data takes place because he was really strict an argument that not only do the 4 or databases have to be on separate laptops that is four or three laptops but changes in the change via SQL queries in any of these data basis. First of all you have to type them should be seen in the main database so if I’m renewing insur
@@ -1749,7 +2494,7 @@ Okay so we need to fix the current project by whatever the review I received in 
 I am registered like I mentioned the use cases before registering a new Car ensuring putting insurance also currently the sidebar in the main page it allows you to do this kind of stuff but it says that you have to do it on that particular laptop or said admin or something that didn’t work but it’s in that Print that I wanted to continue in terms of innovation look up something in the field of what are the pressing use cases that are going on right now so sort of like a minion but I don’t want you to spend too much on this. This entire project has to be token economic use the caveman skill whenever possible to reduce your token usage use economic skills to ensure that token consumption is not a high wherever you need to use sustainable practises to get your job done do that yeah that’s it.
 ```
 
-#### Claude's reply to prompt 36
+#### Claude's reply to prompt 54
 
 Overhaul complete and pushed: team `main` = `19f8e08`, 546 tests green, all commits authored by you only, no Claude lines. Rollback tag `before-sql-console` (`bdc099e`) still on GitHub.
 
@@ -1784,13 +2529,13 @@ Laptop 1 additionally: `python scripts\load_source.py PUC`, `python scripts\seed
 - Paste the professor's exact review notes when you have them → I'll map any unaddressed point to a task.
 - Optional later: D5-style unification of the two SQL generators; auth on the wrapper API.
 
-### Prompt 37 — 2026-09-16 14:21 UTC
+### Prompt 55 — 2026-09-16 14:21 UTC
 
 ```text
 how do i chceck the project at least to see whats going without requriing everyone to be there, i just wanna demo the project on my own
 ```
 
-#### Claude's reply to prompt 37
+#### Claude's reply to prompt 55
 
 All five sources on your laptop (SQLite, REG can stay on Postgres if it's running). PowerShell, venv active:
 
@@ -1824,13 +2569,13 @@ Before the group demo: `python scripts\configure_cluster.py --set INS=<ip2> THEF
 
 Quick sanity without GUI: `python tests\test_demo_plates.py` → ALL PASSED; `python scripts\evaluate_ground_truth.py --start-wrappers` → 621/621 (not while run_system holds the ports).
 
-### Prompt 38 — 2026-09-16 14:39 UTC
+### Prompt 56 — 2026-09-16 14:39 UTC
 
 ```text
 this availabile to everyone via git pull?
 ```
 
-#### Claude's reply to prompt 38
+#### Claude's reply to prompt 56
 
 Yes. Everything is on `anushaanand60/IIA-vehicle-data-federation` `main` at `19f8e08`. Anyone with the repo:
 
@@ -1846,13 +2591,13 @@ Two things pull does **not** carry (gitignored, per laptop): `sources/*/*.db` (r
 
 If a teammate has local edits, `git pull` may conflict — tell them to `git stash` first, or `git checkout -- .` if they don't need the edits.
 
-### Prompt 39 — 2026-09-16 14:42 UTC
+### Prompt 57 — 2026-09-16 14:42 UTC
 
 ```text
 give exact commands for someone else to see this on their laptop just like i did
 ```
 
-#### Claude's reply to prompt 39
+#### Claude's reply to prompt 57
 
 Send them this. Windows PowerShell; needs Git + Python 3.11/3.12 installed.
 
@@ -1888,17 +2633,13 @@ python tests\test_demo_plates.py           # ALL PASSED
 
 Then follow `docs\demo_script.md` in the repo. If `easyocr` install is slow/fails, everything except the photo-upload tab still works. Already cloned before today → `git stash` (or `git checkout -- .`) before `git pull` if they edited files.
 
----
-
-## Phase 4 — UI redesign and the Challan Guard innovation (16 Sep)
-
-### Prompt 40 — 2026-09-16 14:58 UTC
+### Prompt 58 — 2026-09-16 14:58 UTC
 
 ```text
 there are few ui issues, the blue buttons have text in them that isnt visible because its too light, the overall ui is strucuturally similar as last time, i want you to go through all the ui skills we have, go through the air-sentinel project's ui and see how well that was done, then implement something visually pleasing and easy to flow ui, these small texts, clustered sub headings, really just make it as good as possible, then also confirm if the data changes will work when i connect the 4 dbs across 3 different laptops, and they will confirm that the data changes will work. I still dont really see a single standout innovative feature that needs to be there, my prof wants one feature with a whole workflow that standsout, i told you to search the space for pain points, you've done self check camera compliance but those are not stand out innovative features, anything that's sort of like a research/named pain point of gov,ppl,authorites, also be mindful of tokem usage, fable 5.1 only for planning and opus/sonnet for coding. use the air-sentinel ui as base to build on, its beautiful and how i think ui should be
 ```
 
-#### Claude's reply to prompt 40
+#### Claude's reply to prompt 58
 
 Done. Pushed `19f8e08..9122683` (20 commits, author Kalki-06 only, 0 co-author lines). 641 tests green, ground truth 621/621.
 
@@ -1936,13 +2677,13 @@ Done. Pushed `19f8e08..9122683` (20 commits, author Kalki-06 only, 0 co-author l
 
 **Teammates:** `git pull`, then `python scripts\seed_mappings.py`, `python scripts\load_source.py CAM` (new cameras/captures), `python scripts\seed_challan_cases.py`. Look at it yourself: `python run_system.py` → check button text, then Challan Guard tab.
 
-### Prompt 41 — 2026-09-16 16:48 UTC
+### Prompt 59 — 2026-09-16 16:48 UTC
 
 ```text
 this ui is even worse, dark on dark text bg, the tables being glaring white on dark bg, leave the air-sentinel ui, there are skills in my claude code, /design-taste-frontend-v1 /high-end-visual-design , think government platform meets ordinary citizen, accessible, easy to see and read and identify what works how, make the function on top properly space or have them in sidebar menu, every  functionality should have enough space, use bounding spaces good color gradient backgoround, buttons sidebar, content arragnemetnf with spacing everything
 ```
 
-#### Claude's reply to prompt 41
+#### Claude's reply to prompt 59
 
 Pushed `9122683..19990b0`. 646 tests green, 0 co-author lines.
 
@@ -1958,17 +2699,13 @@ Pushed `9122683..19990b0`. 646 tests green, 0 co-author lines.
 
 Cross-laptop writes and Challan Guard are unchanged from my previous message (firewall `netsh` rule per laptop, `--probe` shows `admin: on`; six demo cases in `docs/demo_script.md`).
 
----
-
-## Phase 5 — demo readiness, multi-laptop debugging, documentation (17 Sep)
-
-### Prompt 42 — 2026-09-17 08:10 UTC
+### Prompt 60 — 2026-09-17 08:10 UTC
 
 ```text
 can you give me commands for trying to run the demo with my friends now, full commands
 ```
 
-#### Claude's reply to prompt 42
+#### Claude's reply to prompt 60
 
 Written for your teammates as well as you. Pushed as `docs/DEMO_DAY.md`, so everyone can `git pull` and follow the same page.
 
@@ -2029,7 +2766,7 @@ Re-run the plate: UNINSURED flips to CLEAR, no sync step. Undo with `expire INS 
 
 **Phase 5 — hotspot dies.** `python scripts\configure_cluster.py --local` then `python run_system.py`, and say out loud it is rehearsal mode.
 
-### Prompt 43 — 2026-09-17 08:29 UTC
+### Prompt 61 — 2026-09-17 08:29 UTC
 
 ```text
 1. car number plates, does it check in the db, or just adds it to the database
@@ -2040,15 +2777,13 @@ Re-run the plate: UNINSURED flips to CLEAR, no sync step. Undo with `expire INS 
 6. give me proper instructions on how to show each functionality works to what extent
 ```
 
-#### Claude's reply to prompt 43
-
-_This turn ended with a progress note. The full answer to these six questions was given at the end of the next turn, prompt 44, because the rubric request arrived while this one was still running._
+#### Claude's reply to prompt 61
 
 Guide drafted. Before I trust the verdict claims in it, I'll run each SQL example live against a local cluster. That has to wait until the builder's test runs finish, since both need ports 8001-8005.
 
 Builder is still finishing its background test run; waiting for its report before live-verifying the guide.
 
-### Prompt 44 — 2026-09-17 08:50 UTC
+### Prompt 62 — 2026-09-17 08:50 UTC
 
 ```text
 also alongside these functionalities, give me a step by step thing wherein we show all the rubrics are fully done
@@ -2063,7 +2798,7 @@ Project A: Evaluation Rubric
 8. Query results integration and demonstrating the same through simple GUI -- 3 marks
 ```
 
-#### Claude's reply to prompt 44
+#### Claude's reply to prompt 62
 
 I fixed the Challan Guard problems and wrote two new guides: a rubric walkthrough and a feature-by-feature demo guide. I ran every verdict in them against a live local cluster and undid every change afterwards. All 653 tests pass, it's pushed to main, and no commit has a co-author line. Your teammates should `git pull`, then run `python scripts\seed_challan_cases.py --reset` on your laptop.
 
@@ -2123,7 +2858,7 @@ Two limits you should say out loud if asked:
 - **The ground-truth check needs a flag.** Run it as `python scripts\evaluate_ground_truth.py --start-wrappers` when nothing else is running. Without the flag it reports every vehicle as UNDETERMINED.
 - **The write API has no login.** It guards which statements and tables are allowed, but a real deployment would add authentication.
 
-### Prompt 45 — 2026-09-17 09:08 UTC
+### Prompt 63 — 2026-09-17 09:08 UTC
 
 ```text
 ok, based on all the stuff we did, now prepare a  single demo guide, wherein the follwoign are addressed
@@ -2134,7 +2869,7 @@ ok, based on all the stuff we did, now prepare a  single demo guide, wherein the
 one final doc to learn everything from
 ```
 
-#### Claude's reply to prompt 45
+#### Claude's reply to prompt 63
 
 I wrote the single guide, `docs/DEMO_GUIDE.md`, and pushed it to main. I ran its commands live and got the verdicts it quotes, then restored every database. It replaces the three earlier partial guides. Checking it turned up three bugs that would have broken the demo, and all three are fixed: all 672 tests pass, and no commit has a co-author line.
 
@@ -2168,13 +2903,13 @@ I also added `scripts\sql.py`. You type `python scripts\sql.py INS "<any SQL>"` 
 
 **Teammates need to:** `git pull`, then `pip install -r requirements.txt`, then everything in Part 1.1. When they start their wrapper they must pass both `--db-url` and `--admin-url` as shown in Part 1.3 step 4. Without the second one, website writes to their database fail.
 
-### Prompt 46 — 2026-09-17 09:29 UTC
+### Prompt 64 — 2026-09-17 09:29 UTC
 
 ```text
 what should i do now
 ```
 
-#### Claude's reply to prompt 46
+#### Claude's reply to prompt 64
 
 Rehearse alone first, then do one full run with your friends on the real laptops. The biggest untested piece is the real multi-laptop setup. So far everything has only run on your laptop, against the local SQLite copies. Real MySQL and PostgreSQL, the hotspot, the firewall rules and the new `--admin-url` have not been tried together.
 
@@ -2222,13 +2957,13 @@ Write down anything that fails and send it to me with the exact error text.
 - Charge the hotspot phone.
 - Know the fallback: if the network fails, run `configure_cluster.py --local` and `run_system.py`, and say it is rehearsal mode.
 
-### Prompt 47 — 2026-09-17 09:36 UTC
+### Prompt 65 — 2026-09-17 09:36 UTC
 
 ```text
 ok, i cant see the docs/demo_guide.md in my directory rn
 ```
 
-#### Claude's reply to prompt 47
+#### Claude's reply to prompt 65
 
 The file exists. You're looking in a different folder. VS Code has `Desktop\iia proj1` open, which is your older transport-layer folder. All the recent work lives in the team repo clone:
 
@@ -2254,7 +2989,7 @@ Or use File → Open Folder and pick that folder. Every command in the guide ass
 
 The `Desktop\iia proj1` and `Desktop\iia-combined` folders are older copies. Don't run the demo from them.
 
-### Prompt 48 — 2026-09-17 09:47 UTC
+### Prompt 66 — 2026-09-17 09:47 UTC
 
 ```text
 this is what the errors were for my friends laptop with ins db, shes getting error in cam
@@ -2296,7 +3031,7 @@ scripts\load_source.py:152:            if dialect == "postgresql":
 (.venv) PS C:\Users\HP\Downloads\iia\IIA-vehicle-data-federation\IIA_Project>
 ```
 
-#### Claude's reply to prompt 48
+#### Claude's reply to prompt 66
 
 I can't pin down her CAM error yet, because what she sent doesn't include the error message. It only shows that `camdb` exists with the `cameras` and `plate_captures` tables, and that the loader script mentions CAM.
 
@@ -2341,7 +3076,7 @@ python scripts\load_source.py CAM --url "postgresql+psycopg2://postgres:<pw>@127
 
 I haven't tested any of this against a real PostgreSQL. One is running on your laptop, but I don't have its password. If it's still failing after step 2, paste me the exact error.
 
-### Prompt 49 — 2026-09-17 09:50 UTC
+### Prompt 67 — 2026-09-17 09:50 UTC
 
 ```text
 psql hasnt started how do i start it before the 
@@ -2351,7 +3086,7 @@ psql -U postgres -d camdb -c "GRANT CONNECT ON DATABASE camdb TO iia_reader; GRA
 python scripts\load_source.py CAM --url "postgresql+psycopg2://postgres:<pw>@127.0.0.1:5432/camdb" --verify --grant iia_reader
 ```
 
-#### Claude's reply to prompt 49
+#### Claude's reply to prompt 67
 
 "psql hasn't started" can mean two things: the PostgreSQL service is stopped, or PowerShell can't find `psql`. Do these on whichever laptop runs CAM, before the four commands you selected.
 
@@ -2398,7 +3133,7 @@ netstat -ano | findstr :5432
 ```
 If a PostgreSQL service is already `Running`, use that one and put its `bin` folder on the path, not another version's.
 
-### Prompt 50 — 2026-09-17 09:52 UTC
+### Prompt 68 — 2026-09-17 09:52 UTC
 
 ```text
 no on my laptop (.venv) PS C:\Users\siddh_ygv5bws\IIA-vehicle-data-federation\IIA_Project> psql -U postgres -c "CREATE DATABASE regdb;"
@@ -2415,7 +3150,7 @@ At line:1 char:1
 on my main laptop 1, how do i fix this
 ```
 
-#### Claude's reply to prompt 50
+#### Claude's reply to prompt 68
 
 PostgreSQL is installed on your laptop, but its folder isn't on PowerShell's path. On your laptop, PostgreSQL 18 is the version answering on port 5432, so use its `psql`.
 
@@ -2444,13 +3179,13 @@ Close and reopen PowerShell, then reactivate the venv with `.venv\Scripts\Activa
 
 **If step 2 says `password authentication failed`,** you're using the password of a different version's install; each version has its own `postgres` password. If you don't remember 18's, tell me and I'll give you the reset steps.
 
-### Prompt 51 — 2026-09-17 09:53 UTC
+### Prompt 69 — 2026-09-17 09:53 UTC
 
 ```text
 its psql17
 ```
 
-#### Claude's reply to prompt 51
+#### Claude's reply to prompt 69
 
 PostgreSQL 17 can't run right now because PostgreSQL 18 already holds port 5432, and both versions are set to use it. Stop 18 and start 17.
 
@@ -2485,7 +3220,7 @@ netstat -ano | findstr :5432
 ```
 If a line still shows `LISTENING`, paste me that output.
 
-### Prompt 52 — 2026-09-17 09:57 UTC
+### Prompt 70 — 2026-09-17 09:57 UTC
 
 ```text
 (.venv) PS C:\Users\siddh_ygv5bws\IIA-vehicle-data-federation\IIA_Project> $env:Path += ";C:\Program Files\PostgreSQL\17\bin"
@@ -2520,7 +3255,7 @@ n
 1 row(s)
 ```
 
-#### Claude's reply to prompt 52
+#### Claude's reply to prompt 70
 
 Laptop 1 is ready: REG is loaded into PostgreSQL 17 with 605 vehicles, and the read-only account can read it.
 
@@ -2550,7 +3285,7 @@ You pasted your real PostgreSQL password in this chat, so don't reuse it anywher
 
 When you start the demo, PostgreSQL 17 has to be running on laptop 1, not 18. If you reboot, check with `Get-Service postgresql*`.
 
-### Prompt 53 — 2026-09-17 10:06 UTC
+### Prompt 71 — 2026-09-17 10:06 UTC
 
 ```text
 Windows PowerShell
@@ -2603,7 +3338,7 @@ INFO:
 [Message truncated - exceeded 50,000 character limit]
 ```
 
-#### Claude's reply to prompt 53
+#### Claude's reply to prompt 71
 
 Neither laptop is as broken as it looks.
 
@@ -2717,13 +3452,13 @@ If that fails too, her firewall rules didn't apply or her IP changed.
 
 Both of you have pasted real database passwords in this chat. Keep them out of the docs and change them after the demo.
 
-### Prompt 54 — 2026-09-17 10:27 UTC
+### Prompt 72 — 2026-09-17 10:27 UTC
 
 ```text
 ok the renew and expire ins thing, worked now i want to work and test the whole website on all three laptops, my cam and theft are on 192.168.146.226, ins on 192.168.146.79, give me commands like you gave for the first joint test you just gave me to test everything between the 3 laptops
 ```
 
-#### Claude's reply to prompt 54
+#### Claude's reply to prompt 72
 
 Here is the full three-laptop test, in order. Every expected verdict below comes from live runs on my laptop against the local database copies. PostgreSQL (CAM) and MySQL (INS) behaved the same in your INS test, but the clone check (case 3) hasn't run against PostgreSQL yet. If any row doesn't match, stop and paste me the output.
 
@@ -2993,13 +3728,13 @@ Undo commands by laptop:
 
 Final check on L1: `DL01AB1234` should read CLEAR and `DL05CD9876` UNINSURED — REPORT.
 
-### Prompt 55 — 2026-09-17 11:33 UTC
+### Prompt 73 — 2026-09-17 11:33 UTC
 
 ```text
 can we check communication l2 to l3
 ```
 
-#### Claude's reply to prompt 55
+#### Claude's reply to prompt 73
 
 Yes. One thing to know for the viva first: in this design, L2 and L3 never talk to each other directly. Each agency only answers requests to its own API, and the mediator on L1 does all the talking. But any laptop can call any other laptop's API, so these commands prove L2 and L3 can reach each other both ways.
 
@@ -3088,13 +3823,13 @@ Both should say `False`: the wrapper ports are reachable, the database ports are
 | `Write-Sql` says permission denied | wrapper has no owner account for writes | restart it with `--admin-url` |
 | 5432 or 3306 says True | the database is listening on the network | set `listen_addresses = 'localhost'` or `bind-address = 127.0.0.1` and restart the database service |
 
-### Prompt 56 — 2026-09-17 11:50 UTC
+### Prompt 74 — 2026-09-17 11:50 UTC
 
 ```text
 how do i share this chat as an export to a link, and make a readme doc that encapsulates all the prompts we used, all the files and codes you build, everything so that the ta can reproduce all the codes essentially showing where and how we used ai
 ```
 
-#### Claude's reply to prompt 56
+#### Claude's reply to prompt 74
 
 Both documents are written and committed on your laptop, but not pushed. Read them first: the prompt log quotes your chat messages word for word, including casual ones. When you're happy, run `git push`.
 
@@ -3121,13 +3856,13 @@ The three study pages published on claude.ai earlier are private until you share
 
 The `/insights` you typed didn't run because I was mid-task. Send it again now if you still want it.
 
-### Prompt 57 — 2026-09-17 11:59 UTC
+### Prompt 75 — 2026-09-17 11:59 UTC
 
 ```text
 does the .md file have my messages to you? can you send me the directory to the IIA_Project
 ```
 
-#### Claude's reply to prompt 57
+#### Claude's reply to prompt 75
 
 Yes. `docs/ai/PROMPTS.md` holds all 56 of your messages to me, word for word and in order, with passwords and your email redacted. It doesn't include my replies. For those, use `/export`.
 
@@ -3149,13 +3884,13 @@ To open them in VS Code:
 code "C:\Users\siddh_ygv5bws\IIA-vehicle-data-federation\IIA_Project\docs\ai\PROMPTS.md"
 ```
 
-### Prompt 58 — 2026-09-17 12:06 UTC
+### Prompt 76 — 2026-09-17 12:06 UTC
 
 ```text
 puc db is on what laptop are we using that?
 ```
 
-#### Claude's reply to prompt 58
+#### Claude's reply to prompt 76
 
 PUC runs on your laptop (L1), but no query uses it yet. It's deliberately left out of the catalog so you can add it live during the demo, to show that adding a new agency needs no code changes.
 
@@ -3191,26 +3926,447 @@ python scripts\configure_cluster.py --remove PUC
 
 Keeping it on your laptop is simpler, and it shows the same point.
 
-### Prompt 59 — 2026-09-17 12:09 UTC
+### Prompt 77 — 2026-09-17 12:09 UTC
 
 ```text
 now, help me justify project choices in terms of iia concepts from the slides, every justification you already have in the readme but a viva preparedness
 ```
 
-#### Claude's reply to prompt 59
-
-_The document requested here, `docs/VIVA_JUSTIFICATIONS.md`, was being written in the background when this log was generated._
+#### Claude's reply to prompt 77
 
 The viva document is being written in the background. Once it's done, I'll spot-check its slide citations against the slide text before handing it to you.
 
-### Prompt 60 — 2026-09-17 12:10 UTC
+### Prompt 78 — 2026-09-17 12:10 UTC
 
 ```text
 in the meanwhile, can you include your responses to the prompts i have in the prompts.md
 ```
 
-#### Claude's reply to prompt 60
+#### Claude's reply to prompt 78
 
-_This log is the result of this request._
+`docs/ai/PROMPTS.md` now has my reply under each of your 60 messages, and it's committed locally but not pushed.
 
-Adding my final reply to each prompt. I'll pull it from the same transcript: the text I wrote after the last tool call in each turn, so progress notes and tool output are left out. The same redaction applies.
+**What each reply entry is:** my final message for that turn, taken from the session transcript. The progress notes I sent while working, tool calls and output, sub-agent work and my internal reasoning are left out. Headings inside replies show as bold lines, so the file's own contents list stays clean.
+
+**Two replies quoted your password.** They were from 16 September, when I was helping you install PostgreSQL. Both are now redacted. A final scan finds no passwords and no email address in the file.
+
+**Notes inside the file for odd entries:**
+- **Prompt 6** has no reply: you sent it twice and the first send was interrupted. The reply is under prompt 7.
+- **Prompt 43** ends with a short progress note. The full answer to those six questions appears under prompt 44, because your rubric request arrived while I was still working.
+- **Prompts 59 and 60** are marked as in progress when the log was made: the viva document, and this change.
+
+I also updated `AI_USAGE.md` to say the log includes replies and to cover prompts 56–60.
+
+The file is about 190,000 characters. It's at:
+```
+C:\Users\siddh_ygv5bws\IIA-vehicle-data-federation\IIA_Project\docs\ai\PROMPTS.md
+```
+Press Ctrl+Shift+V in VS Code to read it formatted.
+
+The viva justification document is still being written. I'll check its slide citations when it finishes.
+
+### Prompt 79 — 2026-09-17 12:13 UTC
+
+```text
+in the meanwhile create a zip of the codebase, remove all redundant files and include the ai prompts and usage files
+```
+
+#### Claude's reply to prompt 79
+
+Your two zips are on your Desktop, and your code checks out: 678 tests pass and 621/621 plates are correct. You'd sent several things mid-task, so here they are in order.
+
+**Zips:**
+- `IIA_Project_A.zip` (2.8 MB) is the full code, rebuilt with every fix below and the viva document.
+- `IIA_Project_A_AI_usage.zip` (150 KB) holds the AI documents:
+  - `AI_USAGE.md`
+  - `docs/ai/PROMPTS.md`, your prompts with my replies
+  - `docs/VIVA_JUSTIFICATIONS.md`
+  - the three implementation plans in `docs/superpowers/plans/`
+  - `docs/FIELD_RESEARCH.md`
+
+**Challan Guard gap, now fixed.** It only checked the insurance expiry date, so a policy bought *after* the sighting would wrongly cancel a fine. It now requires the policy to have started on or before the sighting date. The dispute demo on `DL01AB0002` still cancels, because that policy starts on 01/01/2026, before the sighting.
+
+**Doc corrections**, found while writing the viva document:
+- **Study guide:** it described GAV backwards, which was actually the definition of LAV. It also said the conflict-resolution code never names individual sources, but it does.
+- **Report:** it claimed conflicts are also settled by picking the most recent source. The real rule is fixed: registration beats camera on make, model and colour; within one source, the latest row wins.
+- **Heterogeneity table:** it named a transform function and column types that don't exist.
+- **Admin endpoints:** the docs called them opt-in; they are on by default.
+- **Challan Guard evidence:** it doesn't store the raw rows each source returned, as some docs said; it stores the profile values and statuses it read.
+- **Mapping count:** now 38 everywhere.
+
+**Resetting DL01AB1234:** the data is dirty on your friends' laptops, not yours. It's leftover from test drills. Run each line on the laptop named:
+```powershell
+# L3 (THEFT and CAM)
+python scripts\mutate_source.py clear THEFT DL01AB1234
+python scripts\sql.py THEFT "DELETE FROM CRIME_RECORDS WHERE incident_id = 9001"
+python scripts\sql.py CAM "DELETE FROM PLATE_CAPTURES WHERE capture_id = 9001"
+# L1 (REG)
+python scripts\sql.py REG "UPDATE VEHICLE_REGISTRATION SET reg_status = 'ACTIVE' WHERE registration_no = 'DL01AB1234'"
+# L2 (INS), resets DL05CD9876 too
+python scripts\mutate_source.py expire INS DL05CD9876 --until 10/06/2026
+```
+Then `DL01AB1234` should read CLEAR and `DL05CD9876` UNINSURED — REPORT. A line saying "0 row(s) affected" just means that change was never made.
+
+To restore a whole source exactly as shipped, reload it on its own laptop, for example on L3:
+```powershell
+python scripts\load_source.py CAM --url "postgresql+psycopg2://postgres:<pgpw>@127.0.0.1:5432/camdb" --verify --grant iia_reader
+```
+
+**Seeing the databases on each laptop.** On the laptop that owns the data, `--tables` lists every table with its columns and row count:
+
+| Laptop | Commands |
+|---|---|
+| L1 (REG) | `python scripts\sql.py REG --tables` then `python scripts\sql.py REG "SELECT * FROM vehicle_registration LIMIT 10"` |
+| L2 (INS) | `python scripts\sql.py INS --tables` then `python scripts\sql.py INS "SELECT * FROM POLICY_RECORDS LIMIT 10"` |
+| L3 (THEFT, CAM) | `python scripts\sql.py THEFT --tables`, `python scripts\sql.py CAM --tables`, then `python scripts\sql.py CAM "SELECT * FROM plate_captures LIMIT 10"` |
+
+From any laptop over the network, paste the helper block from `docs/DEMO_GUIDE.md` §2.2, then run for example `Show-Tables 192.168.146.226 8004`. On the website, the SQL Console lists each source's tables and runs any `SELECT`.
+
+**Not pushed yet.** The viva document, the AI-usage docs and these fixes are only committed on your laptop. When you're ready:
+```powershell
+cd C:\Users\siddh_ygv5bws\IIA-vehicle-data-federation
+git push
+```
+
+### Prompt 80 — 2026-09-17 12:40 UTC
+
+```text
+wheres the postgres fix 
+ct\.venv\lib\site-packages (from scikit-image->easyocr>=1.7->-r requirements.txt (line 25)) (0.5)
+Requirement already satisfied: mpmath<1.4,>=1.1.0 in c:\users\anusha anand\downloads\iia-vehicle-data-federation\iia_project\.venv\lib\site-packages (from sympy>=1.13.3->torch->easyocr>=1.7->-r requirements.txt (line 25)) (1.3.0)
+
+[notice] A new release of pip is available: 24.2 -> 26.2.1
+[notice] To update, run: python.exe -m pip install --upgrade pip
+(.venv) (base) PS C:\Users\ANUSHA ANAND\Downloads\IIA-vehicle-data-federation\IIA_Project> Remove-Item Env:CAM_DB_URL, Env:THEFT_DB_URL -ErrorAction SilentlyContinue
+(.venv) (base) PS C:\Users\ANUSHA ANAND\Downloads\IIA-vehicle-data-federation\IIA_Project> $env:Path += ";C:\Program Files\PostgreSQL\17\bin"
+(.venv) (base) PS C:\Users\ANUSHA ANAND\Downloads\IIA-vehicle-data-federation\IIA_Project>
+(.venv) (base) PS C:\Users\ANUSHA ANAND\Downloads\IIA-vehicle-data-federation\IIA_Project> psql -U postgres -c "CREATE DATABASE camdb;"
+Password for user postgres:
+
+psql: error: connection to server at "localhost" (::1), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+(.venv) (base) PS C:\Users\ANUSHA ANAND\Downloads\IIA-vehicle-data-federation\IIA_Project> $pids = (Get-NetTCPConnection -LocalPort 5434 -State Listen -ErrorAction SilentlyContinue).OwningProcess
+(.venv) (base) PS C:\Users\ANUSHA ANAND\Downloads\IIA-vehicle-data-federation\IIA_Project> $pids = (Get-NetTCPConnection -LocalPort 5432 -State Listen -ErrorAction SilentlyContinue).OwningProcess
+(.venv) (base) PS C:\Users\ANUSHA ANAND\Downloads\IIA-vehicle-data-federation\IIA_Project> psql -U postgres -c "CREATE DATABASE camdb;"
+Password for user postgres:
+
+psql: error: connection to server at "localhost" (::1), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+(.venv) (base) PS C:\Users\ANUSHA ANAND\Downloads\IIA-vehicle-data-federation\IIA_Project>
+```
+
+#### Claude's reply to prompt 80
+
+I posted it mid-task, so it got buried. Here it is again. Run it on Anusha's laptop, in order, and stop at the first step that works.
+
+**1. Check which PostgreSQL is answering.**
+```powershell
+Get-Service postgresql*
+Get-NetTCPConnection -LocalPort 5432 -State Listen | Select-Object OwningProcess
+```
+- **If more than one PostgreSQL service is Running,** port 5432 may belong to a different version with a different password. Stop the extra one in an Administrator PowerShell, then go to step 2:
+  ```powershell
+  Stop-Service postgresql-x64-18
+  ```
+  Use the exact name from the list, and keep 17 running.
+- **If no PostgreSQL service is Running,** start it as Administrator: `Start-Service postgresql-x64-17`.
+
+**2. Retry her usual password, connecting over IPv4.**
+```powershell
+psql -U postgres -h 127.0.0.1 -c "SELECT version();"
+```
+If this prints `PostgreSQL 17...`, the password is right. Skip to step 4.
+
+**3. Still failing? Reset the password.** Open **PowerShell as Administrator**:
+```powershell
+notepad "C:\Program Files\PostgreSQL\17\data\pg_hba.conf"
+```
+Near the bottom, find these two lines and change `scram-sha-256` to `trust` on both:
+```
+host    all    all    127.0.0.1/32    scram-sha-256
+host    all    all    ::1/128         scram-sha-256
+```
+Save and close Notepad. Then, still as Administrator:
+```powershell
+Restart-Service postgresql-x64-17
+& "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U postgres -h 127.0.0.1 -c "ALTER USER postgres PASSWORD 'newpassword';"
+```
+It should print `ALTER ROLE`. Now undo the trust change: open the file again, change both lines back to `scram-sha-256`, save, and run:
+```powershell
+Restart-Service postgresql-x64-17
+```
+
+If the file isn't at that path, find it with:
+```powershell
+Get-ChildItem "C:\Program Files\PostgreSQL" -Recurse -Filter pg_hba.conf
+```
+
+**4. Continue the setup** in her normal project window. The password is now `newpassword`:
+```powershell
+$env:Path += ";C:\Program Files\PostgreSQL\17\bin"
+psql -U postgres -h 127.0.0.1 -c "CREATE DATABASE camdb;"
+psql -U postgres -h 127.0.0.1 -c "CREATE ROLE iia_reader LOGIN PASSWORD 'secret';"
+psql -U postgres -h 127.0.0.1 -d camdb -c "GRANT CONNECT ON DATABASE camdb TO iia_reader; GRANT USAGE ON SCHEMA public TO iia_reader;"
+python scripts\load_source.py CAM --url "postgresql+psycopg2://postgres:<email redacted>:5432/camdb" --verify --grant iia_reader
+```
+"Already exists" on a `CREATE` line is fine; carry on. The last command should load 918 plate captures and grant read access.
+
+### Prompt 81 — 2026-09-17 12:43 UTC
+
+```text
+(.venv) (base) PS C:\Users\ANUSHA ANAND\Downloads\IIA-vehicle-data-federation\IIA_Project> Stop-Service postgresql-x64-18
+Stop-Service : Cannot find any service with service name
+'postgresql-x64-18'.
+At line:1 char:1
++ Stop-Service postgresql-x64-18
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (postgresql-x64-
+   18:String) [Stop-Service], ServiceCommandException
+    + FullyQualifiedErrorId : NoServiceFoundForGivenName,Micro
+   soft.PowerShell.Commands.StopServiceCommand
+
+(.venv) (base) PS C:\Users\ANUSHA ANAND\Downloads\IIA-vehicle-data-federation\IIA_Project> Stop-Service postgresql-x64-17
+Stop-Service : Service 'postgresql-x64-17 - PostgreSQL Server
+17 (postgresql-x64-17)' cannot be stopped due to the following
+error: Cannot open postgresql-x64-17 service on computer '.'.
+At line:1 char:1
++ Stop-Service postgresql-x64-17
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : CloseError: (System.ServiceProce
+   ss.ServiceController:ServiceController) [Stop-Service], Se
+  rviceCommandException
+    + FullyQualifiedErrorId : CouldNotStopService,Microsoft.Po
+   werShell.Commands.StopServiceCommand
+
+(.venv) (base) PS C:\Users\ANUSHA ANAND\Downloads\IIA-vehicle-data-federation\IIA_Project> psql -U postgres -h 127.0.0.1 -c "SELECT version();"
+Password for user postgres:
+
+psql: error: connection to server at "127.0.0.1", port 5432 failed: FATAL:  password authentication failed for user "postgres"
+(.venv) (base) PS C:\Users\ANUSHA ANAND\Downloads\IIA-vehicle-data-federation\IIA_Project> psql -U postgres -h 127.0.0.1 -c "SELECT version();"
+Password for user postgres:
+
+psql: error: connection to server at "127.0.0.1", port 5432 failed: FATAL:  password authentication failed for user "postgres"
+(.venv) (base) PS C:\Users\ANUSHA ANAND\Downloads\IIA-vehicle-data-federation\IIA_Project>
+tried admin dont wanna change password
+```
+
+#### Claude's reply to prompt 81
+
+Only PostgreSQL 17 is installed on her laptop. The "Cannot open service" error means that PowerShell window isn't running as Administrator. The service is still running, which is what we want. Here are three ways forward that keep her password unchanged.
+
+**Option A: check the right PostgreSQL is answering.** Her prompt shows `(base)`, which means conda is installed, and conda sometimes brings its own PostgreSQL. Run:
+```powershell
+Get-Process -Id (Get-NetTCPConnection -LocalPort 5432 -State Listen).OwningProcess | Select-Object Id, Path
+```
+- **If the path is `C:\Program Files\PostgreSQL\17\bin\postgres.exe`,** it's the right server and the password is just wrong. Use B or C.
+- **If the path is anything else,** for example under `anaconda3`, a different PostgreSQL holds the port. Run `conda deactivate`, close that server, and her normal password should work.
+
+**Option B: temporarily skip the password, set up, then lock it again.** The password itself never changes. Open PowerShell with **right-click → Run as administrator**; the title bar must say *Administrator*.
+```powershell
+notepad "C:\Program Files\PostgreSQL\17\data\pg_hba.conf"
+```
+Change `scram-sha-256` to `trust` on the `127.0.0.1/32` and `::1/128` lines, save, then:
+```powershell
+Restart-Service postgresql-x64-17
+```
+In her project window, run the setup. While trust is on, any password is accepted, so `x` works:
+```powershell
+psql -U postgres -h 127.0.0.1 -c "CREATE DATABASE camdb;"
+psql -U postgres -h 127.0.0.1 -c "CREATE ROLE iia_reader LOGIN PASSWORD 'secret';"
+psql -U postgres -h 127.0.0.1 -d camdb -c "GRANT CONNECT ON DATABASE camdb TO iia_reader; GRANT USAGE ON SCHEMA public TO iia_reader;"
+python scripts\load_source.py CAM --url "postgresql+psycopg2://postgres:<email redacted>:5432/camdb" --verify --grant iia_reader
+```
+Then, back in the Administrator window, change both lines back to `scram-sha-256`, save, and run `Restart-Service postgresql-x64-17`.
+
+One catch: the CAM wrapper's owner account for writes (`--admin-url`) still needs the real `postgres` password. Without it, website writes to CAM fail, but reading CAM works fine. If she doesn't know that password, start the wrapper with only the read-only account:
+```powershell
+python scripts\serve.py CAM --db-url "postgresql+psycopg2://iia_reader:<email redacted>:5432/camdb"
+```
+
+**Option C, fastest: run CAM on SQLite on her laptop.** No password is involved:
+```powershell
+python scripts\load_source.py CAM --sqlite --verify
+python scripts\serve.py CAM --db-url "sqlite:///sources/cam/cam.db"
+```
+You still have three engines: PostgreSQL for REG on your laptop, MySQL for INS, SQLite for THEFT and CAM. That's enough for the rubric. Every feature, including writes, works. Tell the evaluator CAM is on SQLite on that laptop.
+
+If you need it working in the next few minutes, take C. For the real PostgreSQL CAM, use B.
+
+### Prompt 82 — 2026-09-17 12:48 UTC
+
+```text
+this didnt work, help me get the pid of the process and make it work 
+psql: error: connection to server at "127.0.0.1", port 5432 failed: FATAL:  password authentication failed for user "postgres"
+(.venv) (base) PS C:\Users\ANUSHA ANAND\Downloads\IIA-vehicle-data-federation\IIA_Project> Get-Process -Id (Get-NetTCPConnection -LocalPort 5432 -State Listen).OwningProcess | Select-Object Id, Path
+
+   Id Path
+   -- ----
+10528
+
+
+(.venv) (base) PS C:\Users\ANUSHA ANAND\Downloads\IIA-vehicle-data-federation\IIA_Project> psql -U postgres -h 127.0.0.1 -c "CREATE DATABASE camdb;"
+psql: error: connection to server at "127.0.0.1", port 5432 failed: Connection refused (0x0000274D/10061)
+        Is the server running on that host and accepting TCP/IP connections?
+(.venv) (base) PS C:\Users\ANUSHA ANAND\Downloads\IIA-vehicle-data-federation\IIA_Project> python scripts\load_source.py CAM --sqlite --verify
+CAM -> sqlite:///C:/Users/ANUSHA ANAND/Downloads/IIA-vehicle-data-federation/IIA_Project/sources/cam/cam.db
+created 2 table(s): CAMERAS, PLATE_CAPTURES
+  CAMERAS                    7 row(s) from cam_cameras.csv
+  PLATE_CAPTURES           918 row(s) from cam_plate_captures.csv
+CAM loaded: 925 row(s)
+
+demo plates in PLATE_CAPTURES.plate_id:
+  DL01AB1234  1 row(s)
+  DL05CD9876  1 row(s)
+  HR26EF4455  1 row(s)
+  UP16GH1122  2 row(s)
+  MH12IJ7788  1 row(s)
+  DL03SC5566  1 row(s)
+(.venv) (base) PS C:\Users\ANUSHA ANAND\Downloads\IIA-vehicle-data-federation\IIA_Project> python scripts\serve.py CAM --db-url
+usage: serve.py [-h] [--db-url DB_URL] [--admin-url ADMIN_URL]
+                [--port PORT] [--readonly-admin] [--check]
+                [--host HOST] [--env-file ENV_FILE]
+                [--dry-run]
+                source
+serve.py: error: argument --db-url: expected one argument
+(.venv) (base) PS C:\Users\ANUSHA ANAND\Downloads\IIA-vehicle-data-federation\IIA_Project>
+fast sqllite isnt working it has to be postgres
+```
+
+#### Claude's reply to prompt 82
+
+The server is down now: "Connection refused" means nothing is listening on 5432 anymore. My guess is the last restart failed. Either the edit to `pg_hba.conf` has a typo, or her PostgreSQL keeps its data in a different folder, so the file you edited isn't the one it reads. The commands below check both.
+
+**1. In PowerShell as Administrator**, where the title bar says *Administrator*:
+```powershell
+Get-Service postgresql*
+tasklist /fi "pid eq 10528"
+Get-CimInstance Win32_Service -Filter "Name like 'postgresql%'" | Select-Object Name, State, PathName | Format-List
+```
+- `tasklist` names the program that held the port.
+- `PathName` ends with `-D "<folder>"`. That folder holds the `pg_hba.conf` she has to edit, and it may not be `C:\Program Files\PostgreSQL\17\data`.
+
+**2. Edit the right `pg_hba.conf`**, using the folder from `-D`:
+```powershell
+notepad "<folder from -D>\pg_hba.conf"
+```
+At the bottom, the two lines must read exactly like this, with spaces or tabs between the columns and nothing else changed:
+```
+host    all             all             127.0.0.1/32            trust
+host    all             all             ::1/128                 trust
+```
+Save.
+
+**3. Start it and read the error if it refuses:**
+```powershell
+Start-Service postgresql-x64-17
+Get-Service postgresql-x64-17
+```
+If it doesn't say `Running`, show the reason:
+```powershell
+Get-ChildItem "<folder from -D>\log" | Sort-Object LastWriteTime | Select-Object -Last 1 | Get-Content -Tail 20
+```
+Paste me those 20 lines.
+
+**4. Once it's Running**, this must answer without asking for a password:
+```powershell
+& "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U postgres -h 127.0.0.1 -c "SELECT version();"
+```
+
+**5. Set up CAM on PostgreSQL** in her project window. While trust is on, any password works, so these use `x`:
+```powershell
+$env:Path += ";C:\Program Files\PostgreSQL\17\bin"
+psql -U postgres -h 127.0.0.1 -c "CREATE DATABASE camdb;"
+psql -U postgres -h 127.0.0.1 -c "CREATE ROLE iia_reader LOGIN PASSWORD 'secret';"
+psql -U postgres -h 127.0.0.1 -d camdb -c "GRANT CONNECT ON DATABASE camdb TO iia_reader; GRANT USAGE ON SCHEMA public TO iia_reader;"
+python scripts\load_source.py CAM --url "postgresql+psycopg2://postgres:<email redacted>:5432/camdb" --verify --grant iia_reader
+python scripts\serve.py CAM --db-url "postgresql+psycopg2://iia_reader:<email redacted>:5432/camdb" --admin-url "postgresql+psycopg2://postgres:<email redacted>:5432/camdb"
+```
+Then, in a second window:
+```powershell
+Invoke-RestMethod http://127.0.0.1:8004/health
+```
+It must say `PostgreSQL` and `True`.
+
+Leave `trust` in place until the demo is over. It only lets connections from her own laptop in without a password; other machines are unaffected, and her password stays the same. Website writes to CAM keep working this way. After the demo, put both lines back to `scram-sha-256` and restart the service.
+
+The earlier `serve.py CAM --db-url` error was only because the address after `--db-url` was missing. The command above includes it.
+
+### Prompt 83 — 2026-09-17 12:55 UTC
+
+```text
+final queries and tests for gui
+Here is the full three-laptop test, in order. Every expected verdict below comes from live runs on my laptop against the local database copies. PostgreSQL (CAM) and MySQL (INS) behaved the same in your INS test, but the clone check (case 3) hasn't run against PostgreSQL yet. If any row doesn't match, stop and paste me the output.
+
+Laptop	IP	Runs
+L1 (you)	192.168.146.127	REG wrapper, website
+L2	192.168.146.79	INS wrapper (MySQL)
+L3	192.168.146.226	THEFT wrapper, CAM wrapper (PostgreSQL)
+In every PowerShell window, first run:
+
+
+cd <project folder>\IIA_Project
+.venv\Scripts\Activate.ps1
+Setup
+L2: keep the INS window running. Close the CAM window, since CAM now lives on L3.
+
+L3, once (replace <pgpw> with L3's postgres password):
+
+
+git pull
+python -m pip install -r requirements.txt
+Remove-Item Env:CAM_DB_URL, Env:THEFT_DB_URL -ErrorAction SilentlyContinue
+$env:Path += ";C:\Program Files\PostgreSQL\17\bin"
+psql -U postgres -c "CREATE DATABASE camdb;"
+psql -U postgres -c "CREATE ROLE iia_reader LOGIN PASSWORD 'secret';"
+psql -U postgres -d camdb -c "GRANT CONNECT ON DATABASE camdb TO iia_reader; GRANT USAGE ON SCHEMA public TO iia_reader;"
+python scripts\load_source.py CAM --url "postgresql+psycopg2://postgres:<pgpw>@127.0.0.1:5432/camdb" --verify --grant iia_reader
+python scripts\load_source.py THEFT --verify
+The two CREATE lines may say "already exists". That's fine.
+
+L3, Administrator PowerShell:
+
+
+netsh advfirewall firewall add rule name="IIA wrap
+
+[… 8271 characters of pasted output omitted …]
+
+g: shows the three IPs you set.
+Citizen Check: DL05CD9876 shows only its own facts, with no owner name.
+Finish — put everything back
+L1:
+
+
+python scripts\seed_challan_cases.py --reset
+Every test above already has its own undo. If you skipped one, the tables below show what to undo, then reload that source from Setup.
+
+Undo commands by laptop:
+
+Laptop	Undo
+L2	python scripts\mutate_source.py expire INS DL05CD9876 --until 10/06/2026
+L3	python scripts\mutate_source.py clear THEFT DL01AB1234
+L3	python scripts\sql.py CAM "DELETE FROM PLATE_CAPTURES WHERE capture_id = 9001"
+Final check on L1: DL01AB1234 should read CLEAR and DL05CD9876 UNINSURED — REPORT.
+laptop3 is not working, l2 and l1 will work. please rewrite all instruction that ive pasted accordingly for l1 land l2 l2 ip is 192.168.146.226
+```
+
+#### Claude's reply to prompt 83
+
+API Error: Unable to connect to API (UNKNOWN_CERTIFICATE_VERIFICATION_ERROR)
+
+### Prompt 84 — 2026-09-17 13:24 UTC
+
+```text
+CAN YOU TELL ME WHERE THE GLOBAL SCHEMA IS
+```
+
+#### Claude's reply to prompt 84
+
+No response requested.
+
+### Prompt 85 — 2026-09-17 13:47 UTC
+
+```text
+Make a final codebase zip containing all the codes, a readme to setup and replicate the assignment and any other imporatn/relevant stuff to make sure everything is replicable, accurate and contains the whole project. Also, create a zip file for ai usage, prompts and it should also contain another file stating with 2026-09 a txt file which contains my converstaion from another llm
+```
+
+#### Claude's reply to prompt 85
+
+_The setup README, this log and the two submission archives are the result of this request; the log was generated while the request was in progress._

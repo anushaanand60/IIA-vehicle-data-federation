@@ -1,262 +1,409 @@
-# Federated Mediator: Uninsured Vehicle Identification System
+# Uninsured Vehicle Identification — a federated mediator
 
-A federated database mediator implementing Global-As-View (GAV) schema integration over four (soon
-five) autonomous, heterogeneous government and observational source databases (Registration,
-Insurance, Police Crime, Road Camera, and an extensible Pollution/PUC authority) to detect
-uninsured and non-compliant vehicles — with live writes on every source, an unknown-plate
-onboarding workflow, plate-photo OCR, and a watchlist/risk layer, all still read-only from the
-mediator's own query path.
+Information Integration, Project A. Five autonomous databases, built as if by different agencies on
+three database engines, hold different facts about the same vehicles. A mediator answers "is this
+vehicle uninsured, stolen, cloned or unregistered?" by querying all of them live, over their own
+APIs, at the moment of the question. No data is copied into a central store.
 
----
+This README is everything needed to set up, run and reproduce the project and its results.
 
-## Key Features
+| Section | |
+|---|---|
+| [1. What is in the project](#1-what-is-in-the-project) | architecture, sources, repository layout |
+| [2. Reproduce on one computer](#2-reproduce-on-one-computer) | install, build the data, run the checks, open the app |
+| [3. Deploy across several computers](#3-deploy-across-several-computers) | real PostgreSQL and MySQL, one agency per machine |
+| [4. Command reference](#4-command-reference) | every script and what it does |
+| [5. Regenerate the data](#5-regenerate-the-data) | only if you want new synthetic data |
+| [6. Troubleshooting](#6-troubleshooting) | |
 
-1. **Autonomous Source Wrappers**: FastAPI micro-adapters on ports 8001–8005 hiding DBMS dialects,
-   schemas, and connection details. Each wrapper exposes `GET /health`, `GET /schema`,
-   `POST /query` (read-only, guarded, single `SELECT` only).
-2. **Live writes on every source, through the wrapper's own admin endpoints** — never through the
-   mediator. `POST /admin/mutate` runs a fixed, named menu of actions (`register`, `renew`,
-   `expire`, `add_policy`, `steal`, `clear`, `shred`, `sight`, `issue`, `revoke`, …, one set per
-   source, listed live at `GET /admin/actions`); `POST /admin/sql` is a guarded free-SQL console
-   (single INSERT/UPDATE/DELETE, whitelisted tables, no DDL). Both are **on by default** on every
-   wrapper — set `<SOURCE_ID>_ADMIN=off` on a laptop to turn that one wrapper back into a read-only
-   server. `/query`'s connection is never the one admin writes use, so the mediator's read-only
-   guarantee is untouched by any of this.
-3. **SQL console (GUI tab)**: run read queries or (when admin is on) writes against any source's
-   real database, in that source's own SQL dialect, with query history, before/after row counts,
-   and a one-click "re-run in Investigate" once a plate literal is recognised in the statement.
-4. **Source Editor (sidebar)**: a form built live from each wrapper's own `GET /admin/actions` —
-   pick a source, an action, a plate, fill in the action's own parameters, Apply. No action list is
-   hard-coded in the GUI; a laptop with admin off shows an honest message instead of a dead form.
-5. **Unknown-plate onboarding wizard**: type any plate that exists in none of the sources and the
-   Investigate tab offers a 4-step wizard — Register (REG), Insure (INS, optional), issue a PUC
-   certificate (optional), Re-evaluate — each step posting to that agency's own `/admin/mutate` and
-   showing the SQL/detail it executed. Backed by a new decision, `UNKNOWN VEHICLE — NOT REGISTERED`.
-6. **Hybrid Schema Matcher**: discovers correspondences dynamically
-   ($0.40 \cdot N + 0.20 \cdot C + 0.40 \cdot I$, θ = 0.55) against each source's real, live
-   `/schema` response, with a similarity heatmap. Verified precision/recall: **1.00/1.00** on
-   REG, INS, THEFT, CAM and PUC; **1.00/1.00 overall (23 of 23 correspondences, 0 false positives)**
-   (`python scripts/evaluate_matcher.py`).
-7. **Metadata-Driven GAV Registry**: `MAPPING_REGISTRY` + `SOURCE_CATALOG` in `meta.db`. Adding a
-   new source (PUC, live, UC6) requires zero engine code changes — only metadata registration.
-8. **Query Planner & Parallel Decomposer, driven entirely by metadata**: `mediator/planner.py`
-   names no source id anywhere in its code (a test greps for one); it selects sources from
-   `SOURCE_CATALOG.covers` ∩ the requested attributes (plus what a *derived* attribute like
-   `insurance_status` is derived from), and asks every `identity_authority` source when the request
-   `needs_identity_check`. `mediator/decomposer.py` emits `LEFT JOIN`s (a missing lookup row never
-   hides the vehicle), an explicit column list (never `SELECT *`), OCR-confusion folding only for
-   `OBSERVATIONAL` sources, and portable `ORDER BY … LIMIT 1` pushdown that is skipped for any
-   `DD/MM/YYYY`-encoded column (the integrator picks the latest row in Python there instead).
-9. **Plate photo → OCR → lookup**: upload or paste a plate photo; EasyOCR reads it, a
-   position-aware confusion table (O↔0, I↔1, B↔8, S↔5, Z↔2, G↔6, applied against the Indian plate
-   pattern) proposes "did you mean" candidates, and a click runs the query. No easyocr installed →
-   a clean install hint, never a crash.
-10. **Watchlist, alerts and an explainable risk score**: `mediator/watchlist.py` (add/remove/check
-    a plate) logs an alert with camera evidence whenever a watched plate is queried, and separately
-    raises a "hotlist hit" for any STOLEN/SCRAPPED/SHREDDED verdict even if nobody marked it.
-    `mediator/risk.py` scores every profile 0–100 from the decision plus five additive-only
-    modifiers (conflicts, near-expiry policy, stale/no sighting, a down core source, low mean
-    source trust) — no ML, no probability, every point in the score is a named `RiskFactor` and
-    they sum to the total. Mirrors the UK MIB's Operation Tutelage marker and India's IIB/ANPR
-    uninsured-vehicle flags (`docs/FIELD_RESEARCH.md`).
-11. **Grace-period / escalation ladder for lapsed insurance**: 1–15 days lapsed →
-    `UNINSURED — ADVISORY` (MEDIUM); 16–30 days → `UNINSURED — WARNING` (HIGH); more than 30 days,
-    or no policy at all → `UNINSURED — REPORT` (HIGH). Mirrors the UK's Continuous Insurance
-    Enforcement (advisory → penalty → impound).
-12. **Citizen self-check (data-minimised)**: a separate tab that answers only "is my own vehicle
-    registered / insured / PUC-valid / reported stolen" — never the owner's name, never a camera
-    location or a raw row — and requests only the five attributes it needs, so the planner
-    (feature 8) genuinely contacts fewer sources (CAM is never asked) and the tab says so on
-    screen.
-13. **Conflict Resolution & Decision Engine**: 8+ ordered, deterministic rules (unreachable source
-    ⇒ `UNDETERMINED`; scrapped/shredded; stolen; unregistered-but-seen; cloned plate; the insurance
-    ladder; registration invalid; unknown vehicle; clear), each carrying plain-English reasons that
-    name only sources actually asked and answered — a source never asked or never answered makes no
-    claim, never a fabricated "not reported".
-14. **Ministry evidence-bundle PDF**: every filed report carries, beyond the decision, the
-    per-attribute provenance table (source, authority, trust, fetched-at), the exact SQL sent to
-    each source, camera evidence when CAM answered, the rule that fired, the mediator's own git
-    commit hash, and any watchlist alerts — everything a Ministry official would need to defend the
-    decision, not just the verdict.
-15. **One-command laptop bring-up**: `python scripts/serve.py <SRC> --db-url "…"` writes that
-    laptop's settings to a gitignored `sources/<id>/laptop.env`, starts the wrapper, and prints the
-    exact `configure_cluster.py --set` line for laptop 1. Later runs are just
-    `python scripts/serve.py <SRC>`.
-16. **Streamlit Interactive GUI, 9 tabs**: Investigate, Challan Guard, Watchlist & Alerts, Ministry
-    Reports, Citizen Check, Plan Trace, Catalog & Registry, Matcher & Heatmap, SQL Console — plus a
-    Source Editor sidebar. `app/app.py` is ~120 lines; every tab body lives in its own
-    `app/tabs/*.py` module built from shared `app/components.py` render helpers and a single
-    `app/theme.py` design-token stylesheet (AirSentinel-derived palette, explicit colour + icon on
-    every status/decision, never colour alone).
-17. **Ground truth at scale**: `python scripts/evaluate_ground_truth.py --start-wrappers` grades
-    the mediator's live decisions against an independently computed oracle for every generated
-    plate — **621/621 = 100.0%**, across all 10 decision/confidence classes including the two new
-    insurance-ladder tiers.
-18. **Query audit log**: every query the mediator answers appends one row to `QUERY_LOG`
-    (plate, requested attributes, sources asked, statuses, decision, confidence, elapsed time) —
-    decisions and traces only, never a copy of source rows, so it is auditable state, not a cache
-    that would contradict the freshness thesis. Browsable from the Ministry Reports tab, filterable
-    by plate.
-19. **Challan Guard — verify before you fine**: the pain point is real and documented
-    (`docs/FIELD_RESEARCH.md` facts 12–15): ANPR-triggered e-challans are wrong often enough that
-    Delhi runs an online dispute system, roughly 90% of wrongful challans trace to a plate misread
-    (O/0, 8/B, 1/I), cloned plates push the fine onto an innocent owner, and stolen-vehicle indexes
-    lag. Challan Guard sits between the camera and the fine: every ANPR sighting enters a queue as a
-    *candidate*, and pressing **Verify (live)** runs six ordered steps over the federation —
-    (1) are REG, INS and THEFT reachable at all, (2) identity, resolving the read against the
-    registration database through a fixed one-character confusable table scored on observed
-    make/colour (`mediator/plate_resolve.py`), (3) clone signal, via impossible travel between this
-    sighting and the camera network's other sightings of the same plate
-    (`mediator/travel_check.py`, 160 km/h plausibility bound), (4) theft reported *before* the
-    sighting, (5) registration status, and only then (6) insurance validity **on the date the
-    vehicle was seen**. The verdict is ISSUE (₹2,000, ₹4,000 on repeat, MV Act §196), REJECT or
-    HOLD, with the ordered steps and a full evidence bundle — the integrated profile's scalar values (not raw source rows), each
-    source's status, capture and check times, identity candidates and travel legs — written to `CHALLAN_CASES` / `CHALLAN_EVENTS` in the mediator's own `meta.db`; no
-    source is ever written. A citizen can then **dispute** the challan from the Citizen Check tab,
-    which re-runs the identical verification live and cancels the fine if a fact has changed, naming
-    the diff ("insurance_expiry was none now 2027-01-01"). This is only possible because the system
-    federates: the verification is against the sources *at fine time and again at dispute time*, so
-    there is no stale row to be wrong about — and when a source is unreachable the guard holds the
-    fine rather than guessing, because a missing insurer is not evidence of no insurance.
-20. **"Visibility" design system**: one token block in `app/theme.py` (`TOKENS`, `FONTS`, injected
-    once as `--vz-*` CSS variables) and one primitive vocabulary in `app/components.py` —
-    `section`, `group_label`, `kpi_row`, `styled_table`, `stepper`, `chip`, `card` — that every tab
-    is composed from. The rules are explicit and testable: one real display heading per logical
-    block with a beacon bar (never a caption or a tiny uppercase eyebrow used as a heading, pinned
-    by `tests/test_tabs_render.py`), exactly one accent colour meaning "interactive", status and
-    decision colours used only as *data* colours and always paired with the word, chip and banner
-    inks chosen by WCAG relative luminance so no label ever falls below 4.5:1, numbers in tabular
-    mono, and nothing below 0.8rem. The result is that nine tabs read as one product, and a viewer
-    can tell a verdict from chrome at a glance.
+AI assistance is disclosed in a separate archive that ships alongside this one.
 
 ---
 
-## Quickstart Guide
+## 1. What is in the project
 
-### 1. Install and load every source, then run the whole system on one laptop
+### 1.1 Architecture
 
-```powershell
-pip install -r requirements.txt
-python scripts/load_source.py REG
-python scripts/load_source.py INS
-python scripts/load_source.py THEFT
-python scripts/load_source.py CAM
-python scripts/load_source.py PUC
-python scripts/seed_mappings.py
-python run_system.py
+```
+            Streamlit GUI  (app/)
+                  |
+   MEDIATOR  (mediator/)                      metadata: mediator/meta.db
+   planner -> decomposer -> executor -> integrator -> decision rules
+      |            |            |            |            |
+      | HTTP/JSON, in parallel, per-source timeout
+      v            v            v            v            v
+   wrapper      wrapper      wrapper      wrapper      wrapper       sources/wrapper_template.py
+   REG :8001    INS :8002    THEFT :8003  CAM :8004    PUC :8005
+   PostgreSQL   MySQL        SQLite       PostgreSQL   SQLite
 ```
 
-`load_source.py <SRC>` builds that source's local SQLite copy from its own `schema.sql` and the
-committed CSVs (`--url` points it at a real PostgreSQL/MySQL instance instead; `--verify` counts
-the demo plates afterwards). `seed_mappings.py` writes the team's validated GAV mappings into
-`meta.db` so the mediator can answer queries without first clicking through the Matcher tab.
-`run_system.py` then boots all five wrappers (ports 8001–8005) and the Streamlit GUI at
-**http://localhost:8501**.
+| Source | Agency | Engine | Tables | Plate stored as |
+|---|---|---|---|---|
+| REG | Regional Transport Office | PostgreSQL | `OWNERS`, `VEHICLE_REGISTRATION` | `DL01AB1234` |
+| INS | Insurance provider | MySQL | `INSURERS`, `POLICY_RECORDS` | `DL-01-AB-1234` |
+| THEFT | Police | SQLite | `CRIME_RECORDS` | `dl 01 ab 1234` |
+| CAM | Road cameras | PostgreSQL | `CAMERAS`, `PLATE_CAPTURES` | OCR output, may contain misreads |
+| PUC | Pollution certificates | SQLite | `POLLUTION_CERT` | `DL01AB1234`; added live to show extensibility |
 
-### 2. Bring up one source on its own laptop (no env-var juggling)
+Each source is served by a **wrapper**, a small FastAPI service in front of its database:
+
+| Endpoint | Does |
+|---|---|
+| `GET /health` | database reachable, which engine |
+| `GET /schema` | tables, columns, types, sample values |
+| `POST /query` | one `SELECT` only; whitelisted tables; 200-row cap; 3-second timeout |
+| `POST /admin/sql` | one `INSERT` / `UPDATE` / `DELETE` on whitelisted tables; on by default, switchable off per source |
+| `POST /admin/mutate` | named actions, such as renew a policy or report a theft |
+
+For each lookup the mediator:
+
+1. **plans** which sources can answer, from `SOURCE_CATALOG` in `mediator/meta.db`;
+2. **decomposes** the question into one SQL statement per source, in that source's table and column
+   names and plate format, generated from `MAPPING_REGISTRY` (global-as-view mappings);
+3. **executes** the statements in parallel over HTTP, classifying each source as OK, TIMEOUT, DOWN or
+   ERROR;
+4. **integrates** the rows into one vehicle profile: date and flag transforms, latest row wins
+   within a source, provenance and trust on every value, conflict detection;
+5. **decides** with ordered, explainable rules, and answers UNDETERMINED rather than guessing when a
+   needed source did not reply.
+
+**Global schema.** The mediated schema, `VEHICLE_PROFILE`, is defined in `mediator/schema.py` as
+`GLOBAL_SCHEMA_ATTRIBUTES`. The mappings from each source to it live in `MAPPING_REGISTRY`, seeded by
+`scripts/seed_mappings.py`, and are visible on the website's Catalog page.
+
+**Challan Guard** is the innovation feature. A camera sighting becomes a candidate e-challan, never a
+fine. Six ordered checks run live against the sources:
+
+1. are the sources reachable;
+2. who is the vehicle really, with one-character OCR correction;
+3. impossible travel between cameras, a cloned-plate signal;
+4. stolen before the sighting;
+5. registration valid;
+6. insured on the day of the sighting.
+
+A citizen dispute re-runs the checks live. The design rationale and sources are in
+`docs/FIELD_RESEARCH.md`.
+
+### 1.2 Repository layout
+
+| Path | Contents |
+|---|---|
+| `app/` | Streamlit GUI: `app.py`, `theme.py`, `components.py`, one module per page in `tabs/` |
+| `mediator/` | planner, decomposer, executor, integrator, transforms, decision rules, schema matcher, catalog, Challan Guard, reports |
+| `sources/` | `wrapper_template.py`, one `wrapper.py` and `schema.sql` per source, `server_manager.py`, `_mock/` fixtures for tests |
+| `scripts/` | loading, serving, cluster configuration, data changes, evaluation (section 4) |
+| `data/` | ground truth, gold mappings, story-vehicle fixtures, Challan Guard candidates |
+| `*.csv` | the synthetic source data, committed so every machine loads identical data |
+| `reg.py` `ins.py` `theft.py` `cam.py` `puc.py` | seeded data generators (section 5) |
+| `tests/` | 47 test modules: pytest, including end-to-end runs against a local cluster |
+| `docs/report.md` | project report |
+| `docs/heterogeneity_table.md` | every heterogeneity between the sources and how it is resolved |
+| `docs/CONTRACTS.md` | wrapper and mediator interfaces |
+| `docs/INTEGRATION_REPORT.md` | audit of the original source schemas the mediator adapts to |
+| `docs/FIELD_RESEARCH.md` | real-world sources behind the Challan Guard feature |
+| `docs/screenshots/` | the GUI |
+| `run_system.py` | starts all five wrappers and the GUI on one machine |
+
+Not in the archive, created by the steps below: the database files (`sources/*/*.db`), the
+metadata store `mediator/meta.db`, and per-machine settings `sources/*/laptop.env`.
+
+---
+
+## 2. Reproduce on one computer
+
+Every source runs on this machine, on SQLite. This reproduces all results in the report. Tested on
+Windows 11 with Python 3.12. Commands are PowerShell; on macOS or Linux use `/` in paths and
+`source .venv/bin/activate`.
+
+### 2.1 Install
 
 ```powershell
-python scripts/serve.py INS --db-url "mysql+pymysql://iia:pw@127.0.0.1:3306/insdb"
-python scripts/serve.py INS                       # later runs: re-loads sources/ins/laptop.env
-python scripts/serve.py INS --check               # verify the demo plates, don't serve
-python scripts/serve.py INS --readonly-admin      # disable /admin/* on this laptop only
+cd IIA_Project
+py -3.12 -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
 ```
 
-Settings (`--db-url`, `--port`, `--readonly-admin`) persist to that source's gitignored
-`sources/<id>/laptop.env` and reload on the next run. The command prints this laptop's own IP(s)
-and the exact `python scripts/configure_cluster.py --set <ID>=<ip>` line to run on laptop 1.
+If PowerShell blocks `Activate.ps1`: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`, then
+retry. `easyocr` pulls in PyTorch and is large. It is only needed for the plate-photo upload, and the
+rest of the app works without it.
 
-### 3. Run the automated test suite
+### 2.2 Build the databases and metadata
+
+```powershell
+python scripts\load_source.py REG
+python scripts\load_source.py INS
+python scripts\load_source.py THEFT
+python scripts\load_source.py CAM
+python scripts\load_source.py PUC
+python scripts\seed_mappings.py
+python scripts\seed_challan_cases.py --reset
+```
+
+Expected row counts:
+
+| Source | Rows |
+|---|---|
+| REG | 1,210 (605 owners, 605 vehicles) |
+| INS | 569 (5 insurers, 564 policies) |
+| THEFT | 42 |
+| CAM | 925 (7 cameras, 918 sightings) |
+| PUC | 424 |
+
+`seed_mappings.py` reports PUC as skipped. That is intended: PUC joins the catalog live, in
+section 2.5.
+
+### 2.3 Reproduce the results
+
+Run these before starting the GUI, because the tests and the GUI use the same ports, 8001–8005.
 
 ```powershell
 python -m pytest -q
+python scripts\evaluate_ground_truth.py --start-wrappers
+python scripts\evaluate_matcher.py
 ```
 
-546 tests (3 deselected `@pytest.mark.live` contract tests, run separately below) cover the
-transport layer, schema matching, planning, decomposition, integration, the decision ladder, the
-admin write menu, OCR, watchlist/risk, the evidence bundle, and every GUI tab
-(`streamlit.testing.v1.AppTest`, zero-exception full-app renders).
+| Check | Expected |
+|---|---|
+| test suite | `678 passed, 3 deselected`; the 3 deselected are live tests for real multi-machine sources |
+| ground truth | `accuracy 621/621 = 100.0%`: every vehicle's decision matches `data/ground_truth.csv` |
+| schema matcher | `OVERALL 23 0 0 1.00 1.00 1.00`: precision and recall against `data/gold_mapping.json` |
+
+### 2.4 Run the system
 
 ```powershell
-python scripts/evaluate_ground_truth.py --start-wrappers   # 621/621 decisions correct
-python scripts/evaluate_matcher.py                          # precision/recall vs the gold mapping
-pytest -q -m live                                            # contract test against the real 4-5 laptops
+python scripts\configure_cluster.py --local
+python run_system.py
+```
+
+Open http://localhost:8501 and stop with Ctrl+C. Pages are in the sidebar:
+
+| Page | Try |
+|---|---|
+| Investigate | the five demo buttons; any plate in any spelling |
+| Challan Guard | pick a case and press Verify (live), or Verify all candidates |
+| Watchlist, Reports, Citizen Check | alerts, Ministry reports and PDF evidence, a citizen dispute |
+| Plan Trace | the SQL each source received, and per-source latency |
+| Catalog, Matcher | registered sources and mappings; schema matching live |
+| SQL Console, Source Editor | read, and change, a source's data through its API |
+
+Expected verdicts for the story vehicles:
+
+| Plate | Verdict |
+|---|---|
+| `DL01AB1234` | CLEAR |
+| `DL05CD9876` | UNINSURED — REPORT |
+| `HR26EF4455` | STOLEN — ALERT POLICE |
+| `UP16GH1122` | SUSPICIOUS — POSSIBLE CLONED PLATE |
+| `MH12IJ7788` | UNREGISTERED / SUSPICIOUS |
+| `KA05MN9999` | UNKNOWN VEHICLE — NOT REGISTERED |
+
+### 2.5 Show live federation and extensibility
+
+**Freshness.** With the GUI running, in a second terminal:
+
+```powershell
+python scripts\mutate_source.py renew INS DL05CD9876 --until 31/12/2027
+```
+
+Look up `DL05CD9876` again: the verdict changes to CLEAR with no refresh step, because nothing is
+cached. Undo:
+
+```powershell
+python scripts\mutate_source.py expire INS DL05CD9876 --until 10/06/2026
+```
+
+**Refusal.** Stop one wrapper, and the verdict becomes UNDETERMINED, naming that source.
+
+**Extensibility.** Catalog page → *Register a new source* → the form is pre-filled for PUC at
+`http://127.0.0.1:8005` → submit. Then run `python scripts\seed_mappings.py`. Look up `DL01AB1234`:
+the profile now includes the pollution certificate. No mediator code changed. Remove it again with
+`python scripts\configure_cluster.py --remove PUC`.
+
+---
+
+## 3. Deploy across several computers
+
+The intended deployment is one agency per machine, with PostgreSQL and MySQL for the real engines.
+Any split works. For example:
+
+| Machine | Runs |
+|---|---|
+| A | mediator + GUI, REG on PostgreSQL, PUC on SQLite |
+| B | INS on MySQL |
+| C | THEFT on SQLite, CAM on PostgreSQL |
+
+Every machine first completes sections 2.1 and 2.2.
+
+### 3.1 Network
+
+Put all machines on one network. A phone hotspot works; campus Wi-Fi often blocks machines from
+reaching each other. Find each machine's address:
+
+```powershell
+ipconfig | Select-String IPv4
+```
+
+On each machine, as Administrator, open **only** the wrapper ports that machine serves:
+
+```powershell
+netsh advfirewall firewall add rule name="IIA wrapper 8002" dir=in action=allow protocol=TCP localport=8002
+```
+
+Keep each database private to its machine:
+
+- **PostgreSQL:** `listen_addresses = 'localhost'` in `postgresql.conf`.
+- **MySQL:** `bind-address = 127.0.0.1` in `my.ini` or `my.cnf`.
+
+Restart the database service after either change. Only the wrapper is reachable from the network.
+
+### 3.2 Load each real database
+
+Each database needs an owner account for loading and writing, and a read-only account `iia_reader`
+that the wrapper queries with. Grants belong to one database, so create them for each one.
+`--grant iia_reader` re-applies read access after each load, because loading rebuilds the tables.
+
+**MySQL, INS:**
+
+```powershell
+mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS insdb; CREATE USER IF NOT EXISTS 'iia_reader'@'localhost' IDENTIFIED BY 'secret';"
+python scripts\load_source.py INS --url "mysql+pymysql://root:<password>@127.0.0.1:3306/insdb" --verify --grant iia_reader
+```
+
+**PostgreSQL, REG.** For CAM, use `camdb` in place of `regdb`, and `CAM` in the load command.
+
+```powershell
+psql -U postgres -h 127.0.0.1 -c "CREATE DATABASE regdb;"
+psql -U postgres -h 127.0.0.1 -c "CREATE ROLE iia_reader LOGIN PASSWORD 'secret';"
+psql -U postgres -h 127.0.0.1 -d regdb -c "GRANT CONNECT ON DATABASE regdb TO iia_reader; GRANT USAGE ON SCHEMA public TO iia_reader;"
+python scripts\load_source.py REG --url "postgresql+psycopg2://postgres:<password>@127.0.0.1:5432/regdb" --verify --grant iia_reader
+```
+
+`--verify` prints a row count for each story plate. `MH12IJ7788` is absent from REG by design. A
+`CREATE ... already exists` message is harmless.
+
+Check the read-only account before serving. Run this on the machine that owns the database; it must
+print a count, not an error:
+
+```powershell
+python scripts\sql.py REG --url "postgresql+psycopg2://iia_reader:secret@127.0.0.1:5432/regdb" "SELECT COUNT(*) AS n FROM vehicle_registration"
+```
+
+### 3.3 Start the wrappers
+
+`--db-url` is the read-only account for queries. `--admin-url` is the owner account for writes. Both
+are saved to `sources\<id>\laptop.env`, so later starts need only `python scripts\serve.py <SRC>`.
+
+```powershell
+python scripts\serve.py INS --db-url "mysql+pymysql://iia_reader:secret@127.0.0.1:3306/insdb" --admin-url "mysql+pymysql://root:<password>@127.0.0.1:3306/insdb"
+python scripts\serve.py REG --db-url "postgresql+psycopg2://iia_reader:secret@127.0.0.1:5432/regdb" --admin-url "postgresql+psycopg2://postgres:<password>@127.0.0.1:5432/regdb"
+python scripts\serve.py THEFT
+```
+
+Each wrapper stays in the foreground, so use one terminal per source. Check each:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8002/health
+```
+
+It must show `up: True` and the right engine. If a PostgreSQL or MySQL source reports `SQLite`, the
+URL did not reach the wrapper.
+
+On the machine that runs the GUI, start its own wrappers **before** the GUI. The GUI starts a local
+SQLite wrapper on any free port.
+
+### 3.4 Connect the mediator
+
+On the GUI machine, with the real addresses:
+
+```powershell
+python scripts\configure_cluster.py --set REG=127.0.0.1 INS=<ip-B> THEFT=<ip-C> CAM=<ip-C>
+python scripts\configure_cluster.py --probe
+```
+
+The probe must report every source `UP`, with its engine and `admin: on`. Then:
+
+```powershell
+python scripts\seed_challan_cases.py --reset
+streamlit run app\app.py
+```
+
+Test the federation across machines. On machine B:
+
+```powershell
+python scripts\mutate_source.py renew INS DL05CD9876 --until 31/12/2027
+```
+
+On the GUI, `DL05CD9876` now reads CLEAR. Undo on B:
+
+```powershell
+python scripts\mutate_source.py expire INS DL05CD9876 --until 10/06/2026
+```
+
+Return to single-machine mode with `python scripts\configure_cluster.py --local`.
+
+---
+
+## 4. Command reference
+
+Run from `IIA_Project`, with the virtual environment active.
+
+| Command | Does |
+|---|---|
+| `python scripts\load_source.py <SRC> [--url URL] [--sqlite] [--verify] [--grant ROLE]` | drop, create and load one source from its `schema.sql` and CSVs. Default target is the local SQLite file. |
+| `python scripts\seed_mappings.py [--show]` | write the approved global-as-view mappings into `MAPPING_REGISTRY` |
+| `python scripts\serve.py <SRC> [--db-url URL] [--admin-url URL] [--port N] [--readonly-admin] [--check]` | serve one source's wrapper; settings persist in `sources\<id>\laptop.env`. `--readonly-admin` disables writes. |
+| `python run_system.py` | all five wrappers plus the GUI on one machine |
+| `streamlit run app\app.py` | GUI only |
+| `python scripts\configure_cluster.py --set SRC=IP ... \| --local \| --show \| --probe \| --remove SRC` | point the mediator at source addresses, or check them |
+| `python scripts\sql.py <SRC> "<SQL>" [--url URL] \| --tables` | run any SQL on this machine's own copy of a source, or list its tables with column types and row counts |
+| `python scripts\mutate_source.py <action> <SRC> <PLATE> [flags]` | named data changes on the machine that owns the source, such as `show`, `renew`, `expire`, `add_policy`, `delete_policies`, `steal`, `clear`, `sight`, `delete_sightings`, `set_status`, `register`, `unregister`; `--help` lists all |
+| `python scripts\seed_challan_cases.py [--reset] [--verify] [--show]` | queue the Challan Guard candidates; `--verify` also checks them live |
+| `python scripts\evaluate_ground_truth.py --start-wrappers` | score every vehicle's decision against `data/ground_truth.csv` |
+| `python scripts\evaluate_matcher.py` | precision and recall of the schema matcher against `data/gold_mapping.json` |
+| `python -m pytest -q` | the test suite; `-m live` runs the multi-machine contract tests |
+
+Reading a source over its API, from any machine:
+
+```powershell
+$body = @{ sql = "SELECT vehicle_reg, policy_until FROM POLICY_RECORDS WHERE vehicle_reg = 'DL-05-CD-9876'" } | ConvertTo-Json
+(Invoke-RestMethod -Method Post -Uri "http://<ip>:8002/query" -ContentType "application/json" -Body $body).rows
 ```
 
 ---
 
-## Pre-Loaded Demo Scenarios
+## 5. Regenerate the data
 
-| License Plate | Scenario Description | Expected Outcome |
-| :--- | :--- | :--- |
-| `DL01AB1234` | Valid registration, active comprehensive insurance, verified by camera | **`CLEAR`** (High Confidence) |
-| `DL05CD9876` | Valid registration, expired insurance policy | **`UNINSURED — REPORT`** (High Confidence) |
-| `DL09KL3321` | Registered, no policy row at all | **`UNINSURED — REPORT`** |
-| `HR26EF4455` | Stolen vehicle with an open police case FIR | **`STOLEN — ALERT POLICE`** (High Confidence) |
-| `UP16GH1122` | REG specifies Hyundai Creta (white), CAM sighted Hyundai Venue (silver) | **`SUSPICIOUS — POSSIBLE CLONED PLATE`** (Medium Confidence) |
-| `MH12IJ7788` | Sighted by traffic camera, but has no REG record | **`UNREGISTERED / SUSPICIOUS`** (Medium Confidence) |
-| `DL03SC5566` | Registered, then officially shredded, then seen again on camera | **`SCRAPPED — ALERT POLICE`** (High Confidence) |
-| any plate in no source | Nothing on record anywhere asked | **`UNKNOWN VEHICLE — NOT REGISTERED`** — Investigate offers the onboarding wizard |
+The committed CSVs are what every result above was measured on. Regenerate only if you want
+different synthetic data. Run on one machine, then share the CSVs, so every machine loads
+identical data:
+
+```powershell
+python reg.py
+python ins.py
+python theft.py
+python cam.py
+python puc.py
+python data\inject_demo_fixtures.py
+python data\make_ground_truth.py
+```
+
+The generators are seeded, but a different `faker` version produces different names, so ground-truth
+counts may change. Reload every source afterwards (section 2.2).
 
 ---
 
-## Repository Structure
+## 6. Troubleshooting
 
-```
-IIA_Project/
-├── data/
-│   ├── ground_truth.csv          # Independently computed oracle for every generated plate (621 rows)
-│   ├── gold_mapping.json         # Hand-made gold correspondences for matcher precision/recall
-│   └── make_ground_truth.py      # Regenerates ground_truth.csv from the source CSVs
-├── sources/
-│   ├── wrapper_template.py       # FastAPI adapter factory: /health, /schema, /query, /admin/*
-│   ├── server_manager.py         # Multi-threaded server coordinator for local demo/tests
-│   ├── reg/                      # Regional Transport Office (PostgreSQL / SQLite :8001)
-│   ├── ins/                      # Insurance Authority (MySQL / SQLite :8002)
-│   ├── theft/                    # Police Crime Records (SQLite :8003)
-│   ├── cam/                      # Road Traffic Camera Network (PostgreSQL / SQLite :8004)
-│   └── puc/                      # Pollution Certificate Agency (Extensibility UC6 :8005)
-├── mediator/
-│   ├── schema.py                 # VEHICLE_PROFILE global schema, derived_from / needs_identity_check metadata
-│   ├── transforms.py             # Pure transformation functions (norm_plate, parse_dates, etc.)
-│   ├── matcher.py                # Hybrid schema matching algorithm (N, C, I scoring)
-│   ├── catalog.py                # Source catalog, GAV mapping registry, watchlist/alert/report tables in meta.db
-│   ├── planner.py                # Metadata-driven query source selection (no source id in the code)
-│   ├── decomposer.py             # LEFT JOIN SQL generation, explicit columns, OCR fold, portable pushdown
-│   ├── executor.py               # Parallel federated execution with per-source timeouts
-│   ├── integrator.py             # Outer join, provenance tracking, metadata-driven latest-wins, conflicts
-│   ├── decide.py                 # Ordered, deterministic decision engine incl. the insurance ladder
-│   ├── risk.py                   # Explainable 0-100 risk score from the decision + additive factors
-│   ├── watchlist.py               # Watchlisted plates + alert log
-│   ├── plate_ocr.py              # EasyOCR reading + position-aware plate-confusion repair
-│   ├── ground_truth.py           # Oracle decision function mirroring decide.py, for grading
-│   ├── report.py                 # REPORT_LOG persistence and the evidence-bundle PDF generator
-│   └── core.py                   # Central mediator coordinator (run_global_query)
-├── app/
-│   ├── app.py                    # ~120-line shell: theme, masthead, sidebar, 8 tab shells
-│   ├── theme.py                  # AirSentinel-derived design tokens and the one injected stylesheet
-│   ├── components.py             # Shared render helpers (banner, chips, profile cards, risk gauge, …)
-│   └── tabs/                     # investigate, plan_trace, matcher_tab, catalog_tab, reports,
-│                                  # sql_console, watchlist, self_check, source_editor, onboarding, ocr_upload
-├── scripts/
-│   ├── serve.py                  # One-command single-laptop bring-up
-│   ├── load_source.py            # Build/load one source's database from its schema.sql + CSVs
-│   ├── seed_mappings.py          # Seed MAPPING_REGISTRY with the team's validated mappings
-│   ├── configure_cluster.py      # Point the mediator laptop at the other laptops' IPs; --probe
-│   ├── mutate_source.py          # CLI equivalent of every /admin/mutate action, any DBMS
-│   ├── validate_registry.py      # Coverage-matrix sanity check of the registry
-│   ├── evaluate_ground_truth.py  # Grade live decisions against data/ground_truth.csv
-│   └── evaluate_matcher.py       # Precision/recall of the schema matcher vs data/gold_mapping.json
-├── tests/                        # 546 active tests (transport, matcher, planner, decomposer,
-│                                  # integrator, decide, risk, watchlist, OCR, report, all 8 GUI tabs)
-├── docs/
-│   ├── report.md                 # Full project technical report
-│   ├── heterogeneity_table.md    # Heterogeneity checklist
-│   ├── demo_script.md            # 10-minute rehearsal script
-│   ├── LAPTOP_SETUP.md           # Machine-by-machine bring-up runbook
-│   ├── NETWORK.md                # Topology, status semantics, latency budget
-│   └── FIELD_RESEARCH.md         # Real-world systems the Phase 2 innovations mirror
-├── STUDY_GUIDE.md                # Whole-project explainer for the viva
-├── run_system.py                 # One-command system runner (all 5 wrappers + GUI)
-└── README.md                     # This file
-```
+| Symptom | Cause | Fix |
+|---|---|---|
+| tests or ground truth report `UNDETERMINED` | the GUI is using ports 8001–8005, or the catalog points at other machines | stop the GUI; run `configure_cluster.py --local` |
+| every profile is blank | mapping registry is empty | `python scripts\seed_mappings.py` |
+| a PostgreSQL or MySQL wrapper reports SQLite | URL not given to the wrapper | `serve.py <SRC> --db-url "..." --admin-url "..."` |
+| `permission denied for table ...` | read-only account has no grant on this database | reload with `--grant iia_reader` |
+| website writes fail | wrapper has no owner account | restart the wrapper with `--admin-url` |
+| `password authentication failed` | wrong password, or another PostgreSQL version holds port 5432 | `Get-Service postgresql*`; keep one version running |
+| `must be owner of table` when loading | loading with the read-only account, often from a `<SRC>_DB_URL` environment variable | pass the owner URL with `--url`, or `Remove-Item Env:<SRC>_DB_URL` |
+| `--probe` says `unreachable` | firewall rule missing, wrapper stopped, or IP changed | section 3.1; `ipconfig` on that machine |
+| `Address already in use` | a wrapper is already running on that port | close it, or use the running one |
+| GUI looks outdated after changes | cached stylesheet | Ctrl+F5 |

@@ -10,7 +10,8 @@ repository.
 | this file | tools, workflow, a phase-by-phase map of prompts to code, file inventory, reproduction steps |
 | [`docs/ai/PROMPTS.md`](docs/ai/PROMPTS.md) | every prompt we typed, in order, word for word, with Claude's reply to each |
 | [`docs/superpowers/plans/`](docs/superpowers/plans/) | the implementation plans the AI wrote before coding, with outcomes recorded |
-| [`docs/DEMO_GUIDE.md`](docs/DEMO_GUIDE.md) | how to run, test and demo the system |
+| [`2026-09-17-191510-ai-interactions.txt`](2026-09-17-191510-ai-interactions.txt) | transcript of a second Claude Code session (Opus 5, a separate Claude Pro account) used by the team on 16–17 Sep to commit the project to the team repository and set up the multi-laptop demo; passwords and email addresses redacted |
+| `README.md` in the code archive | how to set up, run and reproduce the system |
 | `git log` | every AI-produced change, commit by commit |
 
 ---
@@ -104,8 +105,8 @@ explanations (real-time retrieval, trust scores, views, how a professor's SQL wo
 setting up PostgreSQL and the virtual environment on laptop 1, and a request for adding, updating and
 deleting records from the GUI and from PowerShell.
 
-**Built.** `STUDY_GUIDE.md`; three study pages published privately on claude.ai (not part of the
-repository); the SQL Console tab with live `SELECT` and guarded `INSERT` / `UPDATE` / `DELETE`
+**Built.** A viva study guide and three study pages published privately on claude.ai (learning
+material for the team, not part of the submission); the SQL Console tab with live `SELECT` and guarded `INSERT` / `UPDATE` / `DELETE`
 (`8a2b2c2`, fix `74d37ee`).
 
 ### Phase 3 — overhaul after the class review (16 Sep)
@@ -166,7 +167,7 @@ every plate is real; a rubric walkthrough; one single guide.
 - `mutate_source.py` reading the saved per-laptop configuration.
 - `scripts/sql.py` for running SQL safely from PowerShell.
 - A fix for blank form fields breaking the onboarding "Add policy" step.
-- `docs/DEMO_GUIDE.md`.
+- A single demo guide for the team (learning material, not part of the submission).
 
 An audit found no fake plates in the app, scripts or seed data.
 
@@ -174,7 +175,9 @@ An audit found no fake plates in the app, scripts or seed data.
 per-database read-only grants, an environment variable redirecting a data load. Led to `5ca0b51` and
 `a33ca78` (guide corrections) and a successful live cross-laptop test run by the team.
 
-**Prompts 56–60.** This document, the prompt and reply log, and viva preparation (`docs/VIVA_JUSTIFICATIONS.md`).
+**Prompts 56 onward.** This document, the prompt and reply log, viva preparation mapped to the
+course slides (learning material, not part of the submission), a fix so a policy must have started by
+the sighting date, documentation corrections, the setup README and the submission archives.
 
 ## 5. File inventory
 
@@ -190,14 +193,14 @@ Generated with `git diff --name-status cfef269 HEAD`. Paths are relative to `IIA
 | Scripts | `load_source.py`, `serve.py`, `configure_cluster.py`, `mutate_source.py`, `sql.py`, `seed_mappings.py`, `seed_challan_cases.py`, `evaluate_ground_truth.py`, `evaluate_matcher.py`, `validate_registry.py`, `run_local.py` |
 | Data | `data/ground_truth.csv`, `data/make_ground_truth.py`, `data/gold_mapping.json`, `data/challan_candidates.json`, `data/mediator_test_cases.csv`; committed CSV exports of the generated source data |
 | Tests | 47 files under `tests/`, including `conftest.py` (shared local cluster) and fixtures |
-| Docs | `DEMO_GUIDE.md`, `LAPTOP_SETUP.md`, `NETWORK.md`, `CONTRACTS.md`, `INTEGRATION_REPORT.md`, `FIELD_RESEARCH.md`, the three plans, screenshots, `STUDY_GUIDE.md`, `pytest.ini`, `requirements.txt`, this file, `docs/ai/PROMPTS.md` |
+| Docs | `README.md` (rewritten as the setup and reproduction guide), `CONTRACTS.md`, `INTEGRATION_REPORT.md`, `FIELD_RESEARCH.md`, screenshots, `pytest.ini`, `requirements.txt`, the three plans, this file, `docs/ai/PROMPTS.md`. Team learning material (study guide, demo guide, viva notes, laptop setup and network notes) was also written but is not part of the submission. |
 
 **Team files the AI modified**
 
 `app/app.py`, `mediator/catalog.py`, `core.py`, `decide.py`, `decomposer.py`, `executor.py`,
 `integrator.py`, `matcher.py`, `planner.py`, `report.py`, `schema.py`, the five
 `sources/*/wrapper.py`, `data/inject_demo_fixtures.py`, `cam.py`, `ins.py`, `theft.py`,
-`live_update.py`, `run_system.py`, `README.md`, `docs/demo_script.md`, `docs/report.md`,
+`live_update.py`, `run_system.py`, `README.md`, `docs/report.md`,
 `tests/fixtures.py`, `tests/test_decomposer.py`, `tests/test_e2e_groundtruth.py`, `.gitignore`.
 
 To see exactly what changed in any file:
@@ -232,7 +235,7 @@ python scripts\seed_challan_cases.py --reset
 Check the numbers quoted in our report and demo:
 
 ```powershell
-python -m pytest -q                                          # 672 passed, 3 deselected
+python -m pytest -q                                          # 678 passed, 3 deselected
 python scripts\evaluate_ground_truth.py --start-wrappers     # 621/621 = 100.0%
 python scripts\evaluate_matcher.py                           # OVERALL precision 1.00, recall 1.00
 ```
@@ -244,8 +247,8 @@ python scripts\configure_cluster.py --local
 python run_system.py                                         # http://localhost:8501
 ```
 
-The multi-laptop setup with real PostgreSQL and MySQL, and a step-by-step test of every feature, are
-in `docs/DEMO_GUIDE.md`.
+The multi-computer setup with real PostgreSQL and MySQL is in section 3 of `README.md` in the code
+archive.
 
 ### 6.2 The AI process
 
