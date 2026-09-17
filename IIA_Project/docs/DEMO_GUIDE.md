@@ -153,27 +153,48 @@ netsh advfirewall firewall add rule name="IIA wrapper 8002" dir=in action=allow 
 Only wrapper ports open. The database ports (5432, 3306) stay closed. Agencies publish an API, not a
 database.
 
-**Step 3 — load each real database.** Installing PostgreSQL and MySQL, creating the empty database
-and the read-only account are in `docs/LAPTOP_SETUP.md` §3. Then:
+**Step 3 — create each database, its read-only account, and load it.** Installing PostgreSQL and
+MySQL is in `docs/LAPTOP_SETUP.md` §3. Every database needs its **own** grants: an account that can
+read `regdb` cannot read `camdb`. `--grant iia_reader` re-applies read access after every load,
+because a load drops and rebuilds the tables and a dropped table loses its grants.
 
-Laptop 2:
+Laptop 2, MySQL:
 
 ```powershell
-python scripts\load_source.py INS --url "mysql+pymysql://root:<pw>@127.0.0.1:3306/insdb" --verify
+mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS insdb; CREATE USER IF NOT EXISTS 'iia_reader'@'localhost' IDENTIFIED BY 'secret';"
+python scripts\load_source.py INS --url "mysql+pymysql://root:<pw>@127.0.0.1:3306/insdb" --verify --grant iia_reader
 ```
 
-Laptop 3:
+Laptop 3, SQLite and PostgreSQL. `CREATE ROLE` says "already exists" if the account was made
+before; that is fine, carry on.
 
 ```powershell
 python scripts\load_source.py THEFT --verify
-python scripts\load_source.py CAM --url "postgresql+psycopg2://postgres:<pw>@127.0.0.1:5432/camdb" --verify
+psql -U postgres -c "CREATE DATABASE camdb;"
+psql -U postgres -c "CREATE ROLE iia_reader LOGIN PASSWORD 'secret';"
+psql -U postgres -d camdb -c "GRANT CONNECT ON DATABASE camdb TO iia_reader; GRANT USAGE ON SCHEMA public TO iia_reader;"
+python scripts\load_source.py CAM --url "postgresql+psycopg2://postgres:<pw>@127.0.0.1:5432/camdb" --verify --grant iia_reader
 ```
 
-Main laptop:
+Main laptop, PostgreSQL:
 
 ```powershell
-python scripts\load_source.py REG --url "postgresql+psycopg2://postgres:<pw>@127.0.0.1:5432/regdb" --verify
+psql -U postgres -c "CREATE DATABASE regdb;"
+psql -U postgres -c "CREATE ROLE iia_reader LOGIN PASSWORD 'secret';"
+psql -U postgres -d regdb -c "GRANT CONNECT ON DATABASE regdb TO iia_reader; GRANT USAGE ON SCHEMA public TO iia_reader;"
+python scripts\load_source.py REG --url "postgresql+psycopg2://postgres:<pw>@127.0.0.1:5432/regdb" --verify --grant iia_reader
 ```
+
+**Check the read-only account before starting the wrapper.** This is the exact account the wrapper
+will use. It must print a row count, not an error:
+
+```powershell
+python scripts\sql.py CAM --url "postgresql+psycopg2://iia_reader:secret@127.0.0.1:5432/camdb" "SELECT COUNT(*) AS n FROM plate_captures"
+python scripts\sql.py INS --url "mysql+pymysql://iia_reader:secret@127.0.0.1:3306/insdb" "SELECT COUNT(*) AS n FROM POLICY_RECORDS"
+python scripts\sql.py REG --url "postgresql+psycopg2://iia_reader:secret@127.0.0.1:5432/regdb" "SELECT COUNT(*) AS n FROM vehicle_registration"
+```
+
+Expected: CAM 918, INS 564, REG 605.
 
 `--verify` prints the row count for each story plate. `MH12IJ7788` must show 0 in REG: it is the
 deliberately unregistered vehicle.
@@ -843,6 +864,9 @@ reasons."
 | `--probe` says `unreachable` | firewall rule missing, wrapper stopped, IP changed | step 2 of 1.3 on that laptop; re-check `ipconfig`; re-run `--set` |
 | `--probe` says `admin: off` | wrapper started with `--readonly-admin` | restart it without that flag |
 | `/health` says SQLite on laptop 2 | the URL never reached the wrapper | `serve.py INS --db-url "..." --admin-url "..."` |
+| `permission denied for table ...` | the read-only account has no grant on this database | reload with `--grant iia_reader` (step 3) |
+| `password authentication failed for user "iia_reader"` or `role ... does not exist` | the account was never created on this laptop | the `CREATE ROLE` / `CREATE USER` line in step 3 |
+| `could not connect to server` / `Connection refused` on 5432 or 3306 | the database service is stopped | Services app: start `postgresql-x64-17` or `MySQL80`, as Administrator |
 | website writes fail with "permission denied" | wrapper has no owner account for writes | restart with `--admin-url` |
 | a PowerShell change does not show on the website | changed a different copy of the data | run it on the laptop that owns the data, or use Way C |
 | every profile is blank | mapping registry empty | `python scripts\seed_mappings.py` |

@@ -369,11 +369,18 @@ you want belt and braces. Firewall: port 8003.
 
 ### 3.4 Laptop 4 — CAM, PostgreSQL, port 8004
 
-Exactly section 3.1 with `camdb`, `PLATE_CAPTURES` / `CAMERAS` and port 8004:
+Section 3.1 with `camdb`, `PLATE_CAPTURES` / `CAMERAS` and port 8004. **The grants are per database**:
+the `iia_reader` grants made on `regdb` do not reach `camdb`, so grant again here. `--grant iia_reader`
+does the table grants for you, and must be repeated on every reload because a reload drops the tables.
+
+```bash
+psql -U postgres -c "CREATE ROLE iia_reader LOGIN PASSWORD 'secret';"      # 'already exists' is fine
+psql -U postgres -d camdb -c "GRANT CONNECT ON DATABASE camdb TO iia_reader; GRANT USAGE ON SCHEMA public TO iia_reader;"
+```
 
 ```bash
 psql -U postgres -c "CREATE DATABASE camdb;"
-python scripts/load_source.py CAM --url "postgresql+psycopg2://postgres:<pw>@127.0.0.1:5432/camdb" --verify
+python scripts/load_source.py CAM --url "postgresql+psycopg2://postgres:<pw>@127.0.0.1:5432/camdb" --verify --grant iia_reader
 python scripts/serve.py CAM --db-url "postgresql+psycopg2://iia_reader:secret@127.0.0.1:5432/camdb" --admin-url "postgresql+psycopg2://postgres:<pw>@127.0.0.1:5432/camdb"
 ```
 
