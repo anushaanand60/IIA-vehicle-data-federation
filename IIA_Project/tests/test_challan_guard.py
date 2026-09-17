@@ -365,3 +365,17 @@ def test_verify_all_runs_every_candidate_live_and_counts_the_verdicts(guard):
     assert (summary["ISSUED"], summary["REJECTED"], summary["HOLD"]) == (6, 5, 2)
     assert guard.verify_all("operator") == {"verified": 0, "issued": 0, "rejected": 0, "held": 0}
     reset()
+
+
+def test_the_seed_cli_can_reset_and_verify_the_whole_queue(guard, capsys):
+    """`seed_challan_cases.py --reset --verify` gives a clean, fully verified queue and says why."""
+    from scripts.seed_challan_cases import main
+
+    assert main(["--reset", "--verify"]) == 0
+    out = capsys.readouterr().out
+    assert guard.queue(status="CANDIDATE") == []
+    assert len(guard.queue()) == 12
+    assert "case 5" in out and "DL01AB0002" in out and "ISSUE" in out
+    assert "impossible travel" in out and "reported stolen" in out
+    assert "12 verified: 6 issued, 5 rejected, 1 held" in out
+    main(["--reset"])

@@ -3,9 +3,11 @@
     python scripts/seed_challan_cases.py           # insert any candidate not already queued
     python scripts/seed_challan_cases.py --reset   # delete every case and event first
     python scripts/seed_challan_cases.py --show    # print the queue, change nothing
+    python scripts/seed_challan_cases.py --verify  # seed, then verify every CANDIDATE live
+    python scripts/seed_challan_cases.py --reset --verify   # a clean, fully verified queue
 
-A candidate is an ANPR event, not a verdict: nothing here decides anything. Pressing Verify in the
-Challan Guard tab (or calling mediator.challan_guard.verify) is what queries the federation live.
+A candidate is an ANPR event, not a verdict: seeding decides nothing. Pressing Verify in the
+Challan Guard tab, or passing --verify here, is what queries the federation live.
 
 Idempotent by (plate_read, captured_at): re-running after a demo adds nothing, so the queue can be
 topped up without the operator having to remember what is already in it.
@@ -90,7 +92,11 @@ def main(argv: list[str] | None = None) -> int:
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--reset", action="store_true", help="delete every case and event first")
     parser.add_argument("--show", action="store_true", help="print the queue and exit")
+    parser.add_argument("--verify", action="store_true",
+                        help="after seeding, verify every CANDIDATE live against the sources")
     args = parser.parse_args(argv)
+    if hasattr(sys.stdout, "reconfigure"):  # verdict reasons carry "—"; a cp1252 console must not crash
+        sys.stdout.reconfigure(errors="replace")
     if args.show:
         show()
         return 0
@@ -98,7 +104,20 @@ def main(argv: list[str] | None = None) -> int:
         print(f"cleared {reset()} existing case(s)")
     total = seed()
     print(f"seeded {total} candidate(s) into {catalog.META_DB_PATH}")
+    if args.verify:
+        verify_all()
     return 0
+
+
+def verify_all() -> None:
+    from mediator import challan_guard  # imported late: plain seeding must not need the federation
+
+    def report(done: int, total: int, case: dict[str, Any]) -> None:
+        print(f"  [{done}/{total}] case {case['case_id']}: {case['plate_read']} -> "
+              f"{case['verdict']} ({case['status']}): {case['reason']}", flush=True)
+
+    counts = challan_guard.verify_all(actor="seed_cli", on_progress=report)
+    print(challan_guard.tally_text(counts))
 
 
 if __name__ == "__main__":

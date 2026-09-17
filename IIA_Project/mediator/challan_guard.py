@@ -275,6 +275,12 @@ def verify_all(actor: str = "operator",
     return counts
 
 
+def tally_text(counts: Dict[str, int]) -> str:
+    """One line for a toast or a terminal: "12 verified: 6 issued, 5 rejected, 1 held"."""
+    return (f"{counts.get('verified', 0)} verified: {counts.get('issued', 0)} issued, "
+            f"{counts.get('rejected', 0)} rejected, {counts.get('held', 0)} held")
+
+
 def _override(case_id: int, status: str, verdict: str, actor: str,
               reason: Optional[str]) -> Dict[str, Any]:
     case = _load(case_id)
