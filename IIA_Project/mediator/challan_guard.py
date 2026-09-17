@@ -17,7 +17,7 @@ source cannot be reached the guard refuses to decide rather than guessing. Three
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from mediator import catalog, plate_resolve, travel_check, watchlist
 from mediator.core import run_global_query
@@ -254,6 +254,25 @@ def verify(case_id: int, actor: str = "operator") -> Dict[str, Any]:
     catalog.challan_event(case_id, "VERIFY_STARTED", actor, {"plate_read": case["plate_read"]})
     result = _verification(case, exclude_case_id=case_id)
     return _persist(case_id, result, STATUS_FOR[result["verdict"]], actor, "VERIFIED")
+
+
+def verify_all(actor: str = "operator",
+               on_progress: Optional[Callable[[int, int, Dict[str, Any]], None]] = None) -> Dict[str, int]:
+    """Verify every CANDIDATE, one at a time, live. Cases already decided are left alone.
+
+    Sequential on purpose: each verify already fans out to every source in parallel, and a repeat
+    offender's amount depends on the challans issued before it in queue order.
+    """
+    pending = catalog.challan_list(status="CANDIDATE", limit=1000)
+    counts = {"verified": 0, "issued": 0, "rejected": 0, "held": 0}
+    tally = {ISSUE: "issued", REJECT: "rejected", HOLD: "held"}
+    for done, case in enumerate(pending, 1):
+        result = verify(int(case["case_id"]), actor=actor)
+        counts["verified"] += 1
+        counts[tally[result["verdict"]]] += 1
+        if on_progress is not None:
+            on_progress(done, len(pending), result)
+    return counts
 
 
 def _override(case_id: int, status: str, verdict: str, actor: str,

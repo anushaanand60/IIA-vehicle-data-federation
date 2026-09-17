@@ -338,3 +338,30 @@ def test_a_repeat_offender_pays_the_higher_amount(guard):
     second = candidate(guard, "DL05CD9B76", CAM004, "2026-09-02T09:00:00", "Maruti Suzuki", "Silver")
     case = guard.verify(second)
     assert case["amount_inr"] == guard.FINE_REPEAT_INR, case
+
+
+def test_verify_all_runs_every_candidate_live_and_counts_the_verdicts(guard):
+    """One click for the whole demo queue: every CANDIDATE is verified, nothing else is touched."""
+    from scripts.seed_challan_cases import reset, seed
+
+    reset()
+    seed()
+    already = guard.new_candidate(plate_read="DL07ZZ4444", camera_id="CAM001",
+                                  location="NH8 Toll Plaza", lat=28.4595, lon=77.0266,
+                                  captured_at="2026-09-04T12:00:00")
+    guard.hold(already, "operator", "parked before the batch")
+    seen: list[tuple[int, int]] = []
+
+    counts = guard.verify_all("operator", on_progress=lambda done, total, case: seen.append((done, total)))
+
+    assert counts == {"verified": 12, "issued": 6, "rejected": 5, "held": 1}, counts
+    assert seen[-1] == (12, 12)
+    assert guard.queue(status="CANDIDATE") == []
+    assert guard.get(already)["reason"] == "parked before the batch"  # not re-verified
+    story = {c["plate_read"]: c["verdict"] for c in guard.queue()[:5]}
+    assert story == {"DL05CD9B76": "ISSUE", "DLO1AB1234": "REJECT", "UP16GH1122": "HOLD",
+                     "HR26EF4455": "REJECT", "DL01AB0002": "ISSUE"}
+    summary = guard.summary()
+    assert (summary["ISSUED"], summary["REJECTED"], summary["HOLD"]) == (6, 5, 2)
+    assert guard.verify_all("operator") == {"verified": 0, "issued": 0, "rejected": 0, "held": 0}
+    reset()
