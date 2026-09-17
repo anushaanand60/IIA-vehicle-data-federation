@@ -33,7 +33,8 @@ sidebar mutator edits a file nobody queries and the decision never changes. This
 SQLAlchemy to the same database the wrapper serves, so it works on SQLite, PostgreSQL and MySQL.
 
 Writing needs an owner account; <SOURCE>_DB_URL usually holds the read-only one the wrapper uses.
-Pass --url with the owner account, or set <SOURCE>_ADMIN_URL.
+Pass --url with the owner account, set <SOURCE>_ADMIN_URL, or start the wrapper once with
+`scripts/serve.py <SOURCE> --admin-url ...` -- the sources/<id>/laptop.env it saves is read here too.
 
 Plate matching uses the same normalisation as the decomposer -- UPPER(REPLACE(REPLACE(col,'-',''),
 ' ','')) -- so it finds the row whatever spelling that source stores.
@@ -53,6 +54,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from scripts.load_source import sqlite_url  # noqa: E402  same file the wrapper falls back to
+from scripts.serve import _mask, default_env_path, read_env_file  # noqa: E402  laptop.env owner
 from sources.wrapper_template import ADMIN_ACTIONS  # noqa: E402  single source of truth for actions
 
 # source -> (table, plate column), used only by `show` -- the actions themselves come from
@@ -76,11 +78,19 @@ _PARAM_HELP: dict[str, str] = {p["name"]: p["help"] for actions in ADMIN_ACTIONS
 
 
 def resolve_url(source_id: str, override: str | None) -> str:
+    """--url, then env <ID>_ADMIN_URL / <ID>_DB_URL, then the same keys in the laptop.env that
+    scripts/serve.py saved, then the local SQLite file. Reading laptop.env is what keeps a write on
+    the database the wrapper actually serves instead of a SQLite copy nobody queries."""
     if override:
         return override
-    for key in (source_id + "_ADMIN_URL", source_id + "_DB_URL"):
+    keys = (source_id + "_ADMIN_URL", source_id + "_DB_URL")
+    for key in keys:
         if os.environ.get(key):
             return os.environ[key]
+    persisted = read_env_file(default_env_path(source_id))
+    for key in keys:
+        if persisted.get(key):
+            return persisted[key]
     return sqlite_url(source_id)
 
 
@@ -127,7 +137,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="show, or one of: " + ", ".join(sorted(ACTIONS)))
     parser.add_argument("source", help=", ".join(SOURCES))
     parser.add_argument("plate")
-    parser.add_argument("--url", help="owner SQLAlchemy URL (default: <SRC>_ADMIN_URL, <SRC>_DB_URL, SQLite)")
+    parser.add_argument("--url", help="owner SQLAlchemy URL (default: env <SRC>_ADMIN_URL, <SRC>_DB_URL, then "
+                             "the same keys in sources/<src>/laptop.env, then SQLite)")
     parser.add_argument("--param", action="append", metavar="key=value",
                         help="set any action parameter generically, repeatable")
     for name, help_text in sorted(_PARAM_HELP.items()):
@@ -142,7 +153,7 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit(args.action + " applies to " + expected + ", not " + source_id)
 
     url = resolve_url(source_id, args.url)
-    print(source_id + " -> " + re.sub(r"://[^@/]+@", "://***@", url))
+    print(source_id + " -> " + _mask(url))
     engine = create_engine(url)
     try:
         with engine.connect() as conn:
