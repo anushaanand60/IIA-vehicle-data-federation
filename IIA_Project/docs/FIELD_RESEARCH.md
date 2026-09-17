@@ -1,6 +1,6 @@
 # Field research — what real systems do (2024–2026)
 
-Collected 16 Sep 2026 to ground the innovation features in `docs/superpowers/plans/2026-09-16-overhaul.md`.
+Collected 16 Sep 2026 to ground the innovation features (Challan Guard, plate OCR, watchlist, citizen self-check).
 
 ## Facts
 

@@ -74,7 +74,7 @@ wrapper probes with `SELECT 1`: if that works the database is fine and the query
 
 The guard catches mediator bugs; it is not a parser. The **security boundary** is below it: every
 connection is read-only (`PRAGMA query_only`, `default_transaction_read_only`, `SESSION TRANSACTION
-READ ONLY`), plus a SELECT-only database account per laptop (`NETWORK.md`).
+READ ONLY`), plus a SELECT-only database account per laptop (`README.md` section 3.2).
 
 ### Wire encoding
 
