@@ -126,3 +126,27 @@ def test_a_case_id_that_no_longer_exists_falls_back_to_the_first_case(queued):
     at.run()
     assert not at.exception, [e.value for e in at.exception]
     assert at.selectbox(key="cg_case").value == first["case_id"]
+
+
+def test_verify_all_runs_the_whole_queue_from_one_click(queued):
+    """The demo needs every KPI to move from one button, with the outcome said out loud."""
+    import re
+
+    from mediator import challan_guard
+    from scripts.seed_challan_cases import reset, seed
+
+    reset()
+    seed()
+    at = run_tab()
+    at.button(key="cg_verify_all").click().run()
+    assert not at.exception, [e.value for e in at.exception]
+    assert challan_guard.queue(status="CANDIDATE") == []
+    assert any("12 verified: 6 issued, 5 rejected, 1 held" in str(t.value) for t in at.toast), \
+        [t.value for t in at.toast]
+    kpis = next(str(m.value) for m in at.markdown if "cv-kpi" in str(m.value))
+    figures = dict((label, int(n)) for n, label in
+                   re.findall(r'class="n">(\d+)</div><div class="l">([^<]+)<', kpis))
+    assert figures == {"Candidates": 0, "Held": 1, "Issued": 6, "Rejected": 5,
+                       "Wrongful fines prevented": 5}, figures
+    caption = " ".join(str(c.value) for c in at.caption)
+    assert "Wrongful fines prevented" in caption and "cancelled" in caption

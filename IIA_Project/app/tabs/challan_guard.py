@@ -56,8 +56,8 @@ def status_chip(status: Any, case_id: Any = None) -> str:
 def _kpis() -> None:
     counts = challan_guard.summary()
     kpi_row([(label, counts.get(key, 0)) for label, key in KPI_LABELS])
-    st.caption("“Wrongful fines prevented” counts challans rejected at verification plus challans "
-               "cancelled after a citizen dispute — the number this feature exists to move.")
+    st.caption("“Wrongful fines prevented” is Rejected plus challans cancelled after a citizen "
+               "dispute: every fine the live check stopped from reaching someone who did not owe it.")
 
 
 def _cell(value: Any) -> str:
@@ -161,6 +161,18 @@ def _actions(case_id: int) -> None:
         st.rerun()
 
 
+def _verify_all() -> None:
+    """Every CANDIDATE, live, with a progress bar; the tally survives the rerun as a toast."""
+    bar = st.progress(0.0, text="Verifying the queue against every source…")
+
+    def advance(done: int, total: int, case: dict) -> None:
+        bar.progress(done / total, text=f"Case #{case['case_id']} ({done}/{total}): {case['verdict']}")
+
+    counts = challan_guard.verify_all(actor="operator", on_progress=advance)
+    st.session_state["cg_flash"] = challan_guard.tally_text(counts)
+    st.rerun()
+
+
 def _new_candidate_form() -> None:
     section("Add a candidate sighting",
             "This is the ANPR event, not a fine: what a camera read, where and when.")
@@ -210,7 +222,11 @@ def render() -> None:
     with panel("cg_queue"):
         section("Sightings waiting on a decision",
                 "One row per ANPR event. A case is only a fine once the guard says so.")
-        seed_col, refresh_col = st.columns(2)
+        verify_all_col, seed_col, refresh_col = st.columns([2, 1, 1])
+        if verify_all_col.button("Verify all candidates (live)", key="cg_verify_all",
+                                 type="primary", width="stretch",
+                                 disabled=not any(c.get("status") == "CANDIDATE" for c in cases)):
+            _verify_all()
         if seed_col.button("Seed demo candidates", key="cg_seed", width="stretch"):
             seed()
             st.rerun()
