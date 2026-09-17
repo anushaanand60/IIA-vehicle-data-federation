@@ -186,15 +186,14 @@ python scripts\load_source.py REG --url "postgresql+psycopg2://postgres:<pw>@127
 ```
 
 **Check the read-only account before starting the wrapper.** This is the exact account the wrapper
-will use. It must print a row count, not an error:
+will use. Each laptop runs **only its own line**; the other databases do not exist on that laptop, so
+their lines fail there by design. It must print a row count, not an error.
 
-```powershell
-python scripts\sql.py CAM --url "postgresql+psycopg2://iia_reader:secret@127.0.0.1:5432/camdb" "SELECT COUNT(*) AS n FROM plate_captures"
-python scripts\sql.py INS --url "mysql+pymysql://iia_reader:secret@127.0.0.1:3306/insdb" "SELECT COUNT(*) AS n FROM POLICY_RECORDS"
-python scripts\sql.py REG --url "postgresql+psycopg2://iia_reader:secret@127.0.0.1:5432/regdb" "SELECT COUNT(*) AS n FROM vehicle_registration"
-```
-
-Expected: CAM 918, INS 564, REG 605.
+| Laptop | Check | Expected |
+|---|---|---|
+| Main | `python scripts\sql.py REG --url "postgresql+psycopg2://iia_reader:secret@127.0.0.1:5432/regdb" "SELECT COUNT(*) AS n FROM vehicle_registration"` | 605 |
+| Laptop 2 | `python scripts\sql.py INS --url "mysql+pymysql://iia_reader:secret@127.0.0.1:3306/insdb" "SELECT COUNT(*) AS n FROM POLICY_RECORDS"` | 564 |
+| Laptop 3 | `python scripts\sql.py CAM --url "postgresql+psycopg2://iia_reader:secret@127.0.0.1:5432/camdb" "SELECT COUNT(*) AS n FROM plate_captures"` | 918 |
 
 `--verify` prints the row count for each story plate. `MH12IJ7788` must show 0 in REG: it is the
 deliberately unregistered vehicle.
