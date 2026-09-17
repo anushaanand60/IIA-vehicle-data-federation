@@ -16,8 +16,8 @@ source cannot be reached the guard refuses to decide rather than guessing. Three
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Callable, Dict, List, Optional
+from datetime import date, datetime, timezone
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from mediator import catalog, plate_resolve, travel_check, watchlist
 from mediator.core import run_global_query
@@ -42,6 +42,24 @@ def _now() -> str:
 def _day(value: Any) -> str:
     """The date part of an ISO timestamp. Comparison is by date, never by clock time."""
     return str(value or "")[:10]
+
+
+def insurance_on(profile: Dict[str, Any], day: date | str) -> Tuple[bool, str]:
+    """Was a policy in force on `day`? Both ends of the window count, not just the expiry.
+
+    A missing start date is read as "valid from before the sighting": the expiry alone then decides,
+    which is how the guard behaved before start dates were checked (trade-off: lenient, never fines
+    on an absent value).
+    """
+    seen_on = _day(day.isoformat() if isinstance(day, date) else day)
+    start, expiry = _day(profile.get("insurance_start")), _day(profile.get("insurance_expiry"))
+    if not expiry:
+        return False, f"uninsured on {seen_on}: no policy on record"
+    if expiry < seen_on:
+        return False, f"uninsured on {seen_on}: policy expired {expiry}"
+    if start and start > seen_on:
+        return False, f"uninsured on {seen_on}: policy only started {start}"
+    return True, f"insured on {seen_on} (policy valid to {expiry}) — no offence"
 
 
 # ------------------------------------------------------------------ sightings (metadata-driven)
@@ -196,13 +214,10 @@ def _verification(case: Dict[str, Any], exclude_case_id: Optional[int] = None) -
     _step(steps, "Registration", f"registration {reg_status or 'not on record'}")
 
     # 6 -- was it insured on the day of the sighting? Not today: on that day.
-    expiry = _day(profile.get("insurance_expiry"))
-    if expiry and expiry >= seen_on:
-        detail = f"insured on {seen_on} (policy valid to {expiry}) — no offence"
+    insured, detail = insurance_on(profile, seen_on)
+    if insured:
         _step(steps, "Insurance at sighting time", detail, done=False)
         return _outcome(steps, REJECT, detail, evidence, resolved)
-    detail = (f"uninsured on {seen_on}: policy expired {expiry}" if expiry
-              else f"uninsured on {seen_on}: no policy on record")
     _step(steps, "Insurance at sighting time", detail)
     repeat = catalog.challan_prior_issued(resolved, exclude_case_id=exclude_case_id)
     amount = FINE_REPEAT_INR if repeat else FINE_FIRST_INR
@@ -312,7 +327,7 @@ def summary() -> Dict[str, int]:
 
 
 # Fields a citizen's dispute can legitimately turn on: the facts the verdict was built from.
-DISPUTABLE = ("insurance_expiry", "stolen_status", "registration_status")
+DISPUTABLE = ("insurance_start", "insurance_expiry", "stolen_status", "registration_status")
 
 
 def _changes(old: Dict[str, Any], new: Dict[str, Any]) -> List[str]:
