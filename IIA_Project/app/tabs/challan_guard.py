@@ -77,6 +77,23 @@ def _label(case: dict) -> str:
             f"{case['status']}")
 
 
+def _pick_case(cases: list[dict]) -> dict:
+    """The selectbox holds case_ids, not labels: a label embeds the status, so a label value would
+    stop matching the moment Verify changed that status and Streamlit would snap back to option 0."""
+    by_id = {int(case["case_id"]): case for case in cases}
+    if st.session_state.get("cg_case") not in by_id:  # e.g. the queue was reset under us
+        st.session_state.pop("cg_case", None)
+    chosen = st.selectbox("Case", key="cg_case", options=list(by_id),
+                          format_func=lambda case_id: _label(by_id[case_id]) if case_id in by_id
+                          else f"#{case_id} (no longer queued)")
+    return by_id.get(chosen, cases[0])
+
+
+def _flash() -> None:
+    if message := st.session_state.pop("cg_flash", None):
+        st.toast(message)
+
+
 def _steps(case: dict) -> None:
     steps = (case.get("evidence") or {}).get("steps") or []
     if not steps:
@@ -128,7 +145,10 @@ def _actions(case_id: int) -> None:
     verify_col, issue_col, reject_col, hold_col = st.columns(4)
     if verify_col.button("Verify (live)", key="cg_verify", type="primary", width="stretch"):
         with st.spinner("Querying every source for this sighting…"):
-            challan_guard.verify(case_id, actor="operator")
+            result = challan_guard.verify(case_id, actor="operator")
+        # A toast raised before st.rerun() is lost with the old run, so it rides session_state.
+        st.session_state["cg_flash"] = (f"Case #{case_id} verified: {result.get('status')} — "
+                                        f"{result.get('reason')}")
         st.rerun()
     if issue_col.button("Issue anyway", key="cg_issue", width="stretch"):
         challan_guard.issue(case_id, "operator", "issued by operator override")
@@ -176,6 +196,7 @@ def render() -> None:
               "No e-challan leaves this queue until identity, clone signal, theft status and "
               "insurance on the day of the sighting have all been confirmed live. If a source "
               "cannot be reached, the fine is held rather than guessed.")
+    _flash()
 
     with panel("cg_kpis"):
         section("Where the queue stands")
@@ -200,15 +221,13 @@ def render() -> None:
                     "sightings, or file one below.")
         else:
             _queue_table(cases)
-            labels = {_label(case): case for case in cases}
-            chosen = st.selectbox("Case", key="cg_case", options=list(labels))
+            case = _pick_case(cases)
 
     if not cases:
         with panel("cg_new"):
             _new_candidate_form()
         return
 
-    case = labels.get(chosen) or cases[0]
     with panel("cg_actions"):
         _actions(int(case["case_id"]))
 

@@ -92,3 +92,37 @@ def test_every_widget_key_is_namespaced(queued):
     at = run_tab()
     keys = [w.key for group in (at.button, at.selectbox, at.text_input) for w in group if w.key]
     assert keys and all(k.startswith("cg_") for k in keys), keys
+
+
+def test_the_selected_case_survives_verify(queued):
+    """Verify changes a case's status; the selectbox must not snap back to case #1 when it does."""
+    from mediator import challan_guard
+
+    third = challan_guard.queue(limit=200)[2]
+    at = run_tab()
+    at.selectbox(key="cg_case").set_value(third["case_id"]).run()
+    at.button(key="cg_verify").click().run()
+    assert not at.exception, [e.value for e in at.exception]
+    assert at.selectbox(key="cg_case").value == third["case_id"]
+    assert f"Case #{third['case_id']} — read as {third['plate_read']}" in _page_text(at)
+    assert challan_guard.get(third["case_id"])["status"] != "CANDIDATE"
+    assert any(f"Case #{third['case_id']} verified" in str(t.value) for t in at.toast), \
+        [t.value for t in at.toast]
+
+
+def test_a_case_id_that_no_longer_exists_falls_back_to_the_first_case(queued):
+    """After `--reset` the remembered case_id is gone; the tab shows case #1 instead of raising."""
+    from mediator import challan_guard
+    from scripts.seed_challan_cases import reset, seed
+
+    extra = challan_guard.new_candidate(plate_read="DL07ZZ5555", camera_id="CAM001",
+                                        location="NH8 Toll Plaza", lat=28.4595, lon=77.0266,
+                                        captured_at="2026-09-04T12:00:00")
+    at = run_tab()
+    at.selectbox(key="cg_case").set_value(extra).run()
+    reset()
+    seed()  # every case_id the session remembered is gone
+    first = challan_guard.queue(limit=200)[0]
+    at.run()
+    assert not at.exception, [e.value for e in at.exception]
+    assert at.selectbox(key="cg_case").value == first["case_id"]
