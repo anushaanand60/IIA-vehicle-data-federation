@@ -47,6 +47,8 @@ def reset() -> int:
     with sqlite3.connect(catalog.META_DB_PATH) as con:
         con.execute("DELETE FROM CHALLAN_EVENTS")
         removed = con.execute("DELETE FROM CHALLAN_CASES").rowcount
+        # AUTOINCREMENT never reuses ids on its own; restarting it keeps the story cases #1-#5.
+        con.execute("DELETE FROM sqlite_sequence WHERE name IN ('CHALLAN_CASES', 'CHALLAN_EVENTS')")
     return max(removed, 0)
 
 

@@ -1,5 +1,5 @@
 {
-  "about": "The five ANPR events the Challan Guard demo starts from. Each one is a *candidate* challan: a plate as a camera read it, where and when, and what the camera thought the vehicle looked like. Nothing here is a verdict - mediator/challan_guard.py decides that live, over the federation, when an operator presses Verify. Seeded with scripts/seed_challan_cases.py.",
+  "about": "The ANPR events the Challan Guard demo starts from: five story sightings (cases #1-#5, in this order), then seven real captures copied verbatim from the camera source (PLATE_CAPTURES joined to CAMERAS; capture_id names the row) of vehicles the RTO has registered. Each one is a *candidate* challan: a plate as a camera read it, where and when, and what the camera thought the vehicle looked like. Nothing here is a verdict - mediator/challan_guard.py decides that live, over the federation, when an operator presses Verify. Seeded with scripts/seed_challan_cases.py.",
   "cameras": [
     {"camera_id": "CAM001", "location": "NH8 Toll Plaza", "lat": 28.4595, "lon": 77.0266},
     {"camera_id": "CAM002", "location": "Ring Road Junction", "lat": 28.6139, "lon": 77.209},
@@ -69,6 +69,97 @@
       "observed_make": "Tata",
       "observed_colour": "Grey",
       "ocr_confidence": 0.9
+    },
+    {
+      "story": "Real capture from the camera network: registered, correctly read, and its policy lapsed on 28/04/2026, more than three months before this sighting - a genuine uninsured-vehicle challan.",
+      "plate_read": "MH12EF0198",
+      "camera_id": "CAM004",
+      "location": "Sector 29 Crossing",
+      "lat": 28.4601,
+      "lon": 77.0648,
+      "captured_at": "2026-08-06T15:00:00",
+      "observed_make": "Maruti Suzuki",
+      "observed_colour": "Blue",
+      "ocr_confidence": 0.976,
+      "capture_id": 97
+    },
+    {
+      "story": "Real capture: the policy ran until 15/08/2026, so the vehicle was insured on the day it was photographed even though it has lapsed since - checking today's insurance instead of the sighting date would have fined it wrongly.",
+      "plate_read": "DL05EF0004",
+      "camera_id": "CAM001",
+      "location": "NH8 Toll Plaza",
+      "lat": 28.4595,
+      "lon": 77.0266,
+      "captured_at": "2026-08-01T22:00:00",
+      "observed_make": "Toyota",
+      "observed_colour": "Blue",
+      "ocr_confidence": 0.865,
+      "capture_id": 103
+    },
+    {
+      "story": "Real capture of a registered, active vehicle with no policy on record at the insurer at all - the fine is owed.",
+      "plate_read": "DL05AB0145",
+      "camera_id": "CAM003",
+      "location": "Cyber City Entrance",
+      "lat": 28.4949,
+      "lon": 77.087,
+      "captured_at": "2026-07-06T22:00:00",
+      "observed_make": "Honda",
+      "observed_colour": "White",
+      "ocr_confidence": 0.96,
+      "capture_id": 105
+    },
+    {
+      "story": "Real capture of a vehicle reported stolen on an open police case five weeks before this sighting - the police get the sighting, the owner gets no fine.",
+      "plate_read": "HR26GH0230",
+      "camera_id": "CAM004",
+      "location": "Sector 29 Crossing",
+      "lat": 28.4601,
+      "lon": 77.0648,
+      "captured_at": "2026-08-23T10:00:00",
+      "observed_make": "Maruti Suzuki",
+      "observed_colour": "Grey",
+      "ocr_confidence": 0.886,
+      "capture_id": 106
+    },
+    {
+      "story": "Real capture: policy expired on 16/06/2026, five weeks before this sighting at Ring Road - the fine is owed.",
+      "plate_read": "UP16CD0365",
+      "camera_id": "CAM002",
+      "location": "Ring Road Junction",
+      "lat": 28.6139,
+      "lon": 77.209,
+      "captured_at": "2026-07-24T05:00:00",
+      "observed_make": "Hyundai",
+      "observed_colour": "Blue",
+      "ocr_confidence": 0.906,
+      "capture_id": 79
+    },
+    {
+      "story": "Real capture of a vehicle whose registration is SUSPENDED at the RTO - a registration offence, not an insurance one, so no insurance challan is raised.",
+      "plate_read": "DL01AB0570",
+      "camera_id": "CAM005",
+      "location": "Old Delhi Signal",
+      "lat": 28.6562,
+      "lon": 77.241,
+      "captured_at": "2026-07-08T20:00:00",
+      "observed_make": "Honda",
+      "observed_colour": "Grey",
+      "ocr_confidence": 0.945,
+      "capture_id": 143
+    },
+    {
+      "story": "Real capture: policy expired on 04/05/2026 and the vehicle was still on the road on 31/08/2026 - the fine is owed.",
+      "plate_read": "HR26CD0300",
+      "camera_id": "CAM002",
+      "location": "Ring Road Junction",
+      "lat": 28.6139,
+      "lon": 77.209,
+      "captured_at": "2026-08-31T13:00:00",
+      "observed_make": "Toyota",
+      "observed_colour": "Red",
+      "ocr_confidence": 0.9,
+      "capture_id": 152
     }
   ]
 }

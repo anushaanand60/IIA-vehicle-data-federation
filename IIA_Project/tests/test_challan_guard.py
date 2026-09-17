@@ -127,6 +127,51 @@ def test_reset_empties_the_queue(store):
     assert store.challan_list() == []
 
 
+STORY_PLATES = ["DL05CD9B76", "DLO1AB1234", "UP16GH1122", "HR26EF4455", "DL01AB0002"]
+
+
+def test_story_candidates_are_cases_1_to_5_in_order_after_a_reset(store):
+    """The demo script says "case 5 = DL01AB0002"; that must hold after any number of resets."""
+    from scripts.seed_challan_cases import reset, seed
+
+    for _ in range(2):  # the second pass proves reset() also restarts the case_id sequence
+        reset()
+        seed()
+        cases = store.challan_list()
+        assert [(c["case_id"], c["plate_read"]) for c in cases[:5]] == list(enumerate(STORY_PLATES, 1))
+        assert len(cases) >= 12
+
+
+def test_the_extra_candidates_are_real_captures_of_registered_vehicles(store):
+    """Beyond the five stories, every candidate is a row of the camera source, joined to its camera,
+    of a vehicle the registration authority knows - so the same plates exist on every laptop."""
+    import sqlite3
+    from pathlib import Path
+
+    from mediator.transforms import norm_plate
+    from scripts.seed_challan_cases import load_candidates
+
+    root = Path(__file__).resolve().parents[1]
+    extras = load_candidates()[5:]
+    assert len(extras) >= 6
+    with sqlite3.connect(root / "sources" / "cam" / "cam.db") as cam,             sqlite3.connect(root / "sources" / "reg" / "reg.db") as reg:
+        registered = {norm_plate(r[0]) for r in reg.execute(
+            "SELECT registration_no FROM VEHICLE_REGISTRATION")}
+        for c in extras:
+            row = cam.execute(
+                "SELECT 1 FROM PLATE_CAPTURES p JOIN CAMERAS k ON k.camera_id = p.camera_id "
+                "WHERE p.plate_id = ? AND p.camera_id = ? AND k.location_name = ? AND k.lat = ? "
+                "AND k.lon = ? AND p.captured_at = ? AND p.observed_make = ? "
+                "AND p.observed_colour = ? AND p.ocr_confidence = ?",
+                tuple(c[f] for f in ("plate_read", "camera_id", "location", "lat", "lon",
+                                     "captured_at", "observed_make", "observed_colour",
+                                     "ocr_confidence"))).fetchone()
+            assert row, f"not a real capture: {c}"
+            assert norm_plate(c["plate_read"]) in registered, c
+            assert norm_plate(c["plate_read"]) not in {norm_plate(p) for p in STORY_PLATES}
+            assert c.get("story"), c
+
+
 # =============================================================== B4: the live workflow =========
 # These run against the session-scoped local cluster. `catalog.META_DB_PATH` already points at a
 # tmp copy of meta.db (see tests/conftest.py), so cases and events never touch the real registry.

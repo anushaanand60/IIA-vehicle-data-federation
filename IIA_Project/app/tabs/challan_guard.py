@@ -217,7 +217,7 @@ def render() -> None:
         if refresh_col.button("Refresh", key="cg_refresh", width="stretch"):
             st.rerun()
         if not cases:
-            st.info("The queue is empty. Press “Seed demo candidates” for the five demo "
+            st.info("The queue is empty. Press “Seed demo candidates” for the demo "
                     "sightings, or file one below.")
         else:
             _queue_table(cases)
