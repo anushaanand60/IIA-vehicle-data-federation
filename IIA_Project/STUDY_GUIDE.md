@@ -225,8 +225,9 @@ The matcher finds **correspondences** (this column ≈ this attribute). It does 
    "latest policy wins" when a vehicle has been renewed.
 
 That's the human-validation step your course phrase captures exactly: **"matching discovers
-correspondences; mapping operationalises them into executable integration logic."** The 31
-validated mappings in `MAPPING_REGISTRY` (see `tests/fixtures.py` → `APPROVED_MAPPINGS`) are that
+correspondences; mapping operationalises them into executable integration logic."** The 38
+validated mappings in `MAPPING_REGISTRY` (seeded by `scripts/seed_mappings.py`: the 36 in
+`tests/fixtures.py` → `APPROVED_MAPPINGS` plus the two CAM camera lat/lon rows) are that
 operationalisation — each row carries `transform_fn`, `join_path`, and `aggregate`, not just the
 column name. Tab 3 of the GUI (Matcher & Heatmap) demonstrates the discovery step live; Tab 4
 (Catalog & Registry) shows the resulting operationalised mapping table.
@@ -346,9 +347,12 @@ each row (falling back to the decomposer's `table__col` alias when needed), push
 mapping's own `transform_fn` (so INS parses `DD/MM/YYYY`, CAM parses ISO, THEFT reads an epoch
 int), and takes the maximum under a total order that keeps numbers numeric, ISO strings
 lexicographic, and any unparseable value lowest — one bad row is ignored, not fatal. A source with
-no declared ordering just keeps the first row its wrapper returned. `mediator/integrator.py`
-carries no `if s_id == "INS"/"CAM"/"THEFT"` branches any more; the stolen/recovered/case-status
-flags it reads for THEFT come from the mapped global attributes, same as everything else.
+no declared ordering just keeps the first row its wrapper returned. Row selection and value
+mapping are metadata-driven, but the integrator as a whole is not free of source ids: it derives
+`insurance_status` only when `"INS"` was asked and `stolen_status` only when `"THEFT"` was asked,
+and its conflict check explicitly compares REG's make/model/colour with CAM's observed ones. The
+metadata-driven claim belongs to the planner, decomposer and executor; the integrator has explicit
+per-source rules (the THEFT flags it reads do come from mapped global attributes).
 
 ### 7.3 Conflict detection — shown, never silently resolved
 
@@ -567,7 +571,7 @@ The askMID analogue — see §14.
 
 | Course concept | Where it lives here |
 |---|---|
-| **Global-as-View (GAV)** | `MAPPING_REGISTRY`: each source's local schema is expressed as a view over the global vocabulary, not the reverse. |
+| **Global-as-View (GAV)** | `MAPPING_REGISTRY`: each global-schema element (relation/attribute) is defined as a query/view over the sources — e.g. `vehicle_make` := `REG.VEHICLE_REGISTRATION.make` via `fix_make`. The reverse, each source defined as a view over the global schema, is LAV, which we do not use. |
 | **Mediator / wrapper architecture** | `mediator/*` = mediator; `sources/*/wrapper.py` = the four wrappers, one per source. |
 | **Schema matching (lexical + instance-based)** | `mediator/matcher.py`, N/C/I scoring, §5. |
 | **Schema mapping (correspondences → executable logic)** | `MAPPING_REGISTRY` rows: `transform_fn`, `join_path`, `aggregate` per column. |
@@ -884,8 +888,11 @@ sightings of the resolved plate and flags any leg above 160 km/h as impossible t
 patent GB2448780A describes; (4) **theft** — a theft reported *before* the sighting rejects the
 fine and routes to police, deliberately checked before insurance; (5) **registration status**; and
 only then (6) **insurance on the date of the sighting**, not today. The verdict is ISSUE (₹2,000,
-₹4,000 on repeat, MV Act §196), REJECT or HOLD, and the case carries an evidence bundle of every
-source's rows, statuses and fetch times. A citizen then disputes from the Citizen Check tab; the
+₹4,000 on repeat, MV Act §196), REJECT or HOLD, and the case carries an evidence bundle in `evidence_json`:
+the integrated profile's scalar values (not raw source rows), each source's status, the capture and
+check times, the ranked identity candidates, any impossible-travel legs, the ordered steps and the
+verdict. Step 6 counts a policy only if it had started on or before the sighting date and had not
+expired before it. A citizen then disputes from the Citizen Check tab; the
 dispute **re-runs the identical verification live** and cancels the challan if a fact has moved,
 naming the diff (`"record changed since issue: insurance_expiry was none now 2027-01-01"`).
 **Why federation makes it possible, and a warehouse would not.** Both decisions — issuing and

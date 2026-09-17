@@ -384,11 +384,12 @@ That is defensible for five flat sources with at most one join each. It would no
   3. impossible travel via `travel_check.impossible_legs` over `sightings_for` (registry-driven executor call) → `HOLD` plus a watchlist entry;
   4. stolen before the sighting → `REJECT` and a police alert;
   5. registration not `ACTIVE` → `REJECT`;
-  6. insurance expiry against the **sighting date** → `ISSUE` with ₹2,000, or ₹4,000 on repeat (`challan_prior_issued`).
+  6. insurance on the **sighting date** (`insurance_on`: the policy must be active that day — started on or before it and not yet expired) → `ISSUE` with ₹2,000, or ₹4,000 on repeat (`challan_prior_issued`).
 - `dispute` re-runs `_verification`, cancels the fine if the verdict changed, and names the changed fields (`_changes`).
 - Cases and events are stored in `CHALLAN_CASES` and `CHALLAN_EVENTS` (`mediator/catalog.py`).
+- The policy must be active on the sighting date, checked at both ends: a policy bought after the offence (start later than the sighting) does not clear the fine.
 
-**Trade-off we accept.** The evidence bundle is a snapshot in `meta.db` (profile scalars, statuses, candidates, travel legs) kept for audit; it is never used as a substitute for a live query. Verification is triggered by an operator, not by the event itself. Step 6 checks only that expiry ≥ sighting date, not that the policy *started* before the sighting, so a policy bought after the offence would clear it. The scoring weights and the 160 km/h threshold are hand-set.
+**Trade-off we accept.** The evidence bundle is a snapshot in `meta.db` (profile scalars, statuses, candidates, travel legs) kept for audit; it is never used as a substitute for a live query. Verification is triggered by an operator, not by the event itself. The scoring weights and the 160 km/h threshold are hand-set.
 
 **Likely question → answer.**
 - *Q: What makes this integration rather than an app feature?* A: Each step is a federated query across autonomous agencies, joined on a resolved identity. The dispute path only works because we re-query live rather than read a copy.

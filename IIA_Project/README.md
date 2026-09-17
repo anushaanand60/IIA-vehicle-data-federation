@@ -110,8 +110,8 @@ mediator's own query path.
     (`mediator/travel_check.py`, 160 km/h plausibility bound), (4) theft reported *before* the
     sighting, (5) registration status, and only then (6) insurance validity **on the date the
     vehicle was seen**. The verdict is ISSUE (₹2,000, ₹4,000 on repeat, MV Act §196), REJECT or
-    HOLD, with the ordered steps and a full evidence bundle — every source's rows, statuses and
-    fetch times — written to `CHALLAN_CASES` / `CHALLAN_EVENTS` in the mediator's own `meta.db`; no
+    HOLD, with the ordered steps and a full evidence bundle — the integrated profile's scalar values (not raw source rows), each
+    source's status, capture and check times, identity candidates and travel legs — written to `CHALLAN_CASES` / `CHALLAN_EVENTS` in the mediator's own `meta.db`; no
     source is ever written. A citizen can then **dispute** the challan from the Citizen Check tab,
     which re-runs the identical verification live and cancels the fine if a fact has changed, naming
     the diff ("insurance_expiry was none now 2027-01-01"). This is only possible because the system
