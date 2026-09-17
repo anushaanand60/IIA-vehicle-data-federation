@@ -121,3 +121,52 @@ def test_dry_run_stdout_masks_password(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "s3cr3t" not in out
     assert "***" in out
+
+
+# --- --admin-url: owner account for /admin/* alongside the read-only --db-url -------
+
+def test_admin_url_persisted_to_env_file(tmp_path):
+    env_file = tmp_path / "laptop.env"
+    rc = serve.main(["INS", "--db-url", "mysql+pymysql://iia_reader:r@127.0.0.1:3306/insdb",
+                     "--admin-url", "mysql+pymysql://root:ownerpw@127.0.0.1:3306/insdb",
+                     "--env-file", str(env_file), "--dry-run"])
+    assert rc == 0
+    values = serve.read_env_file(env_file)
+    assert values["INS_ADMIN_URL"] == "mysql+pymysql://root:ownerpw@127.0.0.1:3306/insdb"
+    assert values["INS_DB_URL"] == "mysql+pymysql://iia_reader:r@127.0.0.1:3306/insdb"
+
+
+def test_admin_url_reloaded_from_env_file(tmp_path):
+    env_file = tmp_path / "laptop.env"
+    serve.write_env_file(env_file, {"CAM_DB_URL": "sqlite:///r.db", "CAM_ADMIN_URL": "sqlite:///w.db"})
+    args = serve.build_parser().parse_args(["CAM", "--env-file", str(env_file), "--dry-run"])
+    cfg = serve.resolve_config("CAM", args, serve.read_env_file(env_file))
+    assert cfg.admin_url == "sqlite:///w.db"
+
+
+def test_admin_url_flag_beats_env_file(tmp_path):
+    env_file = tmp_path / "laptop.env"
+    serve.write_env_file(env_file, {"CAM_ADMIN_URL": "sqlite:///old.db"})
+    args = serve.build_parser().parse_args(["CAM", "--admin-url", "sqlite:///new.db",
+                                            "--env-file", str(env_file)])
+    cfg = serve.resolve_config("CAM", args, serve.read_env_file(env_file))
+    assert cfg.admin_url == "sqlite:///new.db"
+
+
+def test_apply_env_exports_admin_url(monkeypatch):
+    for key in ("REG_ADMIN_URL", "REG_DB_URL", "REG_PORT"):
+        monkeypatch.setenv(key, "placeholder")  # recorded so teardown restores the original state
+    cfg = serve.ResolvedConfig(db_url="sqlite:///r.db", port=8001, admin_off=False,
+                               admin_url="sqlite:///w.db")
+    serve.apply_env("REG", cfg)
+    import os
+    assert os.environ["REG_ADMIN_URL"] == "sqlite:///w.db"
+
+
+def test_dry_run_masks_admin_url_password(tmp_path, capsys):
+    env_file = tmp_path / "laptop.env"
+    serve.main(["INS", "--admin-url", "mysql+pymysql://root:0wn3rpw@127.0.0.1:3306/insdb",
+               "--env-file", str(env_file), "--dry-run"])
+    out = capsys.readouterr().out
+    assert "0wn3rpw" not in out
+    assert "admin_url=mysql+pymysql://***@127.0.0.1:3306/insdb" in out

@@ -1,12 +1,12 @@
 """One-command bring-up for a single laptop's source wrapper (no env-var juggling).
 
-    python scripts/serve.py INS --db-url "mysql+pymysql://iia:pw@127.0.0.1:3306/insdb"
+    python scripts/serve.py INS --db-url "mysql+pymysql://iia_reader:pw@127.0.0.1:3306/insdb"                                 --admin-url "mysql+pymysql://root:pw@127.0.0.1:3306/insdb"
     python scripts/serve.py INS                                  # re-uses sources/ins/laptop.env
     python scripts/serve.py INS --port 8102 --readonly-admin
     python scripts/serve.py INS --check                          # verify only, don't serve
 
-The first run's --db-url/--port/--readonly-admin are written to sources/<id>/laptop.env (gitignored,
-simple KEY=VALUE lines: <ID>_DB_URL, <ID>_PORT, <ID>_ADMIN=off). A later run with no flags re-loads
+The first run's --db-url/--admin-url/--port/--readonly-admin are written to sources/<id>/laptop.env
+(gitignored, simple KEY=VALUE lines: <ID>_DB_URL, <ID>_ADMIN_URL, <ID>_PORT, <ID>_ADMIN=off). A later run with no flags re-loads
 that file, so a laptop that has already been configured once just needs `python scripts/serve.py INS`
 after a reboot or a git pull. Flags given on the command line always win and are re-persisted.
 
@@ -55,6 +55,9 @@ class ResolvedConfig:
     db_url: str | None
     port: int
     admin_off: bool
+    # Owner account for /admin/*; None means the wrapper derives it from db_url, which fails with
+    # "permission denied" when db_url is the SELECT-only reader LAPTOP_SETUP.md recommends.
+    admin_url: str | None = None
 
 
 def _mask(url: str) -> str:
@@ -95,13 +98,16 @@ def resolve_config(source_id: str, args: argparse.Namespace, persisted: dict[str
     else:
         port = DEFAULT_PORTS.get(source_id, 8000)
     admin_off = bool(args.readonly_admin) or persisted.get(f"{source_id}_ADMIN") == "off"
-    return ResolvedConfig(db_url=db_url, port=port, admin_off=admin_off)
+    admin_url = args.admin_url or persisted.get(f"{source_id}_ADMIN_URL")
+    return ResolvedConfig(db_url=db_url, port=port, admin_off=admin_off, admin_url=admin_url)
 
 
 def config_to_env(source_id: str, cfg: ResolvedConfig) -> dict[str, str]:
     env: dict[str, str] = {f"{source_id}_PORT": str(cfg.port)}
     if cfg.db_url:
         env[f"{source_id}_DB_URL"] = cfg.db_url
+    if cfg.admin_url:
+        env[f"{source_id}_ADMIN_URL"] = cfg.admin_url
     if cfg.admin_off:
         env[f"{source_id}_ADMIN"] = "off"
     return env
@@ -110,6 +116,8 @@ def config_to_env(source_id: str, cfg: ResolvedConfig) -> dict[str, str]:
 def apply_env(source_id: str, cfg: ResolvedConfig) -> None:
     if cfg.db_url:
         os.environ[f"{source_id}_DB_URL"] = cfg.db_url
+    if cfg.admin_url:
+        os.environ[f"{source_id}_ADMIN_URL"] = cfg.admin_url
     os.environ[f"{source_id}_PORT"] = str(cfg.port)
     if cfg.admin_off:
         os.environ[f"{source_id}_ADMIN"] = "off"
@@ -204,6 +212,7 @@ def print_config(source_id: str, cfg: ResolvedConfig, env_file: Path) -> None:
     effective_url = cfg.db_url or sqlite_default(source_id)
     print("config: source=" + source_id
           + " db_url=" + _mask(effective_url)
+          + " admin_url=" + (_mask(cfg.admin_url) if cfg.admin_url else "(derived from db_url)")
           + " port=" + str(cfg.port)
           + " admin=" + ("off" if cfg.admin_off else "on")
           + " env_file=" + str(env_file))
@@ -212,6 +221,8 @@ def print_config(source_id: str, cfg: ResolvedConfig, env_file: Path) -> None:
 def print_bringup(source_id: str, app, cfg: ResolvedConfig, host: str) -> None:
     url = cfg.db_url or sqlite_default(source_id)
     print(source_id + " wrapper: dbms=" + _dbms_label(app, url) + " host=" + host + " port=" + str(cfg.port))
+    print("  admin writes: " + ("off" if cfg.admin_off else
+                                (_mask(cfg.admin_url) if cfg.admin_url else "derived from db_url")))
     ips = local_ipv4_addresses()
     if ips:
         print("  reachable at:")
@@ -240,6 +251,8 @@ def build_parser() -> argparse.ArgumentParser:
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("source", help="one of: " + ", ".join(VALID_SOURCES))
     parser.add_argument("--db-url", help="SQLAlchemy URL; persisted to laptop.env for later runs")
+    parser.add_argument("--admin-url", help="owner SQLAlchemy URL for /admin/* writes ({ID}_ADMIN_URL); "
+                                            "persisted to laptop.env")
     parser.add_argument("--port", type=int, help="wrapper port; default is the source's conventional one")
     parser.add_argument("--readonly-admin", action="store_true",
                         help=f"disable /admin/* on this laptop ({{ID}}_ADMIN=off)")
