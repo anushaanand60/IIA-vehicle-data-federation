@@ -615,7 +615,8 @@ checks against the agencies, in order, stopping at the first that decides:
 5. **Registration invalid?** REJECT with the reason.
 6. **Insured on the day?** Yes → REJECT, no offence. No → ISSUE Rs 2000, or Rs 4000 for a repeat.
 
-Every step, source answer and timestamp is saved as the case's evidence. The mediator writes only to
+Every step, the profile values and source statuses it read, and the capture and check times are saved as
+the case's evidence. The mediator writes only to
 its own `meta.db`, never to an agency.
 
 **Show.**
