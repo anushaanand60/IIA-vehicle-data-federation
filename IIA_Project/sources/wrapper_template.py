@@ -233,8 +233,10 @@ def create_app(db_url: str, *, source_id: str, dbms: str, tables: Iterable[str],
         if spec is None:
             return _error(400, f"{source_id} supports no admin action {req.action!r}; "
                                f"has: {', '.join(actions) or '(none)'}")
+        # A GUI form sends every field; a blank one means "use the action's default", not "".
+        params = {k: v for k, v in req.params.items() if not (isinstance(v, str) and not v.strip())}
         try:
-            result = spec["fn"](admin_engine, req.plate, req.params)
+            result = spec["fn"](admin_engine, req.plate, params)
         except Exception as exc:
             return _error(400, f"mutation failed: {_short(exc)}")
         return JSONResponse(content={"source_id": source_id, "action": req.action,

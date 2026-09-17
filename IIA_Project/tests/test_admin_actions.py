@@ -335,3 +335,20 @@ def test_admin_actions_endpoint_200_even_when_disabled(tmp_path):
         assert set(r.json()["actions"]) == set(ADMIN_ACTIONS["REG"])
     finally:
         server.stop()
+
+
+# The GUI's onboarding wizard sends every form field, so "left blank" arrives as "" rather than as a
+# missing key. Blank must mean "use the action's default", exactly as the form's help text promises.
+def test_ins_add_policy_blank_insurer_uses_first_insurer(ins_wrapper):
+    r = mutate(ins_wrapper, "add_policy", "KA05MN9999",
+               {"insurer_id": "", "policy_type": "COMPREHENSIVE", "until": "31/12/2099"})
+    assert r.status_code == 200, r.text
+    rows = query(ins_wrapper, "SELECT insurer_id FROM POLICY_RECORDS WHERE vehicle_reg = 'KA05MN9999'")
+    assert len(rows) == 1 and rows[0]["insurer_id"] is not None
+
+
+def test_puc_issue_blank_valid_upto_uses_default(puc_wrapper):
+    r = mutate(puc_wrapper, "issue", "KA05MN9999", {"valid_upto": ""})
+    assert r.status_code == 200, r.text
+    rows = query(puc_wrapper, "SELECT valid_upto FROM POLLUTION_CERT WHERE regn_number = 'KA05MN9999'")
+    assert len(rows) == 1 and rows[0]["valid_upto"]
