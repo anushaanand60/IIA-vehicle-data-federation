@@ -104,7 +104,8 @@ git add -f *.csv && git commit -m "Regenerate synthetic data"
 
 **One-command bring-up.** Instead of exporting `<ID>_DB_URL` / `<ID>_PORT` by hand, run
 `python scripts/serve.py <SRC> --db-url "<your SQLAlchemy URL>"` once on that laptop (e.g.
-`python scripts/serve.py INS --db-url "mysql+pymysql://iia:pw@127.0.0.1:3306/insdb"`). It writes those settings to
+`python scripts/serve.py INS --db-url "mysql+pymysql://iia_reader:pw@127.0.0.1:3306/insdb" --admin-url "mysql+pymysql://root:pw@127.0.0.1:3306/insdb"`;
+`--admin-url` is the owner account `/admin/*` writes use — see "A note on two accounts"). It writes those settings to
 `sources/<id>/laptop.env` (gitignored) and starts the wrapper; every later run, after a reboot or a `git pull`, is just
 `python scripts/serve.py <SRC>`. `--port N` overrides the port, `--readonly-admin` disables `/admin/*` on that laptop
 (`<ID>_ADMIN=off`), `--check` verifies the demo plates exist in the configured database without serving. On start it
@@ -214,12 +215,32 @@ seconds.
 Loading needs to create tables; serving must not. So each source laptop uses **two** URLs:
 
 * an **owner** account for `scripts/load_source.py` (one-off), and
-* a **read-only** account in `<SOURCE>_DB_URL` for the wrapper (what runs during the demo).
+* a **read-only** account in `<SOURCE>_DB_URL` for the wrapper's `/query` (what runs during the demo).
 
-**Admin writes are on by default.** Each wrapper now derives its own writable connection from
-`<SOURCE>_DB_URL` and serves `/admin/mutate` and `/admin/sql` without any extra setup — no
-`<SOURCE>_ADMIN_URL` step needed. To turn a wrapper back into the original read-only server, set
-`$env:<SOURCE>_ADMIN = "off"` (PowerShell) / `export <SOURCE>_ADMIN=off` (bash) before starting it.
+**Admin writes are on by default, and need the owner account.** `/admin/mutate` and `/admin/sql` use
+`<SOURCE>_ADMIN_URL`; if that is unset the wrapper reuses `<SOURCE>_DB_URL`, which on PostgreSQL/MySQL
+is the SELECT-only `iia_reader` — every write then fails with *permission denied*. So on a
+PostgreSQL/MySQL laptop always pass **both** URLs to `serve.py`:
+
+```powershell
+python scripts/serve.py INS --db-url "mysql+pymysql://iia_reader:secret@127.0.0.1:3306/insdb" --admin-url "mysql+pymysql://root:<pw>@127.0.0.1:3306/insdb"
+```
+
+Both are saved to `sources/<id>/laptop.env` (`<SOURCE>_DB_URL`, `<SOURCE>_ADMIN_URL`; gitignored) and
+re-loaded by a later plain `python scripts/serve.py <SOURCE>`. The owner-side tools
+`scripts/mutate_source.py` and `scripts/sql.py` pick up that same `laptop.env` automatically
+(order: `--url`, env `<SOURCE>_ADMIN_URL`, env `<SOURCE>_DB_URL`, laptop.env admin URL, laptop.env
+DB URL, local SQLite), so they edit the database the wrapper actually serves — not the SQLite copy.
+For ad-hoc SQL on this laptop's own database, without PowerShell `python -c` quoting:
+
+```powershell
+python scripts\sql.py INS --tables
+python scripts\sql.py INS "SELECT policy_id, vehicle_reg, policy_until FROM POLICY_RECORDS WHERE vehicle_reg = 'DL-05-CD-9876'"
+```
+
+To turn a wrapper back into the original read-only server, pass `--readonly-admin` to `serve.py`
+(or set `$env:<SOURCE>_ADMIN = "off"` / `export <SOURCE>_ADMIN=off` before starting it). SQLite
+laptops (THEFT, PUC) need no admin URL: the wrapper derives a writable one from the file path.
 
 ---
 
@@ -254,20 +275,23 @@ GRANT SELECT ON vehicle_registration, owners TO iia_reader;
 restart the service.
 
 **Start the wrapper.** `scripts/serve.py` is the one-command way — it persists the URL to
-`sources/reg/laptop.env`, so a reboot or `git pull` only needs `python scripts/serve.py REG` again:
+`sources/reg/laptop.env`, so a reboot or `git pull` only needs `python scripts/serve.py REG` again.
+Pass the owner URL too, or `/admin/*` writes run as `iia_reader` and fail:
 
 ```powershell
-python scripts/serve.py REG --db-url "postgresql+psycopg2://iia_reader:secret@127.0.0.1:5432/regdb"
+python scripts/serve.py REG --db-url "postgresql+psycopg2://iia_reader:secret@127.0.0.1:5432/regdb" --admin-url "postgresql+psycopg2://postgres:<pw>@127.0.0.1:5432/regdb"
 ```
 
 The equivalent by hand, if you need to see the environment variable directly:
 
 ```powershell
 $env:REG_DB_URL = "postgresql+psycopg2://iia_reader:secret@127.0.0.1:5432/regdb"
+$env:REG_ADMIN_URL = "postgresql+psycopg2://postgres:<pw>@127.0.0.1:5432/regdb"
 python -m sources.reg.wrapper
 ```
 ```bash
 export REG_DB_URL="postgresql+psycopg2://iia_reader:secret@127.0.0.1:5432/regdb"
+export REG_ADMIN_URL="postgresql+psycopg2://postgres:<pw>@127.0.0.1:5432/regdb"
 python -m sources.reg.wrapper
 ```
 
@@ -308,13 +332,14 @@ Set `bind-address = 127.0.0.1` in `my.ini` (Windows:
 One command with `scripts/serve.py` (persists to `sources/ins/laptop.env` for later runs):
 
 ```bash
-python scripts/serve.py INS --db-url "mysql+pymysql://iia_reader:secret@127.0.0.1:3306/insdb"
+python scripts/serve.py INS --db-url "mysql+pymysql://iia_reader:secret@127.0.0.1:3306/insdb" --admin-url "mysql+pymysql://root:<pw>@127.0.0.1:3306/insdb"
 ```
 
 or by hand:
 
 ```bash
 export INS_DB_URL="mysql+pymysql://iia_reader:secret@127.0.0.1:3306/insdb"
+export INS_ADMIN_URL="mysql+pymysql://root:<pw>@127.0.0.1:3306/insdb"
 python -m sources.ins.wrapper
 ```
 
@@ -349,7 +374,7 @@ Exactly section 3.1 with `camdb`, `PLATE_CAPTURES` / `CAMERAS` and port 8004:
 ```bash
 psql -U postgres -c "CREATE DATABASE camdb;"
 python scripts/load_source.py CAM --url "postgresql+psycopg2://postgres:<pw>@127.0.0.1:5432/camdb" --verify
-python scripts/serve.py CAM --db-url "postgresql+psycopg2://iia_reader:secret@127.0.0.1:5432/camdb"
+python scripts/serve.py CAM --db-url "postgresql+psycopg2://iia_reader:secret@127.0.0.1:5432/camdb" --admin-url "postgresql+psycopg2://postgres:<pw>@127.0.0.1:5432/camdb"
 ```
 
 CAM is the observational source: plates are OCR output and are meant to be noisy. Do not "fix" them
