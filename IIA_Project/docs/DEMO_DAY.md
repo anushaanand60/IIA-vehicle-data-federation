@@ -28,7 +28,7 @@ python scripts\load_source.py CAM
 python scripts\load_source.py PUC
 python scripts\seed_mappings.py
 
-python -m pytest -q                         # expect: 646 passed, 3 deselected
+python -m pytest -q                         # expect: 653 passed, 3 deselected
 ```
 
 Databases and `meta.db` are gitignored, so every clone rebuilds them with the loader commands.
@@ -122,7 +122,7 @@ Then seed the mediator's own metadata and the challan queue, and start the site:
 
 ```powershell
 python scripts\seed_mappings.py
-python scripts\seed_challan_cases.py         # 5 ANPR candidates for Challan Guard
+python scripts\seed_challan_cases.py --reset # 12 ANPR candidates: 5 story cases + 7 real captures
 streamlit run app\app.py                     # http://localhost:8501
 ```
 
@@ -156,8 +156,8 @@ Undo those two with `clear THEFT DL01AB1234` and `delete_sightings CAM DL01AB123
 **Refusal.** Teammate 3 presses Ctrl+C on the THEFT wrapper. Re-run the plate: the answer is
 `UNDETERMINED`, not a guess. Restart with `python scripts\serve.py THEFT`.
 
-**Challan Guard, the five seeded cases.** Open the Challan Guard page, pick a case, press
-*Verify (live)*:
+**Challan Guard.** Open the Challan Guard page, pick a case in the Case box, press
+*Verify (live)*. Do cases 1-5 one by one, then *Verify all candidates (live)* for the seven real captures:
 
 | Case | What happens |
 |---|---|
