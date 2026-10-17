@@ -277,12 +277,20 @@ def test_app_py_is_under_150_lines():
 
 # ------------------------------------------------- (D2) the sidebar navigation shell
 
-def test_nav_lists_ten_pages():
+# PHASE2-REPLACED (three Data quality pages added; ten -> thirteen):
+# def test_nav_lists_ten_pages():
+#     at = AppTest.from_file(str(ROOT / "app" / "app.py"), default_timeout=180).run()
+#     assert not at.exception, [e.value for e in at.exception]
+#     assert at.sidebar.radio(key="nav").options == [
+#         "Investigate", "Challan Guard", "Watchlist", "Reports", "Citizen Check",
+#         "Plan Trace", "Catalog", "Matcher", "SQL Console", "Source Editor"]
+def test_nav_lists_thirteen_pages():
     at = AppTest.from_file(str(ROOT / "app" / "app.py"), default_timeout=180).run()
     assert not at.exception, [e.value for e in at.exception]
     assert at.sidebar.radio(key="nav").options == [
         "Investigate", "Challan Guard", "Watchlist", "Reports", "Citizen Check",
-        "Plan Trace", "Catalog", "Matcher", "SQL Console", "Source Editor"]
+        "Plan Trace", "Catalog", "Matcher", "SQL Console", "Source Editor",
+        "Plate Match", "Data Cleansing", "Matching Evaluation"]
     assert not at.tabs, "the nine-tab strip is replaced by the sidebar menu"
 
 
