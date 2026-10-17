@@ -71,11 +71,22 @@ def _resolve(value: Any, case: Case) -> Any:
     return value
 
 
+def _key(token: Any) -> str:
+    return str(token).strip().lower()
+
+
+def normalise_lexicons(lexicons: Optional[Lexicons]) -> Dict[str, frozenset]:
+    """Each lexicon as a frozenset of lower-cased entries, built once rather than per test."""
+    return {name: frozenset(_key(e) for e in entries) for name, entries in (lexicons or {}).items()}
+
+
 def _in_lexicon(token: Any, name: Any, lexicons: Lexicons) -> bool:
     entries = lexicons.get(str(name)) if lexicons else None
     if token is None or entries is None:
         return False
-    return str(token).strip().lower() in {str(e).strip().lower() for e in entries}
+    if not isinstance(entries, frozenset):  # a caller passed raw lists: normalise on the fly
+        entries = frozenset(_key(e) for e in entries)
+    return _key(token) in entries
 
 
 def holds(cond: Mapping[str, Any], case: Case, lexicons: Optional[Lexicons] = None) -> bool:
@@ -89,6 +100,8 @@ def holds(cond: Mapping[str, Any], case: Case, lexicons: Optional[Lexicons] = No
         return any(holds(c, case, lexicons) for c in cond["any"])
     if "not" in cond:
         return not holds(cond["not"], case, lexicons)
+    if "field" not in cond:
+        raise ValueError(f"malformed condition (needs true/all/any/not or field): {cond!r}")
     actual, op = case.get(cond["field"]), cond.get("op", "eq")
     target = _resolve(cond.get("value"), case)
     if op == "is_null":
@@ -132,7 +145,7 @@ class RDRTree:
 
     def __init__(self, root: Rule, lexicons: Optional[Lexicons] = None) -> None:
         self.root = root
-        self.lexicons: Lexicons = lexicons or {}
+        self.lexicons: Lexicons = normalise_lexicons(lexicons)
 
     # -- inference (slide 27) ---------------------------------------------------------------
     def evaluate(self, case: Case) -> Tuple[Optional[Dict[str, Any]], List[Dict[str, Any]]]:
@@ -174,6 +187,16 @@ class RDRTree:
         if branch not in ("except", "false"):
             raise ValueError("branch must be 'except' or 'false'")
         wrong = self.find(wrong_rule_id)
+        # The rule must sit where this case's own evaluation path goes (slide 29: the trace "guides
+        # the person to add a new rule"); a rule hung anywhere else could never see the case.
+        trace = {step["rule"]: step["fired"] for step in self.evaluate(case)[1]}
+        if wrong_rule_id not in trace:
+            raise RDRConflict(f"{wrong_rule_id} is not on this case's evaluation path "
+                              f"({' -> '.join(trace)})")
+        if branch == "except" and not trace[wrong_rule_id]:
+            raise RDRConflict(f"{wrong_rule_id} did not fire for this case: add on its false branch")
+        if branch == "false" and trace[wrong_rule_id]:
+            raise RDRConflict(f"{wrong_rule_id} fired for this case: add an exception under it")
         if not holds(new_condition, case, self.lexicons):
             raise RDRConflict("the new condition is not satisfied by the case it is meant to fix")
         new = Rule(id=self._next_id(), condition=new_condition, conclusion=new_conclusion,
@@ -187,12 +210,18 @@ class RDRTree:
                 self._last_sibling(wrong.except_).if_false = new
         else:
             self._last_sibling(wrong).if_false = new
-        broken = [rid for rid, old in before.items()
-                  if _strip(self.evaluate(self.find(rid).cornerstone)[0]) != _strip(old)]
-        if broken:
+        try:  # validate, and on any failure leave the tree exactly as it was
+            if (self.evaluate(case)[0] or {}).get("rule") != new.id:
+                raise RDRConflict("the new rule would never fire for this case: an earlier rule on "
+                                  "the same branch catches it first")
+            broken = [rid for rid, old in before.items()
+                      if _strip(self.evaluate(self.find(rid).cornerstone)[0]) != _strip(old)]
+            if broken:
+                raise RDRConflict(f"refused: the new rule would change the conclusion for the "
+                                  f"cornerstone case(s) of {', '.join(broken)}")
+        except Exception:
             self._detach(new)
-            raise RDRConflict(f"refused: the new rule would change the conclusion for the cornerstone "
-                              f"case(s) of {', '.join(broken)}")
+            raise
         return new
 
     @staticmethod
