@@ -134,3 +134,12 @@ misreads). Deterministic for a fixed `--seed`, tests that never call EasyOCR,
   asserts the two planted story misreads map to the right truth and are marked `exact_match=0`,
   and that the 47 unregistered CAM plates carry *no* verdict at all (`true_plate` and
   `exact_match` empty) — the "unknown truth" invariant the later workstreams depend on.
+
+**Follow-up fix after the first full run** (`7b7277a`): the per-100-image progress line was not
+flushed. A full run is ~14 minutes and stdout is block-buffered when redirected to a log, so the
+progress output only appeared once the run had already finished. Added `flush=True`.
+
+**The run that produced the committed artefacts.** 100 plates x (1 clean + 7 degradations x 3
+severities) = 2 200 images, seed `20261017`, EasyOCR 1.7.2 on CPU, 0.38 s per image, ~14 minutes.
+39.5 % exact raw reads, 66.4 % after confusion repair, 47 images OCR returned nothing for. The
+full table and the honest limits are in `docs/BENCHMARK_NOISE.md`.
