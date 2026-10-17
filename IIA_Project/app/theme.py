@@ -200,12 +200,14 @@ def _sidebar() -> str:
 [data-testid="stSidebar"] [role="radiogroup"] > label:has(input:checked) p {font-weight:700;}
 [data-testid="stSidebar"] [role="radiogroup"] > label:has(input:focus-visible) {
   outline:3px solid var(--cv-focus); outline-offset:1px;}
-/* Group headings inside the single nav radio: Enforcement (1), Citizens (5), Mediator (6). */
+/* Group headings inside the single nav radio: Enforcement (1), Citizens (5), Mediator (6),
+   Data quality (11). Positions follow PAGES in app/app.py. */
 .cv-navgroup, [data-testid="stSidebar"] [role="radiogroup"] > label::before {
   color:#A9C0DC; font-size:0.9rem; font-weight:600;}
 [data-testid="stSidebar"] [role="radiogroup"] > label:nth-of-type(1),
 [data-testid="stSidebar"] [role="radiogroup"] > label:nth-of-type(5),
-[data-testid="stSidebar"] [role="radiogroup"] > label:nth-of-type(6) {margin-top:38px;}
+[data-testid="stSidebar"] [role="radiogroup"] > label:nth-of-type(6),
+[data-testid="stSidebar"] [role="radiogroup"] > label:nth-of-type(11) {margin-top:38px;}
 [data-testid="stSidebar"] [role="radiogroup"] > label:nth-of-type(1) {margin-top:18px;}
 [data-testid="stSidebar"] [role="radiogroup"] > label:nth-of-type(1)::before {
   content:"Enforcement"; position:absolute; top:-24px; left:14px;}
@@ -213,8 +215,11 @@ def _sidebar() -> str:
   content:"Citizens"; position:absolute; top:-24px; left:14px;}
 [data-testid="stSidebar"] [role="radiogroup"] > label:nth-of-type(6)::before {
   content:"Mediator"; position:absolute; top:-24px; left:14px;}
+[data-testid="stSidebar"] [role="radiogroup"] > label:nth-of-type(11)::before {
+  content:"Data quality"; position:absolute; top:-24px; left:14px;}
 [data-testid="stSidebar"] [role="radiogroup"] > label:nth-of-type(5)::after,
-[data-testid="stSidebar"] [role="radiogroup"] > label:nth-of-type(6)::after {
+[data-testid="stSidebar"] [role="radiogroup"] > label:nth-of-type(6)::after,
+[data-testid="stSidebar"] [role="radiogroup"] > label:nth-of-type(11)::after {
   content:""; position:absolute; top:-36px; left:0; right:0; height:1px;
   background:rgba(255,255,255,.18);}
 """
