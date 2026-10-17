@@ -101,7 +101,8 @@ def _statements(mod: Any) -> None:
         return
     group_label("The exact SQL the mediator sent to the source (newest first)")
     if all(isinstance(s, dict) for s in stmts):
-        styled_table(stmts)
+        cols = ["at", "source_id", "origin", "sql", "rows_affected", "error"]
+        styled_table([{c: s.get(c) for c in cols if c in s} or s for s in stmts])
     else:
         st.code("\n".join(str(s) for s in stmts), language="sql")
 

@@ -25,6 +25,7 @@ if str(_APP_DIR) not in sys.path:
 import streamlit as st  # noqa: E402
 
 from components import chip, chip_strip, group_label, kpi_row, page_head, panel, section, stepper, styled_table  # noqa: E402
+from components import what_this_shows  # noqa: E402  (phase-2 accessibility pass)
 from mediator import cleansing, lexicons  # noqa: E402
 from mediator.rdr import RDRConflict, RDRTree  # noqa: E402
 from tabs import change_watch, cleansing_toolbox, cleansing_validation_panel  # noqa: E402
@@ -135,6 +136,7 @@ def _fix_view(f: Any, ctx: Any) -> None:
 
 def _record_panel(report: Dict[str, Any], actor: str) -> Optional[Dict[str, Any]]:
     section("One capture: anomalies, proposals and the rule path", "Read live from the camera source on every view.")
+    what_this_shows("for one camera record, what is wrong with it, what the rules propose, and the exact chain of rules that led there.")
     rid = _pick(report)
     if rid is None:
         return None
@@ -180,6 +182,7 @@ def _resolve_panel(sel: Dict[str, Any], actor: str) -> None:
     section("Resolve what the rules leave open",
             "Clone evidence and quarantined reads need a person: confirm the clone (watchlists the plate), accept "
             "a matcher candidate, delete the capture, or dismiss it with a reason. Each is logged and undoable.")
+    what_this_shows("the decisions only a person may take, each recorded with a name and a reason.")
     decision = st.radio("Decision", cleansing.RESOLUTIONS, key="dc_res_decision", horizontal=True)
     plate_fix = next((f for f in sel["prop"].fixes if f.field == "plate_number"), None)
     cands = (plate_fix.evidence.get("match_candidates") if plate_fix else None) or []
@@ -201,6 +204,7 @@ def _bulk(report: Dict[str, Any], actor: str) -> None:
     auto = [it for it in report["items"] if any(f["action"] in ("set", "delete") for f in it["fixes"])]
     section("Apply all automatic fixes", f"{len(auto)} capture(s) have a set or delete proposal. Flags and "
             "quarantines are never written: they wait for a person.")
+    what_this_shows("writes every safe correction at once; flags and quarantines are never written automatically.")
     ok = st.checkbox("I have read the proposals and want them written to the camera source", key="dc_bulk_confirm")
     if st.button("Apply all automatic fixes", key="dc_bulk_apply", disabled=not (ok and auto)):
         ctx = _attempt(cleansing.Context.build)
@@ -222,6 +226,7 @@ def _teach(sel: Dict[str, Any], actor: str) -> None:
     section("Teach the tree", "Add a rule under the one that fired wrongly (except) or beside the one that failed "
             "to fire (false). This capture becomes its cornerstone; a rule that would change another cornerstone "
             "case's conclusion is refused, and the refusal is shown as the engine words it.")
+    what_this_shows("how to correct the rules: a new exception is added under the rule that was wrong, and this record becomes its example case.")
     fixes = {f.field: f for f in sel["prop"].fixes}
     fld = st.selectbox("Field", list(fixes), key="dc_t_field")
     path = [p["rule"] for p in fixes[fld].path]
@@ -252,6 +257,7 @@ def _teach(sel: Dict[str, Any], actor: str) -> None:
 
 def _tree() -> None:
     section("The rule tree", "One row per rule, indented under the rule it is an exception to; else-siblings share a depth.")
+    what_this_shows("every rule the cleanser knows, in the order it checks them, with the example case that created each one.")
     rows: List[Dict[str, Any]] = []
 
     def walk(rule: Any, depth: int, branch: str) -> None:
@@ -274,6 +280,7 @@ def render() -> None:
         st.success(msg)
     with panel("dc_kpis"):
         section("Where the data stands")
+        what_this_shows("how many camera records were checked live, how many had problems, and how many are still open. Unhandled must be zero.")
         c1, c2 = st.columns([3, 1])
         actor = c1.text_input("Operator name (recorded with every write)", "operator", key="dc_actor").strip() or "operator"
         c2.markdown("<div style='height:34px'></div>", unsafe_allow_html=True)
@@ -289,6 +296,7 @@ def render() -> None:
                    "unhandled anomalies no operator has resolved.")
     with panel("dc_table"):
         section("Anomalies", "What each capture carries, what the rules propose, and what is left after them.")
+        what_this_shows("every camera record with a problem, the rules' proposed fix, and what is left for a person.")
         _table(report)
     with panel("dc_record"):
         sel = _record_panel(report, actor)

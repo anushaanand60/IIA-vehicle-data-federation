@@ -78,7 +78,10 @@ def _chart(per_type: Dict[str, Dict[str, Any]]) -> None:
                         legend=alt.Legend(title=None, orient="top", labelFontSize=15)))
     bars = base.mark_bar()
     text = base.mark_text(align="left", dx=4, fontSize=14, color=TOKENS["ink"]).encode(text="value:Q")
-    st.altair_chart((bars + text).properties(height=max(200, 56 * df["type"].nunique())), key="dc_val_chart")
+    chart = (bars + text).properties(height=max(200, 64 * df["type"].nunique())).configure_axis(
+        labelFontSize=15, titleFontSize=15, labelColor=TOKENS["ink"], titleColor=TOKENS["ink"]).configure_legend(
+        labelFontSize=15, labelColor=TOKENS["ink"]).configure_view(strokeWidth=0)
+    st.altair_chart(chart, key="dc_val_chart", theme=None, width="stretch")  # theme=None keeps the 15 px text
 
 
 def _live() -> None:
