@@ -275,6 +275,8 @@ button:focus-visible {box-shadow:0 0 0 4px var(--cv-ink) inset;}
 [data-testid="stMain"] [data-testid="stCaptionContainer"] * {color:var(--cv-ink2) !important;
   font-size:0.95rem;}
 [data-testid="stCaptionContainer"] p {max-width:70ch;}
+/* Image captions (the Plate Match damage grid) were Streamlit's 0.875rem grey: below the floor. */
+[data-testid="stImageCaption"] {color:var(--cv-ink2) !important; font-size:0.95rem !important;}
 [data-baseweb="popover"], [data-baseweb="menu"], [data-baseweb="popover"] *,
 [data-baseweb="menu"] *, [data-testid="stTooltipContent"], [data-testid="stTooltipContent"] * {
   color:var(--cv-ink);}

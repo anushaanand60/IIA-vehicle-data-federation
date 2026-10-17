@@ -163,6 +163,16 @@ def section(title: str, lead: str | None = None) -> None:
     st.markdown(f'<p class="cv-h">{html.escape(title)}</p>{lead_html}', unsafe_allow_html=True)
 
 
+def what_this_shows(text: str) -> None:
+    """One plain-words sentence under a section heading: what the block is evidence of.
+
+    Added in the phase-2 accessibility pass so an examiner who is not a matching expert can read
+    every panel; a separate call, not a second lead, so `section()` keeps one heading + one lead.
+    """
+    st.markdown(f'<p class="cv-lead"><strong>What this shows:</strong> {html.escape(text)}</p>',
+                unsafe_allow_html=True)
+
+
 def group_label(text: str) -> None:
     """A quiet label over a *group* of controls or chips. Never a section heading."""
     st.markdown(f'<p class="cv-grouplabel">{html.escape(text)}</p>', unsafe_allow_html=True)

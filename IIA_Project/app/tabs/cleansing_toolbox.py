@@ -23,6 +23,7 @@ if str(_APP_DIR) not in sys.path:
 import streamlit as st  # noqa: E402
 
 from components import group_label, section  # noqa: E402
+from components import what_this_shows  # noqa: E402  (phase-2 accessibility pass)
 from mediator import catalog, cleansing, lexicons  # noqa: E402
 from mediator.registry_loader import load_registry  # noqa: E402
 
@@ -106,6 +107,7 @@ def _write(after_write: Callable[[str, Any], None], what: str, action: Callable[
 def render(after_write: Callable[[str, Any], None]) -> None:
     section("Examiner toolbox", "Insert, modify or delete a camera capture in CAM's own database, through its "
             "/admin/sql. Each write is followed by a fresh scan, so its effect shows at once.")
+    what_this_shows("change the camera agency's data yourself, then watch the anomaly list and the panels above react.")
     try:
         cam = cam_spec()
         cams = cameras(cam)

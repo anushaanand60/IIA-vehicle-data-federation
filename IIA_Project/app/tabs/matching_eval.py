@@ -24,6 +24,7 @@ import plotly.graph_objects as go  # noqa: E402
 import streamlit as st  # noqa: E402
 
 from components import kpi_row, page_head, panel, section, styled_table  # noqa: E402
+from components import what_this_shows  # noqa: E402  (phase-2 accessibility pass)
 from theme import FONTS, TOKENS  # noqa: E402
 
 DOC = _ROOT / "docs" / "MATCHING_EVALUATION.md"
@@ -72,8 +73,12 @@ def _num(value: str) -> float:
 def _chart(rows: List[Dict[str, str]], best: Optional[str]) -> None:
     names = [r["contender"] + (" ★" if r["contender"] == best else "") for r in rows]
     bars = [("top-1", "top-1", TOKENS["brand"]), ("ACCEPT recall", "ACCEPT R", TOKENS["action"])]
+    # PHASE2-REPLACED (accessibility pass: 11 px value labels are below the 0.9 rem floor):
+    # fig = go.Figure([go.Bar(name=label, x=names, y=[_num(r[col]) for r in rows], marker_color=colour,
+    #                         text=[r[col] for r in rows], textposition="outside", textfont=dict(size=11))
+    #                  for label, col, colour in bars])
     fig = go.Figure([go.Bar(name=label, x=names, y=[_num(r[col]) for r in rows], marker_color=colour,
-                            text=[r[col] for r in rows], textposition="outside", textfont=dict(size=11))
+                            text=[r[col] for r in rows], textposition="outside", textfont=dict(size=14))
                      for label, col, colour in bars])
     fig.update_layout(barmode="group", height=420, margin=dict(l=10, r=10, t=30, b=10),
                       paper_bgcolor=TOKENS["panel"], plot_bgcolor=TOKENS["panel"],
@@ -96,35 +101,44 @@ def render() -> None:
     with panel("me_head"):
         section("The decision", "From docs/MATCHING_EVALUATION.md, written by scripts/evaluate_matching.py "
                 "(seeded, deterministic).")
+        what_this_shows("the model the system uses and how often it is right on 20 cars it never saw while learning.")
         kpi_row([("Chosen model", best.get("contender", "—")), ("Top-1, test", best.get("top-1", "—")),
                  ("MRR, test", best.get("MRR", "—")), ("ACCEPT precision", best.get("ACCEPT P", "—")),
                  ("ACCEPT recall", best.get("ACCEPT R", "—")), ("Sent to review", best.get("REVIEW rate", "—"))])
     with panel("me_chart_panel"):
         section("Top-1 and unattended ACCEPT recall per contender",
                 "Test split. Every contender ranks the same blocked candidates, so the gaps are scoring, not retrieval.")
+        what_this_shows("for each method we tried, how often the right car came first (navy) and how often it was accepted without a person (green). The star marks the method in use.")
         if scoring:
             _chart(scoring, best.get("contender"))
     with panel("me_why"):
         section("Why, in plain sentences")
+        what_this_shows("the reasons for the choice, written as sentences, with the methods that lost and why.")
         st.markdown(prose(sec.get("7", "")) or "The Decision section is missing from the document.")
     with panel("me_scoring"):
         section("Scoring, evaluated on its own", "Calibrated, with thresholds chosen on validation per contender.")
+        what_this_shows("every method ranks the same candidate plates; this table compares only how well each ranks them.")
         styled_table(scoring)
     with panel("me_ablation"):
         section("Ablation: what each part of the combination is worth",
                 "Each row retrains the combiner without the named features.")
+        what_this_shows("the combined model retrained with one kind of evidence removed; the bigger the drop, the more that evidence is worth.")
         styled_table(table(sec.get("4", "")))
     with panel("me_blocking"):
         section("Blocking funnel: retrieval recall per filter",
                 "Recall = the true plate survives into the candidate set; mean candidates = work left for scoring.")
+        what_this_shows("how many plates each cheap filter keeps, and how often the right plate survives it.")
         styled_table(table(sec.get("1", "")))
         st.markdown(prose(sec.get("1", "")))
     with panel("me_weights"):
         section("Logistic-regression weights", "Standardised features: a positive weight pushes towards the same vehicle.")
+        what_this_shows("how much each piece of evidence pushes the model towards 'same car' (positive) or away (negative).")
         styled_table(table(sec.get("5", "")))
     with panel("me_degradation"):
         section("By degradation and severity", "Top-1 on test, one read per test vehicle per bucket.")
+        what_this_shows("accuracy for each kind and strength of image damage, so you can see where OCR and matching break.")
         styled_table(table(sec.get("3", "")), max_rows=40)
     with panel("me_observed"):
         section("Real camera reads with no ground truth")
+        what_this_shows("what the matcher would do with the real camera records whose plate matches no registration.")
         st.markdown(prose(sec.get("6", "")))
