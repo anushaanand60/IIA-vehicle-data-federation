@@ -23,7 +23,9 @@ ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
-from sources.server_manager import get_cluster
+# PHASE2-REPLACED (the per-rerun healer is imported too):
+# from sources.server_manager import get_cluster
+from sources.server_manager import get_cluster, heal_local_sources
 
 st.set_page_config(
     page_title="Vehicle Compliance Mediator",
@@ -134,27 +136,11 @@ def sidebar() -> str:
     return page
 
 
-def heal_sources() -> dict[str, str]:
-    """Restart any local wrapper that is not answering, on every rerun (workstream G).
-
-    `ensure_cluster_running` is cached once per server, so on its own it never notices a wrapper that
-    died or a port that was busy at start-up and freed later. This costs one 0.2 s TCP probe per local
-    source; remote sources are only reported. The result is published as session_state
-    ["source_status"] for the sidebar.
-    """
-    from sources.server_manager import ensure_local_sources
-    try:
-        status = ensure_local_sources(get_source_catalog(), include_puc=True, cluster=cluster)
-    except Exception as exc:  # the healer must never take the page down with it
-        status = {"cluster": f"failed: {exc}"}
-    st.session_state["source_status"] = status
-    if any(v == "started" for v in status.values()):
-        source_health.clear()  # a just-restarted source must not show a cached DOWN for 5 s
-    return status
-
-
-heal_sources()
-
+# Workstream G: the cached start-up above never notices a wrapper that died or a port freed later, so
+# every rerun re-checks the local sources (one 0.2 s TCP probe each; remote ones are only reported).
+st.session_state["source_status"] = heal_local_sources(get_source_catalog, cluster)
+if "started" in st.session_state["source_status"].values():
+    source_health.clear()  # a just-restarted source must not show a cached DOWN for 5 s
 # The whole look of the page comes from app/theme.py: tokens -> CSS variables, injected once.
 inject()
 PAGES[sidebar()]()

@@ -8,7 +8,10 @@ import socket
 import uvicorn
 import threading
 import time
-from typing import Dict, List, Optional
+# PHASE2-REPLACED (Set added for the cluster's held set):
+# from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
+from urllib.parse import urlparse
 from sources.reg.wrapper import app as reg_app
 from sources.ins.wrapper import app as ins_app
 from sources.theft.wrapper import app as theft_app
@@ -50,6 +53,8 @@ class SourceCluster:
     def __init__(self, host: str = "127.0.0.1"):
         self.host = host
         self.servers: Dict[str, WrapperServerThread] = {}
+        # Sources stopped on purpose (a scenario taking INS down): the healer must not restart them.
+        self.held: Set[str] = set()
 
     def start_all(self, include_puc: bool = False):
         sources = ["REG", "INS", "THEFT", "CAM"]
@@ -95,6 +100,25 @@ class SourceCluster:
             srv.stop()
         self.servers.clear()
 
+    def prune_dead(self) -> List[str]:
+        """Forget server threads that have exited, so a later start can bind the port again."""
+        dead = [s for s, srv in self.servers.items() if not srv.thread.is_alive()]
+        for s in dead:
+            del self.servers[s]
+        return dead
+
+    def suspend(self, s_id: str) -> bool:
+        """Stop a source on purpose and keep ensure_local_sources from restarting it until resume().
+        Returns whether this cluster owned it (a wrapper another process runs is never stopped)."""
+        owned = s_id in self.servers
+        if owned:
+            self.held.add(s_id)
+            self.stop_source(s_id)
+        return owned
+
+    def resume(self, s_id: str) -> None:
+        self.held.discard(s_id)
+
 _global_cluster: Optional[SourceCluster] = None
 
 def get_cluster() -> SourceCluster:
@@ -102,6 +126,88 @@ def get_cluster() -> SourceCluster:
     if _global_cluster is None:
         _global_cluster = SourceCluster()
     return _global_cluster
+
+
+# ------------------------------------------------------------------ self-healing (phase 2, workstream G)
+# The Streamlit app starts the cluster once per server (@st.cache_resource), and start_all() skips any
+# port already taken at that instant. If a test run held 8001-8005 when the site started, the site came
+# up with no wrappers and showed every source DOWN after the test run exited. ensure_local_sources() is
+# called on every rerun instead, so a freed port is reclaimed on the next one.
+
+LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
+_heal_lock = threading.Lock()  # Streamlit reruns sessions on several threads; one healer at a time
+
+
+def local_target(base_url: str) -> Optional[tuple]:
+    """(host, port) when base_url points at this machine, else None (another laptop: never touched)."""
+    parsed = urlparse(str(base_url or ""))
+    host = (parsed.hostname or "").lower()
+    if host not in LOCAL_HOSTS:
+        return None
+    return ("127.0.0.1" if host == "localhost" else host), parsed.port or 80
+
+
+def _ensure_one(cluster: SourceCluster, s_id: str, base_url: str, wait_s: float = 3.0) -> str:
+    target = local_target(base_url)
+    if target is None:
+        return "remote"
+    host, port = target
+    if s_id in cluster.held:
+        return "stopped: held down on purpose (a test scenario is running)"
+    # Trade-off: an open port counts as running without a /health call, so a rerun costs one 0.2 s
+    # TCP probe per source; the sidebar's own 5 s-cached /health badge still shows real health.
+    if is_port_in_use(port, host):
+        return "running"
+    cfg = SOURCE_CONFIGS.get(s_id)
+    if cfg is None:
+        return f"failed: no in-process wrapper for {s_id}"
+    cluster.prune_dead()
+    old = cluster.servers.pop(s_id, None)
+    if old is not None:  # thread alive but its port is silent (stopping, or bound elsewhere): replace it
+        old.stop()
+    try:
+        srv = WrapperServerThread(app=cfg["app"], host=host, port=port)
+        srv.start()
+    except Exception as exc:  # a failed start is a status, never a crash
+        return f"failed: {exc}"
+    cluster.servers[s_id] = srv
+    deadline = time.monotonic() + wait_s
+    while time.monotonic() < deadline:
+        if is_port_in_use(port, host):
+            return "started"
+        if not srv.thread.is_alive():  # uvicorn ends its thread when the bind fails
+            cluster.servers.pop(s_id, None)
+            return f"failed: port {port} could not be bound"
+        time.sleep(0.05)
+    return f"failed: no answer on port {port} after {wait_s:.0f} s"
+
+
+def ensure_local_sources(catalog: Dict[str, Dict], include_puc: bool = True,
+                         cluster: Optional[SourceCluster] = None) -> Dict[str, str]:
+    """(Re)start every catalog source that should run on this machine and is not answering.
+
+    Returns source_id -> running | started | remote | stopped: <why> | failed: <reason>. A source
+    whose base_url names another host is `remote` and is never started here (source autonomy).
+    """
+    cluster = cluster or get_cluster()
+    out: Dict[str, str] = {}
+    with _heal_lock:
+        for s_id, meta in catalog.items():
+            if s_id == "PUC" and not include_puc:
+                continue
+            out[s_id] = _ensure_one(cluster, s_id, (meta or {}).get("base_url", ""))
+    return out
+
+
+
+def heal_local_sources(catalog_fn, cluster: Optional[SourceCluster] = None) -> Dict[str, str]:
+    """ensure_local_sources for the GUI: reads the catalog itself and never raises (a broken catalog
+    read becomes a `failed:` status, so the healer cannot take the page down with it)."""
+    try:
+        return ensure_local_sources(catalog_fn(), include_puc=True, cluster=cluster)
+    except Exception as exc:
+        return {"cluster": f"failed: {exc}"}
+
 
 if __name__ == "__main__":
     cluster = get_cluster()
@@ -114,107 +220,3 @@ if __name__ == "__main__":
         cluster.stop_all()
         print("Stopped all wrappers.")
 
-
-# ------------------------------------------------------------------ self-healing (phase 2, workstream G)
-# Why: the Streamlit app starts the cluster once per server (@st.cache_resource) and start_all() skips
-# every port already taken at that instant. If a test run held 8001-8005 when the site started, the
-# site came up with no wrappers and showed every source DOWN forever after the test run exited.
-# ensure_local_sources() is called on every rerun instead, so a freed port is reclaimed on the next one.
-
-import threading as _threading  # noqa: E402  (already imported above; aliased to keep this block self-contained)
-from urllib.parse import urlparse  # noqa: E402
-
-LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1", "0.0.0.0"}
-_heal_lock = _threading.Lock()  # Streamlit reruns sessions on several threads; one healer at a time
-
-
-def _local_port(base_url: str) -> Optional[tuple]:
-    """(host, port) when base_url points at this machine, else None (a remote laptop: never touched)."""
-    parsed = urlparse(str(base_url or ""))
-    if (parsed.hostname or "").lower() not in LOCAL_HOSTS:
-        return None
-    return parsed.hostname, parsed.port or 80
-
-
-def _ensure_one(cluster: "SourceCluster", s_id: str, base_url: str, wait_s: float = 3.0) -> str:
-    target = _local_port(base_url)
-    if target is None:
-        return "remote"
-    host, port = target
-    if s_id in cluster.held:
-        return "stopped: held down on purpose (scenario in progress)"
-    if is_port_in_use(port, "127.0.0.1"):
-        return "running"
-    cfg = SOURCE_CONFIGS.get(s_id)
-    if cfg is None:
-        return f"failed: no in-process wrapper for {s_id}"
-    cluster.prune_dead()
-    old = cluster.servers.get(s_id)
-    if old is not None:  # alive but not answering on the catalog's port: replace it
-        old.stop()
-        del cluster.servers[s_id]
-    bind = "127.0.0.1" if host in ("localhost", "0.0.0.0") else host
-    try:
-        srv = WrapperServerThread(app=cfg["app"], host=bind, port=port)
-        srv.start()
-    except Exception as exc:  # a failed start is a status, not a crash
-        return f"failed: {exc}"
-    cluster.servers[s_id] = srv
-    deadline = time.monotonic() + wait_s
-    while time.monotonic() < deadline:
-        if is_port_in_use(port, "127.0.0.1"):
-            return "started"
-        if not srv.thread.is_alive():  # uvicorn exits its thread when the bind fails
-            del cluster.servers[s_id]
-            return f"failed: wrapper thread exited (port {port} could not be bound)"
-        time.sleep(0.05)
-    return f"failed: no answer on port {port} after {wait_s:.0f} s"
-
-
-def _prune_dead(self: "SourceCluster") -> List[str]:
-    """Forget server threads that have exited, so start_source/ensure can start them again."""
-    dead = [s for s, srv in self.servers.items() if not srv.thread.is_alive()]
-    for s in dead:
-        del self.servers[s]
-    return dead
-
-
-def _suspend(self: "SourceCluster", s_id: str) -> bool:
-    """Stop a source on purpose and keep the healer from restarting it until resume()."""
-    self.held.add(s_id)
-    had = s_id in self.servers
-    self.stop_source(s_id)
-    return had
-
-
-def _resume(self: "SourceCluster", s_id: str) -> None:
-    self.held.discard(s_id)
-
-
-def _held(self: "SourceCluster") -> set:
-    if not hasattr(self, "_held_set"):
-        self._held_set = set()
-    return self._held_set
-
-
-SourceCluster.prune_dead = _prune_dead
-SourceCluster.suspend = _suspend
-SourceCluster.resume = _resume
-SourceCluster.held = property(_held)
-
-
-def ensure_local_sources(catalog: Dict[str, Dict], include_puc: bool = True,
-                         cluster: Optional[SourceCluster] = None) -> Dict[str, str]:
-    """(Re)start every catalog source that should run on this machine and is not answering.
-
-    Returns source_id -> running | started | remote | stopped: ... | failed: <reason>. A source whose
-    base_url names another host is reported `remote` and never started here (source autonomy).
-    """
-    cluster = cluster or get_cluster()
-    out: Dict[str, str] = {}
-    with _heal_lock:
-        for s_id, meta in catalog.items():
-            if s_id == "PUC" and not include_puc:
-                continue
-            out[s_id] = _ensure_one(cluster, s_id, (meta or {}).get("base_url", ""))
-    return out
