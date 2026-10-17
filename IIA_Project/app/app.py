@@ -69,6 +69,7 @@ from theme import TOKENS, inject  # noqa: E402
 
 # PHASE2-REPLACED (Data quality group added after Mediator):
 # # Grouped in the sidebar as Enforcement (1-4), Citizens (5), Mediator (6-10); the group headings
+# # are drawn by `theme.py` off these positions, so reordering here means reordering there.
 # Grouped in the sidebar as Enforcement (1-4), Citizens (5), Mediator (6-10), Data quality (11-13); the
 # group headings are drawn by `theme.py` off these positions, so reordering here means reordering there.
 PAGES: dict[str, object] = {
