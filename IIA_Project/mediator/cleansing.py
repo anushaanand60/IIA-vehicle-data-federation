@@ -570,9 +570,22 @@ def resolve(capture_id: Any, decision: str, note: str = "", actor: str = "operat
     spec, pk = ctx.cam, ctx.pk
     record = ctx.record(capture_id)
     prop = propose(record, ctx)
-    open_codes = [a.code for a in _remaining(prop, ctx)]
-    if not open_codes:
+    # Only what is still open counts: an anomaly an earlier resolution already closed is not re-closed.
+    done = active_resolutions(spec.source_id).get(str(record["record_id"]), {}).get("anomalies", [])
+    # confirm_clone / dismiss leave the data as it is, so they only close what the proposals leave open;
+    # accept_candidate / delete_record change the data and may replace a proposal the operator rejects.
+    keeps = decision in ("confirm_clone", "dismiss")
+    still_open = [a for a in (_remaining(prop, ctx) if keeps else prop.anomalies) if a.code not in done]
+    if not still_open:
         raise CleansingError(f"record {capture_id} has nothing left to resolve")
+    open_codes = [a.code for a in still_open]
+    if decision == "confirm_clone":  # it vouches for clone evidence only; a quarantined read stays open
+        open_codes = [a.code for a in still_open if _disposition(a, prop) == "flagged"]
+        if not open_codes:
+            raise CleansingError(f"record {capture_id} carries no flagged clone evidence to confirm")
+    if decision == "accept_candidate" and not any(a.field in (PLATE, CONF) for a in still_open):
+        # rewriting a registered, well-read plate would erase the clone evidence the flags preserve
+        raise CleansingError(f"record {capture_id} has no plate anomaly; its plate is not rewritten")
     where = f"{pk} = {lexicons.sql_literal(record['record_id'])}"
     fld, before, after, sql = "record", None, decision, None
     evidence: Dict[str, Any] = {"anomalies": open_codes}
@@ -580,8 +593,8 @@ def resolve(capture_id: Any, decision: str, note: str = "", actor: str = "operat
         from mediator import watchlist
         plate = norm_plate(record.get(PLATE)) or ""
         previous = catalog.watchlist_get(plate)
-        watchlist.add(plate, f"verified clone evidence, {spec.source_id} capture {capture_id}: {note}".strip(),
-                      actor)
+        reason = f"verified clone evidence ({', '.join(open_codes)}), {spec.source_id} capture {capture_id}"
+        watchlist.add(plate, f"{reason}: {note.strip()}" if (note or "").strip() else reason, actor)
         evidence.update(plate=plate, watch_previous=previous)
     elif decision == "accept_candidate":
         m = match_plate(norm_plate(record.get(PLATE)) or "", _number(record.get(CONF)), record.get("observed_make"),
@@ -613,7 +626,9 @@ def resolve(capture_id: Any, decision: str, note: str = "", actor: str = "operat
 
 
 def active_resolutions(source_id: str) -> Dict[str, Dict[str, Any]]:
-    """record_id -> the latest resolution still in force that leaves the record in place."""
+    """record_id -> the resolutions still in force that leave the record in place (confirm_clone,
+    dismiss): the anomaly codes they closed, merged, and the latest decision with who and why.
+    Keyed on codes, so a later edit that raises a *new* anomaly shows as open, not resolved."""
     with _db() as conn:
         rows = conn.execute(
             "SELECT * FROM CLEANSING_LOG WHERE action = 'resolve' AND undone_at IS NULL AND source_id = ? "
@@ -621,8 +636,11 @@ def active_resolutions(source_id: str) -> Dict[str, Dict[str, Any]]:
     out: Dict[str, Dict[str, Any]] = {}
     for r in rows:
         ev = json.loads(r["evidence"] or "{}")
-        out[str(r["record_id"])] = {"log_id": r["log_id"], "decision": r["decision"], "note": r["note"],
-                                    "actor": r["actor"], "at": r["applied_at"], "anomalies": ev.get("anomalies", [])}
+        prior = out.get(str(r["record_id"]), {"anomalies": [], "log_ids": []})
+        out[str(r["record_id"])] = {
+            "log_id": r["log_id"], "decision": r["decision"], "note": r["note"], "actor": r["actor"],
+            "at": r["applied_at"], "log_ids": prior["log_ids"] + [r["log_id"]],
+            "anomalies": list(dict.fromkeys(prior["anomalies"] + ev.get("anomalies", [])))}
     return out
 
 

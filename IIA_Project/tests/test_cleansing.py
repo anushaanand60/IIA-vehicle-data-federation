@@ -334,3 +334,94 @@ def test_cli_prints_rule_tree(capsys):
     assert cleanse.main(["--tree"]) == 0
     out = capsys.readouterr().out
     assert "R0:" in out and "R11:" in out
+
+
+# ------------------------------------------------------------------ resolution step (workstream F)
+
+@pytest.fixture()
+def tmp_meta(monkeypatch, tmp_path):
+    """CLEANSING_LOG and WATCHLIST in a throwaway meta.db, so offline resolutions touch nothing real."""
+    monkeypatch.setattr(catalog, "META_DB_PATH", str(tmp_path / "meta.db"))
+    catalog.init_meta_db()
+    return tmp_path
+
+
+def _clone_ctx(specs):
+    # registered Hyundai i20 White, seen as a Kia Seltos Blue: valid values contradicting REG = clone evidence
+    return make_ctx(specs, [(1, capture("UP16GH0001", "Kia", "Seltos", "Blue")),
+                            (2, capture("HR26EF0001", "Hyundai", "Creta", "Grey"))])
+
+
+def test_confirm_clone_resolves_flagged_evidence_watches_the_plate_and_undoes(specs, tmp_meta):
+    from mediator import watchlist
+    ctx = _clone_ctx(specs)
+    before = cleansing.scan(ctx=ctx)
+    assert before["remaining_by_disposition"].get("flagged", 0) >= 2
+    res = cleansing.resolve(1, "confirm_clone", "matches the cloned-plate report", "inspector", ctx=ctx)
+    assert {"MAKE_DISAGREES_REGISTRATION", "COLOUR_DISAGREES_REGISTRATION"} <= set(res["resolved"])
+    assert watchlist.is_watched("UP16GH0001")
+    after = cleansing.scan(ctx=ctx)
+    item = next(i for i in after["items"] if i["record_id"] == 1)
+    assert set(item["dispositions"]) == {"resolved"}
+    assert item["resolution"]["actor"] == "inspector" and item["resolution"]["decision"] == "confirm_clone"
+    assert after["remaining_after_resolution"] == 0 and after["remaining_by_disposition"].get("unhandled", 0) == 0
+    with pytest.raises(cleansing.CleansingError, match="nothing left"):
+        cleansing.resolve(1, "dismiss", "again", "inspector", ctx=ctx)
+    cleansing.undo(res["log_id"], actor="inspector", ctx=ctx)
+    assert not watchlist.is_watched("UP16GH0001")
+    assert cleansing.scan(ctx=ctx)["remaining_after_resolution"] == before["remaining_after_resolution"]
+
+
+def test_confirm_clone_keeps_an_existing_watch_entry_on_undo(specs, tmp_meta):
+    from mediator import watchlist
+    watchlist.add("UP16GH0001", "already watched by patrol", "patrol")
+    ctx = _clone_ctx(specs)
+    res = cleansing.resolve(1, "confirm_clone", "", "inspector", ctx=ctx)
+    cleansing.undo(res["log_id"], ctx=ctx)
+    assert catalog.watchlist_get("UP16GH0001")["reason"] == "already watched by patrol"
+
+
+def test_resolution_guards(specs, tmp_meta):
+    ctx = _clone_ctx(specs)
+    with pytest.raises(cleansing.CleansingError, match="note"):
+        cleansing.resolve(1, "dismiss", "  ", ctx=ctx)
+    with pytest.raises(cleansing.CleansingError, match="unknown resolution"):
+        cleansing.resolve(1, "shrug", "x", ctx=ctx)
+    with pytest.raises(cleansing.CleansingError, match="nothing left"):
+        cleansing.resolve(2, "dismiss", "clean record", ctx=ctx)  # a clean capture has nothing open
+    with pytest.raises(cleansing.CleansingError, match="no plate anomaly"):
+        cleansing.resolve(1, "accept_candidate", "x", candidate="UP16GH0002", ctx=ctx)  # would erase clone evidence
+    misread = make_ctx(specs, [(3, capture("DL05CD9B76", "Maruti Suzuki", "Swift", "Silver"))])
+    with pytest.raises(cleansing.CleansingError, match="not among"):
+        cleansing.resolve(3, "accept_candidate", "x", candidate="ZZ99ZZ9999", ctx=misread)
+
+
+def test_dismiss_with_note_is_reported_as_resolved(specs, tmp_meta):
+    ctx = make_ctx(specs, [(1, capture("HR26EF0002", "Kia", "Seltos", "Red", ocr_confidence=0.6))])
+    res = cleansing.resolve(1, "dismiss", "camera 3 lens replaced; read verified by hand", "alice", ctx=ctx)
+    item = next(i for i in cleansing.scan(ctx=ctx)["items"] if i["record_id"] == 1)
+    assert set(item["dispositions"]) == {"resolved"} and item["resolution"]["note"].startswith("camera 3")
+    assert res["log_id"] in item["resolution"]["log_ids"]
+
+
+def test_accept_candidate_and_delete_record_round_trip_live(local_cluster):
+    ctx = cleansing.Context.build()
+    spec, pk = _live(ctx)
+    rid = next(r["record_id"] for r in ctx.records if r["plate_number"] == "DL05CD9B76")
+    try:
+        res = cleansing.resolve(rid, "accept_candidate", "operator picked the matcher's top", "pytest",
+                                candidate="DL05CD9876", ctx=ctx)
+        assert _stored(spec, pk, rid, "plate_number") == "DL05CD9876"
+        assert _scan_item(rid) is None or not _scan_item(rid)["remaining"]
+        cleansing.undo(res["log_id"], actor="pytest")
+        assert _stored(spec, pk, rid, "plate_number") == "DL05CD9B76"
+    finally:
+        col = cleansing._column(spec, "plate_number")
+        _admin(spec, f"UPDATE {spec.table} SET {col} = 'DL05CD9B76' WHERE {pk} = {rid}")
+    ctx = cleansing.Context.build()
+    res = cleansing.resolve(rid, "delete_record", "test", "pytest", ctx=ctx)
+    try:
+        assert _stored(spec, pk, rid, "plate_number") is None
+    finally:
+        cleansing.undo(res["log_id"], actor="pytest")
+    assert _stored(spec, pk, rid, "plate_number") == "DL05CD9B76"
