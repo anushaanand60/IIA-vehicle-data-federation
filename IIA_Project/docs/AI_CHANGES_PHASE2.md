@@ -214,3 +214,126 @@ is 1.0 over 200 real REG plates and all their single-character `CONFUSABLE` corr
 
 Standalone (unchained), prefix and position each cut 605 → 85.9 with recall 1.000; on plates the
 position bound adds nothing over the prefix bound, which we report rather than hide.
+
+---
+
+## Workstream E — cleansing camera records with Ripple-Down Rules (rubric 2)
+
+**Prompt (summary).** Implement workstream E against the Week 8 RDR deck (slides 8-32): a general
+single-classification RDR engine (`if condition then conclusion [because case] except … else …`,
+cornerstone cases, knowledge acquisition that only ever adds a rule under the rule that fired
+wrongly or on the false branch, and refuses a rule that would change another rule's cornerstone
+conclusion); lexicons and plate shape/sub-pattern mining from live REG data through the federation;
+anomaly detection on CAM captures (unregistered plate, invalid shape, make/model/colour not in the
+lexicon or disagreeing with registration, low OCR confidence, impossible travel, duplicate capture,
+unparseable or future timestamp); proposals from the RDR tree that cite the plate matcher's
+candidate and probability and quarantine on REVIEW; apply and undo through the CAM wrapper's own
+`/admin/sql` with an audit row in `meta.db`; a live scan report; a seed tree with real cornerstones;
+a non-interactive CLI; tests including the deck's worked example and the examiner's
+insert / modify / delete loop on the `local_cluster` fixture. No edits to the matcher, similarity,
+blocking or GUI modules.
+
+| Module | generated | reviewed |
+|---|---|---|
+| `mediator/rdr.py` | `71d88aa` | `2331b58` |
+| `mediator/lexicons.py` | `ec6dd4d` | `e8d91df` |
+| `mediator/cleansing.py` | `d65cfba` | `601c44c` |
+| `scripts/cleanse.py` | `13d4c09` | `7e0679a` |
+
+Seed tree and tests: `2702f6e` (`data/rdr_rules.json`, `tests/test_cleansing.py`); `tests/test_rdr.py`
+was committed with the reviewed engine.
+
+### `mediator/rdr.py` — `71d88aa` to `2331b58`
+
+- **Knowledge acquisition could hang a rule where the case never goes.** The generated
+  `add_exception` never checked that the named rule was on the case's own evaluation path, or that
+  it *fired* (for an except branch) or *failed* (for an else branch). Slide 26 makes that
+  distinction the whole rule ("fires but wrong: except; fails to fire: else"), and slide 29 says the
+  trace is what guides where the rule goes. Now refused with a message naming the path.
+- **A shadowed rule was silently accepted.** Appending to an existing except chain can put the new
+  rule behind an earlier sibling that already catches the case; the rule was saved and never fired.
+  The reviewed version re-evaluates the case and refuses unless the new rule is the one concluding.
+- **Validation was not atomic.** Any failure during the cornerstone check (or an exception from a
+  bad condition) could leave the new node attached; it is now detached on every failure path, and
+  a test asserts the serialised tree is identical after a refusal.
+- **Malformed conditions raised `KeyError`**; they now raise `ValueError` naming the condition.
+- **Efficiency:** lexicon membership rebuilt a lower-cased set on every test of every rule; the
+  tree now normalises its lexicons once.
+
+### `mediator/lexicons.py` — `ec6dd4d` to `e8d91df`
+
+- **Resource leak:** an `httpx.Client` was opened per request and never closed.
+- **SQL literal bug:** the keyset cursor was rendered with Python `repr`, which is not SQL quoting
+  for text keys; replaced by a proper literal (shared with the cleansing writes).
+- **A duplicated column name lost its value**; the executor's `table__column` alias rule is reused.
+- **Overloaded numbers (slide 12):** edit/prefix guessing mapped model `i10` onto `i20`. Tokens
+  containing digits are now never guessed; two-letter tokens (`Re` to Red) are not guessed either,
+  and the mined-variant radius now follows token length as the lookup does.
+- **Curated aliases overstated the dictionary.** The generated table listed `Gry`, `Slvr`, `Gray`,
+  `Maruti`, `Hyundia`, all of which the miner, prefix, abbreviation or edit lookup already derive,
+  hiding how much is actually mined. Only non-derivable aliases remain (`Pearl White`, `MSIL`, ...).
+- **Sub-pattern frequencies were mined but never used.** `ZZ01AB1234` has a real shape and passed;
+  validity now needs both the shape and the slide-21 pattern (`S^+^`) to be attested.
+
+### `mediator/cleansing.py` — `d65cfba` to `601c44c`
+
+- **The matcher adapter was wrong for the real interface.** Workstream C's `plate_match.match`
+  returns `(ranked candidates, blocking stats)`; the generated adapter read it as an object with a
+  `decision` attribute, so every unregistered read came back with no decision. It now reads the top
+  candidate's calibrated decision, and hands the matcher the live REG snapshot (`registry=`) so it
+  never opens `reg.db` itself (that file is not on the mediator laptop in the 4-laptop deployment).
+  Results are memoised per snapshot, since one scan meets the same misread several times.
+- **Future timestamps vs the wrapper's own inserts.** "Future relative to `REFERENCE_TODAY`" flagged
+  every capture the CAM wrapper's `sight` admin action inserts (it stamps the real clock), i.e.
+  every row the examiner adds through the GUI. The horizon is now the later of the two; the examiner
+  loop test asserts a "seen just now" row is not flagged.
+- **Duplicates compared ids as text** (`"10" < "9"`), so the wrong copy would have been deleted.
+- **A junk `ocr_confidence` crashed `detect`**; values are parsed defensively.
+- **Low confidence was double-counted.** It stayed an anomaly after the registration corroborated
+  the read (make or colour agree), so "remaining after" never reached zero for corrected plates.
+  It is now flagged only for uncorroborated reads, mirroring rules R7/R8.
+- **Taught rules could break the two invariants.** A rule could rewrite a plate when the matcher
+  said REVIEW, or `set` a NULL; both are now downgraded to `quarantine` in code, whatever the tree
+  says (tested by teaching exactly such a rule).
+- **Undo was unsafe:** no optimistic check (it would overwrite an operator's later edit) and it could
+  run twice; both now refuse. **Delete** logged only the mapped columns, so undo lost `camera_id`;
+  the full row is fetched before deleting. Apply logs the value the source actually stores (its own
+  plate rendering), which is what undo must match.
+- **meta.db connections were never closed** (`with sqlite3.connect()` only commits).
+- **A dead source crashed the scan;** it now returns `UNAVAILABLE` with the reason (the phase-1
+  refuse-don't-crash rule).
+- **Added:** each anomaly left after the proposals carries a disposition: `flagged` (clone evidence
+  that cleansing must not erase), `quarantined` (a person decides) or `unhandled` (the number that
+  must be 0).
+
+### `scripts/cleanse.py` — `13d4c09` to `7e0679a`
+
+- Unknown capture ids, an unreachable source, an RDR refusal or bad JSON printed a traceback; now
+  one `error:` line and exit code 2.
+- `--teach` with missing flags crashed in `json.loads(None)`; it now names every missing flag.
+- `--scan` printed raw JSON only; it now prints the counts before / proposed / remaining / by
+  disposition and a per-record line, and a refused scan exits non-zero.
+
+### Deliberate choices, documented in the code
+
+- **One tree, evaluated once per field** (plate, make, model, colour, timestamp, record), the way
+  slide 30 labels each token by walking the same chain.
+- **Clone evidence is flagged, never "cleansed".** A valid make or colour that contradicts the
+  registration is the phase-1 cloned-plate signal; overwriting it with REG's value would destroy the
+  evidence (slide 23: context, not the pattern, decides).
+- **Seed cornerstones.** R0, R4, R5 and R6 are unmodified CAM captures (77, 918, 916, 914). CAM's
+  text fields contain no natural spelling noise, so R1-R3 and R7-R11 use a real capture with one
+  field perturbed exactly as the examiner would; each cornerstone records its provenance.
+- **Confidence floor 0.70**, from the benchmark: the exact-read rate is at most 32 % below it and at
+  least 42 % above it.
+
+### Measured on the local CAM data (918 captures, live through the wrappers)
+
+| | count |
+|---|---|
+| anomalies before | 216 (52 unregistered plate, 40 colour / 39 model / 35 make disagreeing with REG, 36 invalid shape, 12 low confidence, 2 impossible travel) |
+| proposals | 34 set (plate corrections the matcher ACCEPTs), 18 quarantine, 116 flag |
+| remaining after applying | 137 = 116 flagged clone evidence + 21 quarantined + **0 unhandled** |
+
+Known limit: a full scan calls `plate_match.match` once per distinct unregistered read; at roughly
+0.5 s a call (it rebuilds its TF/IDF corpus each time) a full scan takes 10-25 s on this laptop.
