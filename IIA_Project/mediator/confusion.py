@@ -6,13 +6,18 @@ both too flat -- 0->O is 62 % of all observed substitutions, 5->S is 2 % -- and 
 1/4, H/4, 1/A, D/U and 1/T occur and are not in it. Here the costs are *measured* instead.
 
 Estimate (`estimate_costs`):
-    For each labelled read whose length equals its true plate's, every position where the two
+    For each labelled *rendered* read (degradation != "observed": the planted story misreads
+    are demo fixtures, not noise samples) whose length equals its true plate's, every position
+    where the two
     differ is one observed substitution a<->b (positional alignment, as in BENCHMARK_NOISE §4;
     unequal lengths contribute nothing rather than a misaligned guess).
     n(a,b)    symmetric count of a<->b substitutions
-    n(a)      all substitutions involving a
-    f(a|b)    (n(a,b) + 1) / (n(b) + |alphabet|)      Laplace-smoothed share of b's errors
-    cost(a,b) max(FLOOR, 1 - (f(a|b) + f(b|a)) / 2)  symmetric, never free
+    n_max     the largest n(a,b) in the training split (0<->O)
+    freq(a,b) log(1 + n(a,b)) / log(1 + n_max)        add-one (Laplace) smoothed, log-normalised
+    cost(a,b) max(FLOOR, 1 - freq(a,b))               symmetric by construction, never free
+    Log, not linear: the counts are heavy-tailed (0<->O alone is ~62 % of all substitutions),
+    so a linear share would leave every other real confusion -- 5/S, 1/I, H/4 -- at cost ~0.97,
+    indistinguishable from an arbitrary substitution.
     Pairs never observed fall back to the hand table (`similarity.ocr_confusion_cost`), so the
     documented confusables keep their 0.2 even when this benchmark happened not to see them.
 
@@ -24,16 +29,16 @@ is checkable; tests assert that a confusion seen only in held-out rows does not 
 from __future__ import annotations
 
 import json
+import math
 import random
 from collections import Counter
 from pathlib import Path
-from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
+from typing import Dict, Iterable, Mapping, Optional, Sequence, Tuple
 
 from mediator.similarity import ocr_confusion_cost, weighted_edit_distance
 
 ROOT = Path(__file__).resolve().parent.parent
 COSTS_PATH = ROOT / "data" / "confusion_costs.json"
-ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 FLOOR = 0.1          # a confusion is cheap, never free: two plates differing only by 0/O are
                      # still two strings, and a zero cost would make them indistinguishable
 DEFAULT_SEED = 20261017
@@ -67,27 +72,29 @@ def observed_substitutions(pairs: Iterable[Tuple[str, str]]) -> Counter:
 
 
 def estimate_costs(rows: Sequence[Mapping[str, str]], train_plates: Iterable[str]
-                   ) -> Dict[Tuple[str, str], float]:
-    """Costs for every observed pair, from rows whose true plate is in `train_plates` only."""
+                   ) -> Tuple[Dict[Tuple[str, str], float], Counter]:
+    """(costs, counts) for every observed pair, from TRAINING-plate rendered rows only.
+
+    Returning the counts with the costs means the caller cannot recount them under a different
+    filter and save numbers that did not produce these costs.
+    """
     train = set(train_plates)
     pairs = [(r["true_plate"], r["ocr_read"]) for r in rows
-             if r.get("true_plate") in train and r.get("ocr_read")]
+             if r.get("true_plate") in train and r.get("ocr_read")
+             and r.get("degradation") != "observed"]
     counts = observed_substitutions(pairs)
-    per_char: Counter = Counter()
-    for (a, b), n in counts.items():
-        per_char[a] += n
-        per_char[b] += n
-    k = len(ALPHABET)
+    if not counts:
+        return {}, counts
+    log_max = math.log1p(max(counts.values()))
     costs: Dict[Tuple[str, str], float] = {}
-    for (a, b), n in counts.items():
-        f_ab = (n + 1) / (per_char[b] + k)
-        f_ba = (n + 1) / (per_char[a] + k)
-        costs[(a, b)] = max(FLOOR, 1.0 - (f_ab + f_ba) / 2)
-    return costs
+    for pair, n in counts.items():
+        costs[pair] = max(FLOOR, 1.0 - math.log1p(n) / log_max) if log_max > 0 else 1.0
+    return costs, counts
 
 
 def save_costs(costs: Dict[Tuple[str, str], float], counts: Counter, seed: int,
-               train_plates: Sequence[str], path: Path = COSTS_PATH) -> None:
+               train_plates: Sequence[str], path: Optional[Path] = None) -> None:
+    path = path or COSTS_PATH
     payload = {
         "seed": seed,
         "floor": FLOOR,
@@ -96,13 +103,22 @@ def save_costs(costs: Dict[Tuple[str, str], float], counts: Counter, seed: int,
         "pairs": [{"a": a, "b": b, "count": counts[(a, b)], "cost": round(c, 4)}
                   for (a, b), c in sorted(costs.items(), key=lambda kv: kv[1])],
     }
-    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    reload_costs()  # otherwise this process keeps scoring with the costs it loaded before
 
 
-def load_costs(path: Path = COSTS_PATH) -> Dict[Tuple[str, str], float]:
+def reload_costs() -> None:
+    """Drop the in-process copy so the next call re-reads the JSON (after a re-estimate)."""
+    global _cache
+    _cache = None
+
+
+def load_costs(path: Optional[Path] = None) -> Dict[Tuple[str, str], float]:
+    """Pair -> cost from the JSON; {} when it is absent (every pair then uses the hand table)."""
     global _cache
     if _cache is None:
         _cache = {}
+        path = path or COSTS_PATH  # resolved at call time, so tests/tools can redirect it
         if path.exists():
             data = json.loads(path.read_text(encoding="utf-8"))
             for p in data["pairs"]:
@@ -112,7 +128,7 @@ def load_costs(path: Path = COSTS_PATH) -> Dict[Tuple[str, str], float]:
 
 def learned_confusion_cost(a: str, b: str) -> float:
     """Measured substitution cost; hand table for pairs the training split never showed."""
-    a, b = a.upper(), b.upper()
+    a, b = str(a or "").upper(), str(b or "").upper()
     if a == b:
         return 0.0
     cost = load_costs().get(tuple(sorted((a, b))))
@@ -121,7 +137,7 @@ def learned_confusion_cost(a: str, b: str) -> float:
 
 def learned_ocr_similarity(s1: str, s2: str) -> float:
     """1 - weighted edit distance / max length (p. 17), with the learned substitution costs."""
-    x, y = s1.upper(), s2.upper()
+    x, y = str(s1 or "").upper(), str(s2 or "").upper()
     if not x and not y:
         return 1.0
     if not x or not y:
