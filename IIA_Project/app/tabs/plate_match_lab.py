@@ -165,15 +165,20 @@ def _candidates_panel(res: Dict[str, Any]) -> None:
         f"hand-weighted fallback — {err}"
     section(f"Ranked candidates for {res['read']}", f"Model: {model}. Each measure's score side by side; "
             "the decision reads the calibrated probability against thresholds chosen on validation.")
-    rows = []
+    # Two tables, one row per candidate in both: one table of 17 columns overflowed the panel and hid
+    # the learned score and the context columns behind a horizontal scroll.
+    verdict, measures = [], []
     for i, c in enumerate(res["cands"], 1):
         reg = res["registry"].get(c.plate, {})
-        rows.append({"#": i, "Plate": c.plate, "Probability": f"{c.probability:.3f}", "Decision": c.decision,
-                     **{SHORT[n]: f"{c.scores.get(n, 0):.2f}" for n in plate_match.SCORE_NAMES},
-                     "Make": AGREE.get(c.features.get("make_agree"), "—"),
-                     "Colour": AGREE.get(c.features.get("colour_agree"), "—"),
-                     "Registered as": f"{reg.get('make') or ''} {reg.get('model') or ''} {reg.get('colour') or ''}"})
-    styled_table(rows)
+        verdict.append({"#": i, "Plate": c.plate, "Probability": f"{c.probability:.3f}", "Decision": c.decision,
+                        "Make vs registration": AGREE.get(c.features.get("make_agree"), "—"),
+                        "Colour vs registration": AGREE.get(c.features.get("colour_agree"), "—"),
+                        "Registered as": f"{reg.get('make') or ''} {reg.get('model') or ''} {reg.get('colour') or ''}"})
+        measures.append({"#": i, "Plate": c.plate,
+                         **{SHORT[n]: f"{c.scores.get(n, 0):.2f}" for n in plate_match.SCORE_NAMES}})
+    styled_table(verdict)
+    group_label("Every measure's score for the same candidates (deck p. 16-37)")
+    styled_table(measures)
     chip_strip([decision_chip(c.decision, f"{c.plate} · {c.decision} · p={c.probability:.3f}")
                 for c in res["cands"][:5]])
     if res["cands"]:
