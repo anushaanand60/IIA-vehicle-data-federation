@@ -399,15 +399,27 @@ def scan(limit: Optional[int] = None, ctx: Optional[Context] = None) -> Dict[str
         prop = propose(rec, ctx)
         before.update(a.code for a in prop.anomalies)
         actions.update(f.action for f in prop.changes)
+        # PHASE2-REPLACED (remaining computed by _remaining, shared with resolve()):
+        # fixed = _after(prop)
+        # remaining = detect(fixed, ctx.profile_for(fixed), ctx) if fixed else []
         remaining = _remaining(prop, ctx)
         after.update(a.code for a in remaining)
         resolution = resolved.get(str(rec["record_id"]))
+        # PHASE2-REPLACED (an operator resolution turns a disposition into `resolved`):
+        # disposition.update(_disposition(a, prop) for a in remaining)
         dispositions = [_disposition(a, prop, resolution) for a in remaining]
         disposition.update(dispositions)
         if prop.anomalies or prop.changes:
+            # PHASE2-REPLACED (items also carry per-anomaly dispositions and the resolution):
+            # items.append({**prop.to_dict(), "remaining": [a.code for a in remaining]})
             items.append({**prop.to_dict(), "remaining": [a.code for a in remaining],
                           "dispositions": dispositions, "resolution": resolution})
     open_after = sum(n for d, n in disposition.items() if d != "resolved")
+    # PHASE2-REPLACED (report adds remaining_after_resolution):
+    # return {"status": "OK", "source_id": ctx.cam.source_id, "records_scanned": len(ctx.records[:limit]),
+    #         "records_with_anomalies": sum(1 for i in items if i["anomalies"]),
+    #         "anomalies_before": dict(before), "proposals": dict(actions),
+    #         "remaining_after": dict(after), "remaining_by_disposition": dict(disposition), "items": items}
     return {"status": "OK", "source_id": ctx.cam.source_id, "records_scanned": len(ctx.records[:limit]),
             "records_with_anomalies": sum(1 for i in items if i["anomalies"]),
             "anomalies_before": dict(before), "proposals": dict(actions),
@@ -421,6 +433,10 @@ def _remaining(prop: Proposal, ctx: Context) -> List[Anomaly]:
     return detect(fixed, ctx.profile_for(fixed), ctx) if fixed else []
 
 
+# PHASE2-REPLACED (optional resolution argument added; the docstring's last line was extended):
+# def _disposition(anomaly: Anomaly, proposal: Proposal) -> str:
+#     """What happens to an anomaly a proposal does not remove: flagged as evidence (a clone signal
+#     must survive cleansing), quarantined for a person, or unhandled -- the number to drive to 0."""
 def _disposition(anomaly: Anomaly, proposal: Proposal, resolution: Optional[Dict[str, Any]] = None) -> str:
     """What happens to an anomaly a proposal does not remove: flagged as evidence (a clone signal
     must survive cleansing), quarantined for a person, or unhandled -- the number to drive to 0.
@@ -527,6 +543,8 @@ def undo(log_id: int, actor: str = "operator", ctx: Optional[Context] = None) ->
     pk = ctx.pk if ctx else lexicons.primary_key(spec)
     before, after, sql = json.loads(row["before_value"]), json.loads(row["after_value"]), None
     where = f"{pk} = {lexicons.sql_literal(row['record_id'])}"
+    # PHASE2-REPLACED (dispatch on `kind`, so a resolution undoes like the write it made):
+    # if row["action"] == "set":
     kind = row["action"]
     if kind == "resolve":
         kind = {"accept_candidate": "set", "delete_record": "delete"}.get(row["decision"], "resolve")
@@ -537,6 +555,8 @@ def undo(log_id: int, actor: str = "operator", ctx: Optional[Context] = None) ->
         sql = f"UPDATE {spec.table} SET {col} = {lexicons.sql_literal(before)} WHERE {where} AND {_match(col, after)}"
         if _admin(spec, sql) != 1:  # someone edited it after us: never overwrite their change blindly
             raise CleansingError(f"record {row['record_id']} no longer holds {after!r}; not undone")
+    # PHASE2-REPLACED (dispatch on `kind`):
+    # elif row["action"] == "delete":
     elif kind == "delete":
         cols = ", ".join(before)
         vals = ", ".join(lexicons.sql_literal(v) for v in before.values())
