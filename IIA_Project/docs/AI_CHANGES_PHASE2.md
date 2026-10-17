@@ -143,3 +143,74 @@ progress output only appeared once the run had already finished. Added `flush=Tr
 severities) = 2 200 images, seed `20261017`, EasyOCR 1.7.2 on CPU, 0.38 s per image, ~14 minutes.
 39.5 % exact raw reads, 66.4 % after confusion repair, 47 images OCR returned nothing for. The
 full table and the honest limits are in `docs/BENCHMARK_NOISE.md`.
+
+## Workstream D — `mediator/blocking.py` (candidate generation at scale)
+
+**Prompt summary.** Implement step 1 of the slides' two-step framework (Week 6–8, p. 44) as
+`mediator/blocking.py`: a `QGramIndex` with the deck's four FindCands variants — plain inverted
+index (p. 47–51), size filtering (p. 53–54), prefix filtering over a global token order
+(p. 55–58, proof p. 64) and the position index (p. 65) — each recording a `BlockingStats`;
+one entry point `candidate_plates(read, registry, strategy=...)`; and `sql_prefilter`, a
+length-and-head predicate to push into a source's SQL reusing `mediator/decomposer.py`'s
+normalisation expression. Reuse `mediator/similarity.py` for every measure; never reimplement
+one. Tests must encode the deck's own worked example (Week 8 slides 1–7) and must prove recall
+is 1.0 over 200 real REG plates and all their single-character `CONFUSABLE` corruptions.
+
+**Commits.** generated `76e5b92` → reviewed `93312c5`.
+
+### What changed between the two commits, and why
+
+- **Correctness, recall-losing bound.** The generated `recommended_k` took
+  `k = |Gq(query)| − q·max_edits`, i.e. it sized the prefix from the *query's* token count
+  alone. The prefix theorem (p. 57, proof p. 64) only preserves pairs whose true overlap is at
+  least `k`, so any indexed plate with fewer distinct q-grams than the query — which happens
+  whenever a plate repeats a bigram, e.g. `DL01AB1111` — can have a true overlap below that `k`
+  and be silently dropped. The reviewed version takes the minimum token count still inside the
+  p. 53 size window (bisect over a sorted size list) and derives `k` from that. On the real
+  registry this moves `k` from 9 to 7 and costs nothing measurable.
+- **Specification gap: the filters did not compose.** Each strategy ran standalone, so on real
+  data `prefix` returned 170 candidates where `size` returned 3 — the pruning table was
+  non-monotone and told the examiner nothing. The deck composes them ("Prefix + Inverted Index",
+  p. 57–63; the position index as a *further* limit, p. 65), so `candidate_plates` now chains
+  them and every `QGramIndex` method grew a `restrict` argument so each filter can still be
+  demonstrated alone.
+- **Efficiency.** The chained pipeline probed the same inverted lists twice (a full
+  `candidates()` pass whose result the size filter immediately recomputed). Removing the
+  redundant probe and memoising the query's ordered token set per index cut the test file from
+  6.5 s to 3.9 s. The memo caches a derivation of the *query*, never a source row, so the
+  project's no-cache invariant is intact.
+- **Course method ignored.** The generated size filter used only `|nx − ny| ≤ q·delta`. The
+  reviewed one also applies the p. 45 inequality `ov_q(s,t) ≥ max(|Gq(s)|,|Gq(t)|) − q·k`, which
+  is what actually does the work: it is the difference between 373 candidates and 1.1. The
+  Jaccard form of the p. 53 bound (`|x|·t ≤ |y| ≤ |x|/t`) is exposed as
+  `jaccard_size_window` and tested against Week 8 slide 3.
+- **Injection and dialect bugs in `sql_prefilter`.** The generated version interpolated the
+  caller's column name unchecked and silently fell back to `LENGTH` for any unknown dialect —
+  `LENGTH` counts *bytes* in MySQL. The reviewed version validates the column against an
+  identifier pattern, rejects unknown dialects, uses `CHAR_LENGTH` for MySQL/MariaDB, and
+  returns `1=1` rather than a vacuous `LIKE '%'` when the read is shorter than two characters.
+- **Documented bound we chose to keep.** `sql_prefilter`'s two-character head is *not*
+  recall-safe against an OCR confusion in position 0 or 1 (`DL` read as `0L`). The docstring
+  states this and names the alternatives; it is accepted because the state code is the most
+  legible part of the plate and because the local q-gram path, which has no such hole, is the
+  one used whenever the registry is already in hand.
+- **Test bugs found while reviewing.** (a) The deck test asserted slide 4's candidate set using
+  the *globally ordered* prefix; slide 4 precedes the ordering introduced on slide 5 and uses
+  the tokens as listed, so the expected set was wrong. (b) The pruning test chained
+  `candidates_after` monotonically across strategies that were not yet chained, and used the
+  story misread `DLO1AB1Z34` — a **two**-confusion read — as if it were one edit. It now uses a
+  genuine one-edit read, and a separate test asserts the honest behaviour at the boundary: at
+  `max_edits=1` the two-edit read is legitimately excluded, and `max_edits=2` brings it back.
+
+### Measured result (all 605 REG plates, 5 079 single-confusion reads)
+
+| strategy | mean candidates | reduction | recall |
+|---|---|---|---|
+| `none` (p. 40–43 naive) | 605.0 | 1× | 1.000 |
+| `index` (p. 47–51) | 372.6 | 1.6× | 1.000 |
+| `size` (p. 53) | 1.1 | 551× | 1.000 |
+| `prefix` (p. 55–58) | 1.1 | 551× | 1.000 |
+| `position` (p. 65) | 1.1 | 551× | 1.000 |
+
+Standalone (unchained), prefix and position each cut 605 → 85.9 with recall 1.000; on plates the
+position bound adds nothing over the prefix bound, which we report rather than hide.
