@@ -219,6 +219,13 @@ def test_empty_index():
         assert cands == [] and stats.candidates_after == 0
 
 
+def test_prebuilt_empty_index_is_honoured():
+    """An index over an empty collection is falsy; it must still be used, not rebuilt."""
+    empty = QGramIndex.build([])
+    cands, _ = candidate_plates("DL01AB1234", ["DL01AB1234"], index=empty)
+    assert cands == []
+
+
 def test_empty_query():
     plates = ["DL01AB1234", "DL02AB1234"]
     for strategy in STRATEGIES:

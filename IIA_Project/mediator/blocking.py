@@ -374,8 +374,11 @@ def candidate_plates(read: str, registry: Sequence[str], *, strategy: str = "pos
             index_lookups=0, elapsed_ms=(time.perf_counter() - t0) * 1000.0,
             filters_applied=["full_scan"])
 
-    idx: QGramIndex = kw.get("index") or QGramIndex.build(
-        registry, q=q, tokenizer=kw.get("tokenizer"))
+    # `is None`, not truthiness: an index over an empty registry is falsy (__len__ == 0)
+    # and would otherwise be silently rebuilt.
+    idx: Optional[QGramIndex] = kw.get("index")
+    if idx is None:
+        idx = QGramIndex.build(registry, q=q, tokenizer=kw.get("tokenizer"))
 
     lookups = 0
     filters: List[str] = ["inverted_index"]
