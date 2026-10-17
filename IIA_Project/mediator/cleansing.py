@@ -192,6 +192,15 @@ def _agrees(observed: Optional[str], registered: Optional[str]) -> Optional[bool
     return a.startswith(b) or b.startswith(a)
 
 
+def _canon_agrees(attr: str, observed: Any, registered: Any, ctx: Context) -> Optional[bool]:
+    """Agreement after both sides are mapped through the lexicon's canonical form (Gray meets Grey).
+    None when either side is unknown, so a missing value can never veto anything."""
+    if not observed or not registered:
+        return None
+    lex = ctx.lex.for_attr(attr)
+    return _agrees(lex.lookup(observed)[0] or str(observed), lex.lookup(registered)[0] or str(registered))
+
+
 def match_plate(read: str, confidence: Any, make: Any, colour: Any, ctx: Context,
                 model: Any = None) -> Dict[str, Any]:
     """The plate matcher's verdict: workstream C's calibrated matcher if present, else plate_resolve.
@@ -336,7 +345,13 @@ def features(record: Dict[str, Any], fld: str, profile: Dict[str, Any], ctx: Con
             best = ctx.profiles.get(m["best"] or "", {})
             case.update(match_decision=m["decision"], match_best=m["best"], match_probability=m["probability"],
                         match_method=m["method"], match_candidates=m["candidates"][:5], match_note=m.get("note"),
-                        match_best_make_agrees=_agrees(record.get("observed_make"), best.get("vehicle_make")))
+                        match_best_make_agrees=_agrees(record.get("observed_make"), best.get("vehicle_make")),
+                        # Workstream H: colour and model of the accepted candidate, so an RDR exception
+                        # can veto a plate correction the camera's own evidence contradicts.
+                        match_best_colour_agrees=_canon_agrees("colour", record.get("observed_colour"),
+                                                               best.get("vehicle_colour"), ctx),
+                        match_best_model_agrees=_canon_agrees("model", record.get("observed_model"),
+                                                              best.get("vehicle_model"), ctx))
     elif fld == TIME:
         moment, fmt = parse_ts(record.get(TIME))
         case.update(ts_parsed=moment is not None, ts_ok=moment is not None and fmt == ctx.ts_format,
