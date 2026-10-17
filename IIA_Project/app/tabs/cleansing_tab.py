@@ -27,7 +27,7 @@ import streamlit as st  # noqa: E402
 from components import chip, chip_strip, group_label, kpi_row, page_head, panel, section, stepper, styled_table  # noqa: E402
 from mediator import cleansing, lexicons  # noqa: E402
 from mediator.rdr import RDRConflict, RDRTree  # noqa: E402
-from tabs import cleansing_toolbox  # noqa: E402
+from tabs import change_watch, cleansing_toolbox, cleansing_validation_panel  # noqa: E402
 from theme import TOKENS  # noqa: E402
 
 ACTION_TOKEN = {"keep": "neutral", "set": "ok", "delete": "warn", "quarantine": "warn", "flag": "bad"}
@@ -48,6 +48,7 @@ def _scan() -> None:
 def _after_write(message: str, capture: Any = None) -> None:
     """Every write is followed by a fresh scan, so the counts and the list never describe old data."""
     st.session_state["dc_flash"] = message
+    change_watch.note_write(message, capture)  # the Watch panel compares this capture's row before/after
     if capture is not None:
         st.session_state["dc_pending_capture"] = str(capture)
     _scan()
@@ -294,6 +295,8 @@ def render() -> None:
     if sel:
         with panel("dc_resolve"):
             _resolve_panel(sel, actor)
+    with panel("dc_watch"):  # before the toolbox, so its snapshot is taken before a toolbox write
+        change_watch.render(sel["rid"] if sel else None)
     with panel("dc_bulk"):
         _bulk(report, actor)
     if sel:
@@ -303,3 +306,5 @@ def render() -> None:
         _tree()
     with panel("dc_toolbox"):
         cleansing_toolbox.render(_after_write)
+    with panel("dc_validation"):
+        cleansing_validation_panel.render()
