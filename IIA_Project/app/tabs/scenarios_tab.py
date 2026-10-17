@@ -93,8 +93,11 @@ def _data(key: str, data: Any) -> None:
         st.code(json.dumps(data, indent=1, default=str), language="json")
         return
     scalars = [(k, v) for k, v in data.items() if isinstance(v, (int, float, str, bool)) or v is None]
-    if scalars:
-        kpi_row([(k.replace("_", " "), _fmt(v)) for k, v in scalars])
+    short = [(k, v) for k, v in scalars if len(_fmt(v)) <= 12]  # long text in a KPI tile wrapped letter by letter
+    if short:
+        kpi_row([(k.replace("_", " "), _fmt(v)) for k, v in short])
+    if len(short) < len(scalars):
+        styled_table([{"name": k.replace("_", " "), "value": _fmt(v)} for k, v in scalars if (k, v) not in short])
     for k, v in data.items():
         if isinstance(v, list) and v and all(isinstance(r, dict) for r in v):
             group_label(k.replace("_", " "))
@@ -103,8 +106,13 @@ def _data(key: str, data: Any) -> None:
             _histogram(key, k, v)
         elif isinstance(v, dict) and v:
             group_label(k.replace("_", " "))
+            flat = {kk: vv for kk, vv in v.items() if not (isinstance(vv, list) and vv and all(isinstance(r, dict) for r in vv))}
             styled_table([{"name": kk, "value": _fmt(vv) if not isinstance(vv, (dict, list)) else json.dumps(vv, default=str)}
-                          for kk, vv in v.items()])
+                          for kk, vv in flat.items()])
+            for kk, vv in v.items():
+                if kk not in flat:  # a nested list of rows (e.g. the match's candidates) reads as its own table
+                    group_label(f"{k.replace('_', ' ')}: {kk.replace('_', ' ')}")
+                    styled_table(vv, max_rows=20)
 
 
 def _fmt(v: Any) -> str:
@@ -126,15 +134,28 @@ def _histogram(key: str, name: str, values: List[float]) -> None:
                     theme=None, width="stretch")  # theme=None: Streamlit's theme shrank the axis text
 
 
+def restore_state(res: Dict[str, Any]) -> str:
+    """The backend's `restored` is False both for "changed nothing" and "failed to undo". Every change it
+    makes registers an undo that runs as a "Restore: ..." step, so those steps tell the two apart."""
+    changed = any(str(field(s, "title", "")).startswith("Restore") for s in res.get("steps") or [])
+    if res.get("restored"):
+        return "data restored"
+    return "data NOT restored" if changed else "changed no data"
+
+
 def _result(key: str, res: Dict[str, Any]) -> None:
-    restored = {True: "data restored", False: "data NOT restored", None: "changed no data"}.get(res.get("restored"), "—")
+    state = restore_state(res)
     chip_strip([_chip(res), chip(f"{float(res.get('elapsed_ms') or 0):,.0f} ms", TOKENS["info"]),
-                chip(restored, TOKENS["ok"] if res.get("restored") is not False else TOKENS["bad"])])
+                chip(state, TOKENS["bad"] if state == "data NOT restored" else TOKENS["ok"])])
     styled_table([{"Expected": res.get("expected"), "Actual": res.get("actual")}])
     if res.get("steps"):
         group_label("What the scenario did, step by step")
         stepper(_steps(res["steps"]))
-    _data(key, res.get("data"))
+    if res.get("data"):
+        # Collapsed by default: sixteen open result sets made a 16 000 px page nobody could scan; the
+        # batch run stays open because its accuracy and latency figures are the result.
+        with st.expander("Data the scenario recorded (tables and numbers)", expanded=key == "batch_stress"):
+            _data(key, res.get("data"))
 
 
 def _scenario(mod: Any, key: str, spec: Dict[str, Any], results: Dict[str, Any]) -> None:
@@ -181,6 +202,7 @@ def render() -> None:
                 bar.progress((i - 1) / len(catalogue), text=f"Running {catalogue[key].get('title', key)} ({i} of {len(catalogue)})")
                 results[key] = run_one(mod, key)
             bar.progress(1.0, text="All scenarios finished.")
+            st.rerun()  # the KPI row above was drawn before the run; redraw it with the results
         if c2.button("Clear results", key="sc2_clear", width="stretch"):
             results.clear()
     rubrics: Dict[str, List[str]] = {}
