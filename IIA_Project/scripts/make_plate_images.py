@@ -77,9 +77,18 @@ def _spaced(plate: str) -> str:
     return plate
 
 
+def _key(seed: int, plate: str, degradation: str, severity: int) -> int:
+    digest = hashlib.sha256(f"{seed}|{plate}|{degradation}|{severity}".encode()).digest()
+    return int.from_bytes(digest[:8], "big")
+
+
 def _rng(seed: int, plate: str, degradation: str, severity: int) -> random.Random:
-    key = f"{seed}|{plate}|{degradation}|{severity}".encode()
-    return random.Random(int.from_bytes(hashlib.sha256(key).digest()[:8], "big"))
+    """Per-image RNG. Never the global `random`: two runs must produce identical bytes."""
+    rng = random.Random(_key(seed, plate, degradation, severity))
+    # Carried on the object so a degrader that needs bulk numbers (the sensor noise in `_dark`)
+    # can seed a numpy Generator from the same key instead of calling gauss() 62 400 times.
+    rng.numpy_seed = _key(seed, plate, degradation, severity)  # type: ignore[attr-defined]
+    return rng
 
 
 def _blur(img: Image.Image, severity: int, rng: random.Random) -> Image.Image:
@@ -90,16 +99,22 @@ def _motion(img: Image.Image, severity: int, rng: random.Random) -> Image.Image:
     """Directional blur: average of copies shifted along one axis."""
     length = {1: 5, 2: 11, 3: 19}[severity]
     angle = rng.choice([0, 0, 15, -15])
-    arr = np.asarray(img).astype(np.float64)
+    pad = length
+    # Edge padding, not np.roll: rolling wraps the right-hand border onto the left and paints a
+    # ghost of the plate frame across the characters, which is not a motion artefact.
+    arr = np.pad(np.asarray(img).astype(np.float64), ((pad, pad), (pad, pad), (0, 0)), mode="edge")
     acc = np.zeros_like(arr)
     for step in range(length):
         dx = step - length // 2
         dy = int(round(dx * np.tan(np.radians(angle))))
         acc += np.roll(np.roll(arr, dx, axis=1), dy, axis=0)
-    return Image.fromarray(np.clip(acc / length, 0, 255).astype(np.uint8))
+    out = (acc / length)[pad:pad + PLATE_H, pad:pad + PLATE_W]
+    return Image.fromarray(np.clip(out, 0, 255).astype(np.uint8))
 
 
 def _jpeg(img: Image.Image, severity: int, rng: random.Random) -> Image.Image:
+    """Low-quality re-encode. The *decoded* pixels are the degradation, so the file we then
+    write to disk is a lossless PNG — saving it as JPEG again would degrade it twice."""
     quality = {1: 25, 2: 12, 3: 5}[severity]
     buf = io.BytesIO()
     img.save(buf, format="JPEG", quality=quality)
@@ -138,8 +153,8 @@ def _dark(img: Image.Image, severity: int, rng: random.Random) -> Image.Image:
     gain = {1: 0.55, 2: 0.35, 3: 0.20}[severity]
     sigma = {1: 8.0, 2: 16.0, 3: 26.0}[severity]
     arr = np.asarray(img).astype(np.float64) * gain
-    noise = np.asarray([[rng.gauss(0.0, sigma) for _ in range(PLATE_W)] for _ in range(PLATE_H)])
-    arr += noise[:, :, None]
+    generator = np.random.default_rng(getattr(rng, "numpy_seed", 0))
+    arr += generator.normal(0.0, sigma, size=(PLATE_H, PLATE_W))[:, :, None]
     return Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
 
 
@@ -191,12 +206,26 @@ def pick_plates(count: int, seed: int) -> list[str]:
             "SELECT registration_no FROM VEHICLE_REGISTRATION"))
     finally:
         conn.close()
-    chosen = list(STORY_PLATES)
+    # A full run always keeps all six story plates; only a deliberately tiny run (the unit tests)
+    # ever asks for fewer plates than there are stories.
+    chosen = list(STORY_PLATES[:count]) if count < len(STORY_PLATES) else list(STORY_PLATES)
     pool = [p for p in rows if p not in chosen]
     rng = random.Random(seed)
     extra = max(0, count - len(chosen))
     chosen.extend(rng.sample(pool, min(extra, len(pool))))
     return chosen
+
+
+def _manifest_path(path: Path) -> str:
+    """Repo-relative POSIX path when the image lives in the repo, absolute otherwise.
+
+    Repo-relative is what we commit (the manifest has to mean the same thing on four laptops);
+    the absolute fallback keeps `--out` into a temp directory working for the unit tests.
+    """
+    try:
+        return path.resolve().relative_to(REPO_ROOT).as_posix()
+    except ValueError:
+        return path.resolve().as_posix()
 
 
 def generate(out_dir: Path, manifest: Path, plates: list[str], seed: int) -> int:
@@ -207,16 +236,11 @@ def generate(out_dir: Path, manifest: Path, plates: list[str], seed: int) -> int
     for plate in plates:
         jobs = [("clean", 0)] + [(d, s) for d in DEGRADATIONS for s in SEVERITIES]
         for degradation, severity in jobs:
-            ext = "jpg" if degradation == "jpeg" else "png"
-            name = f"{plate}__{degradation}_s{severity}.{ext}"
-            path = out_dir / name
+            path = out_dir / f"{plate}__{degradation}_s{severity}.png"
             img = degrade(plate, degradation, severity, seed, font=font)
-            if ext == "jpg":
-                img.save(path, format="JPEG", quality=92)
-            else:
-                img.save(path, format="PNG")
+            img.save(path, format="PNG")
             rows.append({
-                "image_path": path.relative_to(REPO_ROOT).as_posix(),
+                "image_path": _manifest_path(path),
                 "true_plate": plate,
                 "degradation": degradation,
                 "severity": severity,
