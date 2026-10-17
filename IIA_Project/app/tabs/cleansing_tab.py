@@ -86,6 +86,12 @@ def _table(report: Dict[str, Any]) -> None:
     if not items:
         st.info("Nothing in this view.")
         return
+    st.caption(f"{len(items)} capture(s). The list scrolls; pick one below to see its rule path.")
+    with st.container(height=440, key="dc_table_scroll"):  # 60+ rows would push every action off-screen
+        _rows(items)
+
+
+def _rows(items: List[Dict[str, Any]]) -> None:
     styled_table([{"Capture": it["record_id"], "Plate": it["record"].get("plate_number"),
                    "Anomalies": ", ".join(a["code"] for a in it["anomalies"]) or "—",
                    "Rule proposals": "; ".join(f"{f['field']} {f['action']}" + (f" → {f['after']}" if f["action"] == "set" else "")
