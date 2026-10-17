@@ -557,3 +557,81 @@ Tests: `tests/test_plate_match_lab.py`, `tests/test_cleansing_tab.py`, `tests/te
 
 - The generated comment was split mid-sentence; the nav tests still pinned ten pages. Replaced CSS lines
   are kept as CSS comments, since a Python `#` inside the stylesheet string would be invalid CSS.
+
+## Workstream G (backend refinement)
+
+Backend for the GUI refinement (the pages themselves are a separate, parallel workstream). Same
+procedure as A-F: each new or substantially changed file was committed first as the model wrote it
+(`generated: ... (unreviewed AI output)`), then reviewed, run for real, and committed again
+(`reviewed: ... — reasons`). Replaced pre-existing lines are kept as `# PHASE2-REPLACED` comments.
+
+| File | generated | reviewed |
+|---|---|---|
+| `sources/server_manager.py`, `app/app.py` (healer call), `tests/test_server_manager_heal.py` | `63d7247`, `e6f9647` | `6dda5d8` |
+| `mediator/change_audit.py`, `mediator/cleansing.py` (ADMIN_LOG, `undo_sql`), `tests/test_change_audit.py` | `28c41ce` | `2285df9` |
+| `mediator/scenarios.py`, `tests/test_scenarios.py` | `1408ec5` | `5550ca0` |
+| `mediator/cleansing_validation.py`, `scripts/validate_cleansing.py`, `tests/test_cleansing_validation.py`, `docs/CLEANSING_VALIDATION.md`, `data/cleansing_validation.json` | `14c79ac` | `7710059` |
+
+### 1. Self-healing local sources — `sources/server_manager.py`, `app/app.py`
+
+**The bug (verified):** `ensure_cluster_running` is `@st.cache_resource`, so it runs once per server,
+and `start_all()` skips any port already busy at that moment. The site had been started while a test
+run held 8001-8005; when the tests exited, the site had no wrappers and showed every source DOWN for
+good. **Fix:** `ensure_local_sources(catalog)` runs on every rerun: for each source whose catalog
+`base_url` is this machine, a 0.2 s TCP probe; a silent port gets its wrapper (re)started in-process;
+a source on another host is reported `remote` and never touched. Dead `WrapperServerThread` entries
+are pruned so a restart is possible; a source a scenario stops on purpose is `held` and not healed.
+The status goes to `st.session_state["source_status"]` for the sidebar.
+
+What the review changed: the generated healer was monkey-patched onto `SourceCluster` *after* the
+`__main__` block (unreachable when run as a script, invisible in the class); `held` was a lazily
+created hidden attribute; `suspend()` marked sources it did not own as held; `0.0.0.0` counted as a
+connectable host; and app.py went over its pinned line limit, so the never-raise wrapper moved into
+`server_manager.heal_local_sources` and app.py keeps a four-line call.
+
+### 2. Scenario runner — `mediator/scenarios.py`
+
+Sixteen examiner scenarios (`SCENARIOS`, `run_scenario`, `run_all`), each read live through the
+federation, every write through the owning source's `/admin/sql`, every write undone through the same
+path before returning, also on failure, with `restored` reported honestly. Deliberate choice:
+`passed` is `None` when a scenario cannot run on this deployment (INS on another laptop, or a wrapper
+this process did not start, which is never killed); the interface allows it and the page shows SKIPPED.
+
+What the review changed (found by running all sixteen): `examiner_insert_dirty` and
+`examiner_modify_conflict` failed because the "clean" inserted capture took make/model/colour from
+the registry profile, which has been through display transforms (`XUV700` → `Xuv700`), so it raised
+`MODEL_NOT_IN_LEXICON` itself; values now come in the lexicon's own spelling. The REG twin was
+written with transformed values too (now REG's raw spelling). The tests start their own wrappers on
+free ports against a tmp catalog and a fresh cluster object, so they neither depend on nor disturb
+whatever holds 8001-8005.
+
+Real run (17 Oct, own wrappers): **16/16 PASS**, all six data-changing scenarios `restored=True`.
+`batch_stress` (100 reads, seed 20261017): top-1 0.93, ACCEPT precision 1.000 over 85 ACCEPTs, REVIEW
+0.09, REJECT 0.06, p50 29 ms, p95 53 ms. `clean_image` pays EasyOCR's one-off model load (17-120 s on
+this laptop); later OCR calls take 0.3 s.
+
+### 3. Cleansing validation — `mediator/cleansing_validation.py`, `scripts/validate_cleansing.py`
+
+Offline, reproducible evidence that cleansing works: 300 clean captures (seed 20261017) get one
+labelled noise type each (or none, the control group), detection + RDR run on them in memory, and
+every outcome is scored against its label. Result in `docs/CLEANSING_VALIDATION.md`: detection recall
+1.0, precision 1.0 (0 false alarms on 25 controls), correction accuracy 0.952, plate misreads corrected
+1.00 (single) / 0.76 (double, the rest quarantined).
+
+What the review changed: the run found **one wrong plate correction** (double misread `UP16ABO524`
+accepted as `UP16AB0524`, p = 0.948, registered colour Grey while the camera saw Red; the make is not on
+record), but the generated report only counted it. Every wrong correction is now listed with the
+accepted plate's registered profile and what the camera saw. The document names a remedy, **not
+applied**: an RDR exception under R5 that quarantines a correction whose candidate's registered colour
+contradicts the observation. Also: duplicate examples showed an empty `record` field; a live-wrapper
+run and a `--local-db` run were checked to give identical tables.
+
+### 4. Change audit — `mediator/change_audit.py`, `mediator/cleansing.py`
+
+`capture_row`, `registration_row` (the agency's raw row, live through `/query`) and
+`last_admin_statements`. `CLEANSING_LOG` already stored the SQL of apply and resolve but not of undo,
+and the examiner toolbox's writes were stored nowhere. `cleansing._admin` now records every call in a
+new `ADMIN_LOG` table: exact SQL, source, caller, HTTP status, rows affected. Undo also stores
+`undo_sql`. Both additions are additive migrations, and logging never raises. What the review
+changed: the legacy top-up listed undo SQL that `ADMIN_LOG` already held, so the same write appeared
+twice; two unused imports.
