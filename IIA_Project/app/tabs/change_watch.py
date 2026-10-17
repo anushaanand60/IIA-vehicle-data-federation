@@ -102,7 +102,11 @@ def _statements(mod: Any) -> None:
     group_label("The exact SQL the mediator sent to the source (newest first)")
     if all(isinstance(s, dict) for s in stmts):
         cols = ["at", "source_id", "origin", "sql", "rows_affected", "error"]
-        styled_table([{c: s.get(c) for c in cols if c in s} or s for s in stmts])
+        rows = [{c: s.get(c) for c in cols if c in s} or s for s in stmts]
+        for r in rows:  # '2026-10-17T14:57:11.635979+00:00' -> '2026-10-17 14:57:11'
+            if isinstance(r.get("at"), str):  # ADMIN_LOG stores UTC; say so, the page clock is local
+                r["at"] = r["at"][:19].replace("T", " ") + (" UTC" if r["at"].endswith("+00:00") else "")
+        styled_table(rows)
     else:
         st.code("\n".join(str(s) for s in stmts), language="sql")
 

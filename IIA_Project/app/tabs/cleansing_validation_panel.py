@@ -39,6 +39,8 @@ def _fmt(v: Any) -> str:
         return "yes" if v else "no"
     if isinstance(v, float):
         return f"{v:.3f}"
+    if isinstance(v, list) and all(isinstance(x, (str, int, float)) for x in v):
+        return ", ".join(str(x) for x in v) or "none"
     if isinstance(v, (dict, list)):
         return json.dumps(v, default=str)
     return "—" if v is None else str(v)
@@ -48,8 +50,41 @@ def _label(key: str) -> str:
     return key.replace("_", " ")
 
 
+def _profile(d: Any) -> str:
+    """{'vehicle_make': None, 'vehicle_colour': 'Grey'} -> 'make —, colour Grey'."""
+    if not isinstance(d, dict):
+        return _fmt(d)
+    return ", ".join(f"{k.split('_')[-1]} {_fmt(v)}" for k, v in d.items())
+
+
+# The columns an examiner needs, in reading order; nine columns overflowed the panel, so the per-type
+# count goes in the label above the table and detection recall / false-alarm rate share one column (a
+# control record has nothing to detect, a noisy one cannot raise a false alarm). Every other metric is
+# still in data/cleansing_validation.json and docs/CLEANSING_VALIDATION.md.
+COLUMNS = ("expected", "correction_accuracy", "quarantine_rate", "wrong_corrections")
+HEAD = {"expected": "expected rule outcome", "correction_accuracy": "corrected right",
+        "quarantine_rate": "quarantined", "wrong_corrections": "wrong"}
+
+
+def _detected(m: Dict[str, Any]) -> str:
+    if m.get("detection_recall") is not None:
+        return _fmt(m["detection_recall"])
+    if m.get("false_alarm_rate") is not None:
+        return f"false alarms {_fmt(m['false_alarm_rate'])}"
+    return "—"
+
+
 def per_type_rows(per_type: Dict[str, Dict[str, Any]]) -> List[Dict[str, str]]:
-    return [{"Noise type": t, **{_label(k): _fmt(v) for k, v in m.items()}} for t, m in per_type.items()]
+    rows = []
+    for t, m in per_type.items():
+        known = [k for k in COLUMNS if k in m]
+        if not known:  # an unknown shape is shown whole rather than as an empty table
+            rows.append({"Noise type": t, **{_label(k): _fmt(v) for k, v in m.items()}})
+            continue
+        row = {"Noise type": t, "expected rule outcome": _fmt(m.get("expected")), "detected": _detected(m)}
+        row.update({HEAD[k]: _fmt(m.get(k)) for k in known if k != "expected"})
+        rows.append(row)
+    return rows
 
 
 def chart_frame(per_type: Dict[str, Dict[str, Any]]) -> pd.DataFrame:
@@ -118,19 +153,35 @@ def render() -> None:
         st.info("Not available yet: data/cleansing_validation.json has not been produced. Press Re-run to "
                 "compute it live.")
         return
-    st.markdown(f"Source: {origin}; seed {data.get('seed', '—')}.")
+    st.markdown(f"Source: {origin}; seed {data.get('seed', '—')}; records read from "
+                f"{data.get('source', 'the live camera source')}"
+                + (f", generated {str(data['generated_at'])[:19]}" if data.get("generated_at") else "") + ".")
     overall = data.get("overall") or {}
     if overall:
         kpi_row([(_label(k), _fmt(v)) for k, v in overall.items() if not isinstance(v, (dict, list))])
     per_type = data.get("per_type") or {}
     if per_type:
-        group_label("Per noise type")
+        counts = sorted({m.get("n") for m in per_type.values() if m.get("n") is not None})
+        group_label("Per noise type" + (f" ({', '.join(map(str, counts))} injected records each)" if counts else ""))
         styled_table(per_type_rows(per_type))
         _chart(per_type)
     examples = data.get("examples") or []
     if examples:
         group_label("Examples: original → noisy → what the rules proposed")
-        styled_table([{"Type": e.get("type"), "Original": _fmt(e.get("original")), "Noisy": _fmt(e.get("noisy")),
-                       "Detected": _fmt(e.get("detected")), "Proposed": _fmt(e.get("proposed")),
-                       "Rule path": _fmt(e.get("rule_path")), "Correct?": _fmt(e.get("correct"))}
-                      for e in examples], max_rows=30)
+        # one "original → noisy" cell: eight columns scrolled the Proposed and Correct? columns off the panel
+        styled_table([{"Type": f"{e.get('type')} ({_fmt(e.get('field'))})",
+                       "Original → noisy": f"{_fmt(e.get('original'))} → {_fmt(e.get('noisy'))}",
+                       "Detected": _fmt(e.get("detected")),
+                       "Proposed": _fmt(e.get("proposed")),
+                       "Rule path": " → ".join(map(str, e.get("rule_path") or [])) or "none",
+                       "Correct?": _fmt(e.get("correct"))} for e in examples], max_rows=30)
+    wrong = data.get("wrong_corrections_detail") or []
+    if wrong:
+        group_label(f"Every wrong correction ({len(wrong)}), listed so it can be checked by hand")
+        styled_table([{"Type": w.get("type"), "Original → noisy → set to":
+                       f"{_fmt(w.get('original'))} → {_fmt(w.get('noisy'))} → {_fmt(w.get('set_to'))}",
+                       "Rule": _fmt(w.get("rule")), "Registered profile of the plate it chose":
+                       _profile(w.get("registered_profile_of_set_value")),
+                       "What the camera saw": _profile(w.get("observed"))} for w in wrong])
+        for w in wrong:
+            st.markdown(f"**Why {w.get('rule')} fired:** {w.get('because', '—')}")
