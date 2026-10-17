@@ -329,10 +329,12 @@ def _insert_twin(run: _Run) -> Dict[str, Any]:
     if TWIN in live:
         raise cleansing.CleansingError(f"{TWIN} is already registered; refusing to touch a row this scenario did not make")
     own = live[TWIN_OF]
-    others = [(v["make"], v["model"], v["colour"]) for v in live.values()
-              if v.get("make") and v.get("model") and v.get("colour")
-              and v["make"] != own["make"] and v["colour"] != own["colour"]]
-    make, model, colour = max(sorted(set(others)), key=others.count)  # the commonest other vehicle: deterministic
+    # The twin's make/model/colour are another real vehicle's, in REG's own raw spelling (the live
+    # registry above went through display transforms): the commonest such vehicle, so it is deterministic.
+    mk, md, cl = (cleansing._column(reg, f"vehicle_{a}") for a in ("make", "model", "colour"))
+    others = [(r[mk], r[md], r[cl]) for r in lexicons.fetch_all(reg, pk)
+              if r.get(mk) and r.get(md) and r.get(cl) and r[mk] != rows[0][mk] and r[cl] != rows[0][cl]]
+    make, model, colour = max(sorted(set(others)), key=others.count)
     top = lexicons._post(reg, f"SELECT MAX({pk}) AS m FROM {reg.table}", None)["rows"]
     new_id = int((top[0].get("m") if top else 0) or 0) + 1
     row = {**rows[0], pk: new_id, col: render_plate(TWIN, reg.key_predicate.render),
@@ -407,17 +409,23 @@ def s_reverse_search(run: _Run) -> Tuple[str, str, bool]:
 # ------------------------------------------------------------------ rubric 2: examiner edits on CAM
 
 def _quiet_vehicle(ctx: cleansing.Context, colour: Optional[str] = None) -> Tuple[str, Dict[str, Any]]:
-    """A registered vehicle with a clean make/model/colour and no captures yet, so an inserted capture
-    meets no duplicate or impossible-travel sibling (the check under test is the only one that fires)."""
+    """A registered vehicle with no captures yet, so an inserted capture meets no duplicate or
+    impossible-travel sibling and the check under test is the only one that fires. Its make, model and
+    colour are returned in the lexicon's own spelling: the registry's profile values went through the
+    display transforms (XUV700 -> Xuv700), and a capture written with those would itself be dirty."""
     for plate in sorted(ctx.profiles):
         p = ctx.profiles[plate]
-        if not all(p.get(k) for k in ("vehicle_make", "vehicle_model", "vehicle_colour")):
+        if ctx.by_plate.get(plate):
             continue
-        if colour and p["vehicle_colour"] != colour or ctx.by_plate.get(plate):
+        canon = {}
+        for attr in ("make", "model", "colour"):
+            value = p.get(f"vehicle_{attr}")
+            canon[attr] = ctx.lex.for_attr(attr).lookup(value)[0] if value else None
+        if not all(canon.values()) or (colour and canon["colour"] != colour):
             continue
-        if ctx.lex.for_attr("make").lookup(p["vehicle_make"])[1] == "exact" and \
-                ctx.lex.for_attr("colour").lookup(p["vehicle_colour"])[1] == "exact":
-            return plate, p
+        if all(ctx.lex.for_attr(a).lookup(v)[1] == "exact" for a, v in canon.items()):
+            return plate, {"vehicle_make": canon["make"], "vehicle_model": canon["model"],
+                           "vehicle_colour": canon["colour"]}
     raise cleansing.CleansingError(f"no registered {colour or ''} vehicle without captures to test with")
 
 
@@ -502,8 +510,9 @@ def s_examiner_insert_dirty(run: _Run) -> Tuple[str, str, bool]:
 def s_examiner_modify_conflict(run: _Run) -> Tuple[str, str, bool]:
     ctx = cleansing.Context.build(run.registry)
     plate, p = _quiet_vehicle(ctx)
-    other = sorted({v["vehicle_colour"] for v in ctx.profiles.values()
-                    if v.get("vehicle_colour") and v["vehicle_colour"] != p["vehicle_colour"]})[0]
+    lex = ctx.lex.for_attr("colour")
+    other = sorted({lex.lookup(v["vehicle_colour"])[0] or v["vehicle_colour"] for v in ctx.profiles.values()
+                    if v.get("vehicle_colour")} - {p["vehicle_colour"]})[0]  # a valid colour REG denies
     rid = _insert_capture(run, ctx, {cleansing.PLATE: plate, "observed_make": p["vehicle_make"],
                                      "observed_model": p["vehicle_model"], "observed_colour": p["vehicle_colour"],
                                      cleansing.CONF: 0.93})
