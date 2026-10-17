@@ -34,11 +34,12 @@ PAGE_SIZE = 200          # the wrapper contract's own row cap (CLAUDE.md §5.1)
 MIN_SUPPORT = 3          # a spelling used by fewer registrations than this is a variant candidate
 MIN_SHAPE_SUPPORT = 2    # a plate shape seen fewer times than this is not a real shape
 
-# Curated aliases (slide 16): only what frequency mining cannot find. Keyed by normalised token.
+# Curated aliases (slide 16): only what mining, prefix, abbreviation and edit lookup cannot find --
+# "Gry", "Slvr", "Gray" and "Maruti" are all derived, so listing them here would hide that.
 CURATED_ALIASES: Dict[str, Dict[str, str]] = {
-    "colour": {"gray": "Grey", "gry": "Grey", "slvr": "Silver", "silvr": "Silver", "blk": "Black",
-               "wht": "White", "pearlwhite": "White", "metallicsilver": "Silver"},
-    "make": {"maruti": "Maruti Suzuki", "msil": "Maruti Suzuki", "hyundia": "Hyundai"},
+    "colour": {"pearlwhite": "White", "offwhite": "White", "metallicsilver": "Silver",
+               "gunmetal": "Grey"},
+    "make": {"msil": "Maruti Suzuki"},
     "model": {},
 }
 
@@ -83,19 +84,45 @@ def fetch_all(spec: SourceSpec, pk: str, client: Optional[httpx.Client] = None,
 def _page_sql(spec: SourceSpec, pk: str, cursor: Any) -> str:
     tables = {m.source_table.lower() for m in spec.attribute_map}
     joins = [j for j in spec.joins if j.table.lower() in tables]
-    cols = [f"{spec.table}.{pk}"] + [f"{m.source_table}.{m.source_attr}" for m in spec.attribute_map]
-    predicate = f"{spec.table}.{pk} > {cursor!r}" if cursor is not None else "1 = 1"
-    holes = {"columns": ", ".join(dict.fromkeys(cols)), "table": spec.table,
+    pairs = [(spec.table, pk)] + [(m.source_table, m.source_attr) for m in spec.attribute_map]
+    cols, seen = [], set()
+    for table, name in dict.fromkeys(pairs):
+        # same alias rule as the executor: a second column of the same name keeps its value as t__c
+        cols.append(f"{table}.{name}" + (f" AS {table}__{name}" if name.lower() in seen else ""))
+        seen.add(name.lower())
+    predicate = f"{spec.table}.{pk} > {sql_literal(cursor)}" if cursor is not None else "1 = 1"
+    holes = {"columns": ", ".join(cols), "table": spec.table,
              "joins": "".join(f" LEFT JOIN {j.table} ON {j.left} = {j.right}" for j in joins),
              "predicate": predicate, "order_by": f" ORDER BY {spec.table}.{pk}", "limit": "",
              "plate": ""}
     return spec.query_template.format_map(holes) + f" LIMIT {PAGE_SIZE}"
 
 
+def sql_literal(value: Any) -> str:
+    """A value as an SQL literal. Numbers stay bare; everything else is quoted with '' doubled."""
+    if value is None:
+        return "NULL"
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    if isinstance(value, (int, float)):
+        return repr(value)
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+def _request(spec: SourceSpec, client: Optional[httpx.Client], method: str, path: str,
+             **kwargs: Any) -> httpx.Response:
+    own = client is None  # a client we opened is closed here; a caller's client is the caller's
+    c = client or httpx.Client(trust_env=False)
+    try:
+        return c.request(method, spec.base_url.rstrip("/") + path, timeout=spec.timeout_ms / 1000, **kwargs)
+    finally:
+        if own:
+            c.close()
+
+
 def _get(spec: SourceSpec, path: str, client: Optional[httpx.Client]) -> Dict[str, Any]:
     try:
-        c = client or httpx.Client(trust_env=False)
-        response = c.get(spec.base_url.rstrip("/") + path, timeout=spec.timeout_ms / 1000)
+        response = _request(spec, client, "GET", path)
     except httpx.HTTPError as exc:
         raise SourceUnavailable(f"{spec.source_id} unreachable: {exc}") from None
     if response.status_code != 200:
@@ -105,9 +132,7 @@ def _get(spec: SourceSpec, path: str, client: Optional[httpx.Client]) -> Dict[st
 
 def _post(spec: SourceSpec, sql: str, client: Optional[httpx.Client]) -> Dict[str, Any]:
     try:
-        c = client or httpx.Client(trust_env=False)
-        response = c.post(spec.base_url.rstrip("/") + "/query", json={"sql": sql},
-                          timeout=spec.timeout_ms / 1000)
+        response = _request(spec, client, "POST", "/query", json={"sql": sql})
     except httpx.HTTPError as exc:
         raise SourceUnavailable(f"{spec.source_id} unreachable: {exc}") from None
     if response.status_code != 200:
@@ -175,6 +200,9 @@ class Lexicon:
             return canon, "exact" if text == canon else "surface"
         if key in self.variants:
             return self.variants[key]
+        if any(ch.isdigit() for ch in key):
+            # slide 12, "overloaded number": i10 is not a typo of i20, so no guessing on digits
+            return None, None
         if len(key) >= 3:
             starts = sorted({c for k, c in self.canonical.items() if k.startswith(key)})
             if len(starts) == 1:
@@ -183,10 +211,15 @@ class Lexicon:
             if len(subs) == 1:
                 return subs[0], "abbreviation"
         best = sorted((levenshtein(key, k), c) for k, c in self.canonical.items())
-        allowed = 1 if len(key) <= 5 else 2
-        if best and best[0][0] <= allowed and (len(best) == 1 or best[1][0] > best[0][0]):
+        allowed = edit_allowance(key)
+        if len(key) >= 3 and best and best[0][0] <= allowed and (len(best) == 1 or best[1][0] > best[0][0]):
             return best[0][1], "edit"
         return None, None
+
+
+def edit_allowance(key: str) -> int:
+    """One edit for short tokens, two for long ones: "Kia" must not swallow every three-letter word."""
+    return 1 if len(key) <= 5 else 2
 
 
 def mine_lexicon(attr: str, values: Iterable[Any]) -> Lexicon:
@@ -207,7 +240,7 @@ def mine_lexicon(attr: str, values: Iterable[Any]) -> Lexicon:
             rare.append((key, top, total))
     for key, top, total in rare:
         near = sorted((levenshtein(key, k), c) for k, c in lex.canonical.items())
-        if near and near[0][0] <= 2:
+        if near and near[0][0] <= edit_allowance(key) and not any(ch.isdigit() for ch in key):
             lex.variants[key] = (near[0][1], "mined")
         else:  # rare but close to nothing: we cannot call it wrong, so it stays a word
             lex.canonical[key], lex.support[top] = top, total
@@ -238,9 +271,11 @@ class Lexicons:
 
     def plate_features(self, plate: str) -> Dict[str, Any]:
         s, p = shape(plate), pattern(plate, self.state_codes)
-        return {"shape": s, "shape_support": self.shapes.get(s, 0),
-                "shape_valid": self.shapes.get(s, 0) >= MIN_SHAPE_SUPPORT,
-                "pattern": p, "pattern_support": self.patterns.get(p, 0)}
+        # Both must be attested: ZZ01AB1234 has a real shape but an unknown state, so its slide-21
+        # pattern (+^+^) is what exposes it; the shape alone would have passed it.
+        valid = self.shapes.get(s, 0) >= MIN_SHAPE_SUPPORT and self.patterns.get(p, 0) >= MIN_SHAPE_SUPPORT
+        return {"shape": s, "shape_support": self.shapes.get(s, 0), "pattern": p,
+                "pattern_support": self.patterns.get(p, 0), "shape_valid": valid}
 
 
 def build(registrations: List[Dict[str, Any]]) -> Lexicons:
