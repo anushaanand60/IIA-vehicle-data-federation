@@ -67,6 +67,16 @@ def _wait_for_health(ports: "dict[str, int]", timeout_s: float = 10.0) -> None:
         raise RuntimeError(f"source(s) on port(s) {sorted(pending)} never answered /health")
 
 
+def _port_answering(port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(0.2)
+        try:
+            sock.connect(("127.0.0.1", port))
+            return True
+        except (socket.timeout, ConnectionRefusedError, OSError):
+            return False
+
+
 def _wait_for_free(ports: "dict[str, int]", timeout_s: float = 10.0) -> None:
     deadline = time.monotonic() + timeout_s
     for port in ports.values():
@@ -115,6 +125,17 @@ def local_cluster(tmp_path_factory: pytest.TempPathFactory):
             covers=meta.get("covers", []),
             timeout_ms=meta.get("timeout_ms", 1500),
         )
+
+    # A port that is already answering belongs to someone else -- usually the website's own
+    # wrappers. start_all() would silently skip it and every test below would read and WRITE the
+    # real source behind it (in the multi-laptop setup, laptop 1's real PostgreSQL). Refuse instead.
+    busy = sorted(port for port in _PORTS.values() if _port_answering(port))
+    if busy:
+        catalog.META_DB_PATH = original_catalog_path
+        report.META_DB_PATH = original_report_path
+        pytest.exit(f"ports {busy} are already in use (is the website or a wrapper running?). "
+                    f"Stop it before running the tests, so they never write into a live source.",
+                    returncode=3)
 
     cluster = get_cluster()
     cluster.start_all(include_puc=True)

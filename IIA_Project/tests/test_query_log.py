@@ -114,11 +114,16 @@ def test_get_query_log_is_empty_before_any_query(meta):
 def test_run_global_query_logs_a_row(local_cluster):
     from mediator.core import run_global_query
 
-    before = len(catalog.get_query_log(plate=PLATE))
+    # PHASE2-REPLACED (get_query_log caps at 100 rows by default; once meta.db holds 100+ lookups
+    # of this plate, from demos and scenario runs, before and after both read 100):
+    # before = len(catalog.get_query_log(plate=PLATE))
+    before = len(catalog.get_query_log(limit=1_000_000, plate=PLATE))
     result = run_global_query(PLATE, ["all"])
     profile = result["profile"]
 
-    after = catalog.get_query_log(plate=PLATE)
+    # PHASE2-REPLACED (same 100-row cap as above):
+    # after = catalog.get_query_log(plate=PLATE)
+    after = catalog.get_query_log(limit=1_000_000, plate=PLATE)
     assert len(after) == before + 1
     row = after[0]  # newest first
     assert row["plate"] == PLATE
