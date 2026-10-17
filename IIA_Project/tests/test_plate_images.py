@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
+from scripts import make_plate_images
 from scripts.make_plate_images import (
     DEGRADATIONS,
     PLATE_H,
@@ -34,11 +35,22 @@ def _save(img: Image.Image, path: Path) -> bytes:
 
 
 @pytest.mark.parametrize("degradation", DEGRADATIONS)
-def test_same_seed_gives_byte_identical_images(tmp_path: Path, degradation: str) -> None:
+@pytest.mark.parametrize("severity", SEVERITIES)
+def test_same_seed_gives_byte_identical_images(tmp_path: Path, degradation: str,
+                                               severity: int) -> None:
     """Reproducibility is the whole claim of the benchmark: same seed, same bytes."""
-    first = _save(degrade(PLATE, degradation, 2, SEED), tmp_path / "a.png")
-    second = _save(degrade(PLATE, degradation, 2, SEED), tmp_path / "b.png")
+    first = _save(degrade(PLATE, degradation, severity, SEED), tmp_path / "a.png")
+    second = _save(degrade(PLATE, degradation, severity, SEED), tmp_path / "b.png")
     assert first == second
+
+
+def test_generate_is_byte_identical_end_to_end(tmp_path: Path) -> None:
+    """The in-memory check above is not enough: the committed artefact is what `generate` writes,
+    so re-running the script must reproduce every file on disk bit for bit."""
+    for run in ("first", "second"):
+        generate(tmp_path / run, tmp_path / run / "manifest.csv", [PLATE], SEED)
+    for path in sorted((tmp_path / "first").glob("*.png")):
+        assert path.read_bytes() == (tmp_path / "second" / path.name).read_bytes()
 
 
 def test_different_seed_changes_the_randomised_degradations(tmp_path: Path) -> None:
@@ -60,6 +72,20 @@ def test_severity_actually_changes_the_image(tmp_path: Path, severity: int) -> N
     clean = _save(render_clean(PLATE), tmp_path / "clean.png")
     noisy = _save(degrade(PLATE, "blur", severity, SEED), tmp_path / f"s{severity}.png")
     assert clean != noisy
+
+
+def test_renders_without_arial(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The font fallback has to work: three of the four laptops are not guaranteed to have
+    arialbd.ttf, and a NameError there would take the whole benchmark down."""
+    monkeypatch.setattr(make_plate_images, "FONT_PATH", r"C:\no\such\font.ttf")
+    img = render_clean(PLATE, font=make_plate_images._font())
+    assert img.size == (PLATE_W, PLATE_H)
+    assert img.convert("L").getextrema()[0] < 128      # something black was actually drawn
+
+
+def test_clean_plate_is_not_blank() -> None:
+    low, high = render_clean(PLATE).convert("L").getextrema()
+    assert low < 60 and high > 200                     # black characters on a white plate
 
 
 def test_degrade_rejects_nonsense() -> None:
@@ -107,7 +133,14 @@ def test_benchmark_csv_parses_and_is_well_formed() -> None:
                             "degradation", "severity", "exact_match"}
     observed = [r for r in rows if r["degradation"] == "observed"]
     assert len(observed) == 49          # 47 unregistered CAM plates + 2 planted story misreads
-    assert sum(1 for r in observed if r["true_plate"]) == 2
+    planted = {r["ocr_read"]: r for r in observed if r["true_plate"]}
+    assert set(planted) == {"DL05CD9B76", "DLO1AB1234"}
+    assert planted["DL05CD9B76"]["true_plate"] == "DL05CD9876"
+    assert planted["DLO1AB1234"]["true_plate"] == "DL01AB1234"
+    assert all(r["exact_match"] == "0" for r in planted.values())   # they are misreads
+    unknown = [r for r in observed if not r["true_plate"]]
+    assert len(unknown) == 47
+    assert all(r["exact_match"] == "" for r in unknown)             # no truth, no verdict
     for row in rows:
         if row["true_plate"] and row["degradation"] != "observed":
             assert row["exact_match"] in {"0", "1"}
