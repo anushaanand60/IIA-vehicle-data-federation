@@ -1,0 +1,593 @@
+{
+  "version": 1,
+  "root": {
+    "id": "R0",
+    "condition": {
+      "true": true
+    },
+    "conclusion": {
+      "action": "keep"
+    },
+    "because": "slide 26 default rule: a capture is normal until a rule says otherwise",
+    "cornerstone": {
+      "field": "observed_colour",
+      "value": "Red",
+      "record_id": 77,
+      "registered": true,
+      "canonical": "Red",
+      "lexicon_kind": "exact",
+      "in_lexicon": true,
+      "registered_value": "Red",
+      "agrees_registration": true,
+      "_provenance": "CAM capture 77, unmodified (sources/cam/cam.db)"
+    },
+    "created_at": "",
+    "created_by": "seed",
+    "except": {
+      "id": "R1",
+      "condition": {
+        "all": [
+          {
+            "field": "field",
+            "op": "in",
+            "value": [
+              "observed_make",
+              "observed_model",
+              "observed_colour"
+            ]
+          },
+          {
+            "field": "canonical",
+            "op": "not_null"
+          },
+          {
+            "field": "in_lexicon",
+            "op": "is_false"
+          }
+        ]
+      },
+      "conclusion": {
+        "action": "set",
+        "value": "$canonical"
+      },
+      "because": "a variant spelling of a lexicon word is standardised to the form mined from registrations (slides 20, 23)",
+      "cornerstone": {
+        "field": "observed_colour",
+        "value": "Gry",
+        "record_id": 84,
+        "registered": true,
+        "canonical": "Grey",
+        "lexicon_kind": "abbreviation",
+        "in_lexicon": false,
+        "registered_value": "Grey",
+        "agrees_registration": true,
+        "_provenance": "CAM capture 84 (registered Grey) with observed_colour recorded as 'Gry'"
+      },
+      "created_at": "",
+      "created_by": "seed",
+      "except": {
+        "id": "R2",
+        "condition": {
+          "all": [
+            {
+              "field": "lexicon_kind",
+              "op": "eq",
+              "value": "edit"
+            },
+            {
+              "field": "agrees_registration",
+              "op": "is_false"
+            }
+          ]
+        },
+        "conclusion": {
+          "action": "quarantine"
+        },
+        "because": "an edit-distance guess the registration contradicts stays unresolved until context supports it (slide 13)",
+        "cornerstone": {
+          "field": "observed_colour",
+          "value": "Gray",
+          "record_id": 85,
+          "registered": true,
+          "canonical": "Grey",
+          "lexicon_kind": "edit",
+          "in_lexicon": false,
+          "registered_value": "Silver",
+          "agrees_registration": false,
+          "_provenance": "CAM capture 85 (registered Silver) with observed_colour recorded as 'Gray'"
+        },
+        "created_at": "",
+        "created_by": "seed",
+        "except": null,
+        "else": null
+      },
+      "else": {
+        "id": "R3",
+        "condition": {
+          "all": [
+            {
+              "field": "field",
+              "op": "in",
+              "value": [
+                "observed_make",
+                "observed_model",
+                "observed_colour"
+              ]
+            },
+            {
+              "field": "value",
+              "op": "not_null"
+            },
+            {
+              "field": "canonical",
+              "op": "is_null"
+            },
+            {
+              "field": "registered_value",
+              "op": "not_null"
+            }
+          ]
+        },
+        "conclusion": {
+          "action": "set",
+          "value": "$registered_value"
+        },
+        "because": "a token no lexicon recognises is replaced by the registration authority's value (slide 16 lookup enrichment, slide 20 context)",
+        "cornerstone": {
+          "field": "observed_make",
+          "value": "Maruthi",
+          "record_id": 80,
+          "registered": true,
+          "canonical": null,
+          "lexicon_kind": null,
+          "in_lexicon": false,
+          "registered_value": "Maruti Suzuki",
+          "agrees_registration": null,
+          "_provenance": "CAM capture 80 (registered Maruti Suzuki) with observed_make recorded as 'Maruthi'"
+        },
+        "created_at": "",
+        "created_by": "seed",
+        "except": null,
+        "else": {
+          "id": "R4",
+          "condition": {
+            "any": [
+              {
+                "all": [
+                  {
+                    "field": "field",
+                    "op": "in",
+                    "value": [
+                      "observed_make",
+                      "observed_model",
+                      "observed_colour"
+                    ]
+                  },
+                  {
+                    "field": "in_lexicon",
+                    "op": "is_true"
+                  },
+                  {
+                    "field": "agrees_registration",
+                    "op": "is_false"
+                  }
+                ]
+              },
+              {
+                "all": [
+                  {
+                    "field": "field",
+                    "op": "eq",
+                    "value": "record"
+                  },
+                  {
+                    "field": "travel_conflict",
+                    "op": "is_true"
+                  }
+                ]
+              }
+            ]
+          },
+          "conclusion": {
+            "action": "flag",
+            "flag": "CLONE_SUSPECT"
+          },
+          "because": "camera and registration disagree on valid values, or the plate is in two places at once: clone evidence, never overwritten (slide 23)",
+          "cornerstone": {
+            "field": "observed_make",
+            "value": "Kia",
+            "record_id": 918,
+            "registered": true,
+            "canonical": "Kia",
+            "lexicon_kind": "exact",
+            "in_lexicon": true,
+            "registered_value": "Hyundai",
+            "agrees_registration": false,
+            "_provenance": "CAM capture 918, unmodified (sources/cam/cam.db): UP16GH1122 seen as a Kia, registered Hyundai"
+          },
+          "created_at": "",
+          "created_by": "seed",
+          "except": null,
+          "else": {
+            "id": "R5",
+            "condition": {
+              "all": [
+                {
+                  "field": "field",
+                  "op": "eq",
+                  "value": "plate_number"
+                },
+                {
+                  "field": "registered",
+                  "op": "is_false"
+                },
+                {
+                  "field": "match_decision",
+                  "op": "eq",
+                  "value": "ACCEPT"
+                }
+              ]
+            },
+            "conclusion": {
+              "action": "set",
+              "value": "$match_best"
+            },
+            "because": "an unregistered read is corrected only to the candidate the plate matcher ACCEPTs",
+            "cornerstone": {
+              "field": "plate_number",
+              "value": "DL05CD9B76",
+              "record_id": 916,
+              "registered": false,
+              "shape": "LLDDLLDLDD",
+              "shape_support": 0,
+              "pattern": "S^+^+^",
+              "pattern_support": 0,
+              "shape_valid": false,
+              "plate": "DL05CD9B76",
+              "confidence": 0.71,
+              "below_floor": false,
+              "corroborated": false,
+              "match_decision": "ACCEPT",
+              "match_best": "DL05CD9876",
+              "match_probability": 0.9983,
+              "match_method": "plate_match",
+              "match_candidates": [
+                {
+                  "plate": "DL05CD9876",
+                  "probability": 0.9983,
+                  "decision": "ACCEPT",
+                  "reasons": [
+                    "shortlisted 30 of 388 by OCR edit similarity",
+                    "p=0.998 >= accept threshold 0.000, 0.996 clear of the runner-up"
+                  ]
+                },
+                {
+                  "plate": "DL05CD0103",
+                  "probability": 0.0019,
+                  "decision": "REVIEW",
+                  "reasons": [
+                    "shortlisted 30 of 388 by OCR edit similarity",
+                    "p=0.002: between thresholds; needs an operator"
+                  ]
+                },
+                {
+                  "plate": "DL05CD0276",
+                  "probability": 0.0019,
+                  "decision": "REVIEW",
+                  "reasons": [
+                    "shortlisted 30 of 388 by OCR edit similarity",
+                    "p=0.002: between thresholds; needs an operator"
+                  ]
+                },
+                {
+                  "plate": "DL05CD0036",
+                  "probability": 0.0019,
+                  "decision": "REVIEW",
+                  "reasons": [
+                    "shortlisted 30 of 388 by OCR edit similarity",
+                    "p=0.002: between thresholds; needs an operator"
+                  ]
+                },
+                {
+                  "plate": "DL05CD0306",
+                  "probability": 0.0019,
+                  "decision": "REVIEW",
+                  "reasons": [
+                    "shortlisted 30 of 388 by OCR edit similarity",
+                    "p=0.002: between thresholds; needs an operator"
+                  ]
+                }
+              ],
+              "match_note": null,
+              "match_best_make_agrees": true,
+              "_provenance": "CAM capture 916, unmodified (sources/cam/cam.db): DL05CD9B76, an 8/B misread of DL05CD9876"
+            },
+            "created_at": "",
+            "created_by": "seed",
+            "except": null,
+            "else": {
+              "id": "R6",
+              "condition": {
+                "all": [
+                  {
+                    "field": "field",
+                    "op": "eq",
+                    "value": "plate_number"
+                  },
+                  {
+                    "field": "registered",
+                    "op": "is_false"
+                  }
+                ]
+              },
+              "conclusion": {
+                "action": "quarantine"
+              },
+              "because": "an unregistered read the matcher does not accept (REVIEW or REJECT) is quarantined, never guessed",
+              "cornerstone": {
+                "field": "plate_number",
+                "value": "MH12IJ7788",
+                "record_id": 914,
+                "registered": false,
+                "shape": "LLDDLLDDDD",
+                "shape_support": 605,
+                "pattern": "S^+^",
+                "pattern_support": 605,
+                "shape_valid": true,
+                "plate": "MH12IJ7788",
+                "confidence": 0.92,
+                "below_floor": false,
+                "corroborated": false,
+                "match_decision": "REVIEW",
+                "match_best": "MH12IJ0078",
+                "match_probability": 0.0021,
+                "match_method": "plate_match",
+                "match_candidates": [
+                  {
+                    "plate": "MH12IJ0078",
+                    "probability": 0.0021,
+                    "decision": "REVIEW",
+                    "reasons": [
+                      "shortlisted 30 of 249 by OCR edit similarity",
+                      "p=0.002: a rival is too close; needs an operator"
+                    ]
+                  },
+                  {
+                    "plate": "MH12IJ0389",
+                    "probability": 0.0019,
+                    "decision": "REVIEW",
+                    "reasons": [
+                      "shortlisted 30 of 249 by OCR edit similarity",
+                      "p=0.002: between thresholds; needs an operator"
+                    ]
+                  },
+                  {
+                    "plate": "MH12IJ0238",
+                    "probability": 0.0019,
+                    "decision": "REVIEW",
+                    "reasons": [
+                      "shortlisted 30 of 249 by OCR edit similarity",
+                      "p=0.002: between thresholds; needs an operator"
+                    ]
+                  },
+                  {
+                    "plate": "MH12IJ0311",
+                    "probability": 0.0019,
+                    "decision": "REVIEW",
+                    "reasons": [
+                      "shortlisted 30 of 249 by OCR edit similarity",
+                      "p=0.002: between thresholds; needs an operator"
+                    ]
+                  },
+                  {
+                    "plate": "HR26IJ0088",
+                    "probability": 0.0019,
+                    "decision": "REVIEW",
+                    "reasons": [
+                      "shortlisted 30 of 249 by OCR edit similarity",
+                      "p=0.002: between thresholds; needs an operator"
+                    ]
+                  }
+                ],
+                "match_note": null,
+                "match_best_make_agrees": true,
+                "_provenance": "CAM capture 914, unmodified (sources/cam/cam.db): MH12IJ7788, seen by camera, absent from registration"
+              },
+              "created_at": "",
+              "created_by": "seed",
+              "except": null,
+              "else": {
+                "id": "R7",
+                "condition": {
+                  "all": [
+                    {
+                      "field": "field",
+                      "op": "eq",
+                      "value": "plate_number"
+                    },
+                    {
+                      "field": "below_floor",
+                      "op": "is_true"
+                    }
+                  ]
+                },
+                "conclusion": {
+                  "action": "quarantine"
+                },
+                "because": "a registered read below the OCR confidence floor is not trusted on its own",
+                "cornerstone": {
+                  "field": "plate_number",
+                  "value": "HR26IJ0401",
+                  "record_id": 3,
+                  "registered": true,
+                  "shape": "LLDDLLDDDD",
+                  "shape_support": 605,
+                  "pattern": "S^+^",
+                  "pattern_support": 605,
+                  "shape_valid": true,
+                  "plate": "HR26IJ0401",
+                  "confidence": 0.62,
+                  "below_floor": true,
+                  "corroborated": false,
+                  "_provenance": "CAM capture 3 (make and colour disagree with registration) with ocr_confidence 0.62"
+                },
+                "created_at": "",
+                "created_by": "seed",
+                "except": {
+                  "id": "R8",
+                  "condition": {
+                    "field": "corroborated",
+                    "op": "is_true"
+                  },
+                  "conclusion": {
+                    "action": "keep"
+                  },
+                  "because": "low confidence, but the registered make or colour corroborates the read (slide 20 contextual signal)",
+                  "cornerstone": {
+                    "field": "plate_number",
+                    "value": "UP16CD0365",
+                    "record_id": 79,
+                    "registered": true,
+                    "shape": "LLDDLLDDDD",
+                    "shape_support": 605,
+                    "pattern": "S^+^",
+                    "pattern_support": 605,
+                    "shape_valid": true,
+                    "plate": "UP16CD0365",
+                    "confidence": 0.62,
+                    "below_floor": true,
+                    "corroborated": true,
+                    "_provenance": "CAM capture 79 (make and colour agree with registration) with ocr_confidence 0.62"
+                  },
+                  "created_at": "",
+                  "created_by": "seed",
+                  "except": null,
+                  "else": null
+                },
+                "else": {
+                  "id": "R9",
+                  "condition": {
+                    "all": [
+                      {
+                        "field": "field",
+                        "op": "eq",
+                        "value": "last_seen_time"
+                      },
+                      {
+                        "field": "ts_parsed",
+                        "op": "is_true"
+                      },
+                      {
+                        "field": "ts_ok",
+                        "op": "is_false"
+                      },
+                      {
+                        "field": "ts_future",
+                        "op": "is_false"
+                      }
+                    ]
+                  },
+                  "conclusion": {
+                    "action": "set",
+                    "value": "$ts_normalised"
+                  },
+                  "because": "a parseable timestamp in a foreign format is rewritten in the source's own dominant format",
+                  "cornerstone": {
+                    "field": "last_seen_time",
+                    "value": "23/08/2026 05:00",
+                    "record_id": 82,
+                    "registered": true,
+                    "ts_parsed": true,
+                    "ts_ok": false,
+                    "ts_future": false,
+                    "ts_normalised": "2026-08-23T05:00:00",
+                    "_provenance": "CAM capture 82 with captured_at written as '23/08/2026 05:00'"
+                  },
+                  "created_at": "",
+                  "created_by": "seed",
+                  "except": null,
+                  "else": {
+                    "id": "R10",
+                    "condition": {
+                      "all": [
+                        {
+                          "field": "field",
+                          "op": "eq",
+                          "value": "last_seen_time"
+                        },
+                        {
+                          "any": [
+                            {
+                              "field": "ts_parsed",
+                              "op": "is_false"
+                            },
+                            {
+                              "field": "ts_future",
+                              "op": "is_true"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "conclusion": {
+                      "action": "quarantine"
+                    },
+                    "because": "a timestamp that cannot be read, or postdates the present, cannot be repaired from context",
+                    "cornerstone": {
+                      "field": "last_seen_time",
+                      "value": "2026-13-45 99:99",
+                      "record_id": 83,
+                      "registered": true,
+                      "ts_parsed": false,
+                      "ts_ok": false,
+                      "ts_future": false,
+                      "ts_normalised": null,
+                      "_provenance": "CAM capture 83 with captured_at written as '2026-13-45 99:99'"
+                    },
+                    "created_at": "",
+                    "created_by": "seed",
+                    "except": null,
+                    "else": {
+                      "id": "R11",
+                      "condition": {
+                        "all": [
+                          {
+                            "field": "field",
+                            "op": "eq",
+                            "value": "record"
+                          },
+                          {
+                            "field": "duplicate_of",
+                            "op": "not_null"
+                          }
+                        ]
+                      },
+                      "conclusion": {
+                        "action": "delete"
+                      },
+                      "because": "a second capture of the same plate by the same camera at the same instant is a duplicate",
+                      "cornerstone": {
+                        "field": "record",
+                        "value": null,
+                        "record_id": 9001,
+                        "registered": true,
+                        "duplicate_of": 81,
+                        "travel_conflict": false,
+                        "_provenance": "CAM capture 81 (DL01AB0377) re-inserted as capture 9001: same plate, camera and time"
+                      },
+                      "created_at": "",
+                      "created_by": "seed",
+                      "except": null,
+                      "else": null
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "else": null
+  }
+}
