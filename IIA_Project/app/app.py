@@ -65,6 +65,7 @@ from tabs.challan_guard import render as render_challan_guard  # noqa: E402
 from tabs.plate_match_lab import render as render_plate_match  # noqa: E402
 from tabs.cleansing_tab import render as render_cleansing  # noqa: E402
 from tabs.matching_eval import render as render_matching_eval  # noqa: E402
+from tabs import how_it_works, scenarios_tab, source_status  # noqa: E402
 from components import chip, chip_strip, group_label  # noqa: E402
 from mediator.catalog import get_source_catalog  # noqa: E402
 from theme import TOKENS, inject  # noqa: E402
@@ -85,9 +86,11 @@ PAGES: dict[str, object] = {
     "Matcher": render_matcher,
     "SQL Console": render_sql_console,
     "Source Editor": render_source_editor,
+    "How it works": how_it_works.render,
     "Plate Match": render_plate_match,
     "Data Cleansing": render_cleansing,
     "Matching Evaluation": render_matching_eval,
+    "Test scenarios": scenarios_tab.render,
 }
 
 BRAND = (
@@ -131,6 +134,7 @@ def sidebar() -> str:
         chip_strip([chip(f"{sid} · {'UP' if up else 'DOWN'}",
                          TOKENS["ok"] if up else TOKENS["down"])
                     for sid, up in health.items()])
+        source_status.render_sidebar()
         st.caption("The mediator holds no source data. An edit in an agency's database shows up "
                    "on the next query, with no ETL in between.")
     return page

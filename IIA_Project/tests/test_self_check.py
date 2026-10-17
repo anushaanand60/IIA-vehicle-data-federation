@@ -242,7 +242,9 @@ def test_app_file_renders_every_tab_with_no_exceptions():
     assert not at.exception, [e.value for e in at.exception]
     # PHASE2-REPLACED (three Data quality pages added to the menu):
     # assert len(at.sidebar.radio(key="nav").options) == 10  # the sidebar menu (Task D2)
-    assert len(at.sidebar.radio(key="nav").options) == 13  # the sidebar menu (Task D2 + phase-2 F)
+    # PHASE2-REPLACED (How it works and Test scenarios added; 13 -> 15):
+    # assert len(at.sidebar.radio(key="nav").options) == 13  # the sidebar menu (Task D2 + phase-2 F)
+    assert len(at.sidebar.radio(key="nav").options) == 15  # the sidebar menu (Task D2 + phase-2 F, G)
 
 
 # ----------------------------------------------------------- (6) citizen dispute loop
