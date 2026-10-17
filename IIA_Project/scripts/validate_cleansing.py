@@ -87,6 +87,18 @@ def markdown(rep: Dict[str, Any]) -> str:
                   "exception under R5 that quarantines a plate correction whose candidate's registered colour "
                   "disagrees with the observed colour, which needs a colour-agreement feature next to the existing "
                   "`match_best_make_agrees`."]
+    else:  # Workstream H: the finding the first run produced, and how it was closed, stays on record
+        lines += ["", "## Every wrong correction (findings)", "",
+                  "None in this run. The first run (same seed) found one: the double misread `UP16ABO524` (truth "
+                  "`UP16AB0521`) was corrected by R5 to `UP16AB0524`, an ACCEPT at p=0.948, although that plate is "
+                  "registered Grey (make not on record) and the camera saw a Red Hyundai i20. It was closed by "
+                  "knowledge acquisition, not by tuning: new context features `match_best_colour_agrees` and "
+                  "`match_best_model_agrees` (canonical lexicon forms, None when either side is unknown) and an RDR "
+                  "exception under R5, added through `RDRTree.add_exception` by `scripts/add_colour_veto_rule.py` "
+                  "with that exact case as its cornerstone: if the accepted candidate's registered colour or model "
+                  "disagrees with the observation, quarantine. The case now counts as a quarantine (safe, but not a "
+                  "correct correction), so `plate_misread_double` correction accuracy is unchanged and its "
+                  "quarantine rate rises by one record (0.20 -> 0.24)."]
     lines += ["", "## Reading the numbers", "",
               "- A plate the matcher does not ACCEPT is **quarantined**, never guessed: for misreads a quarantine is a "
               "safe outcome that counts against correction accuracy but never as a wrong correction.",

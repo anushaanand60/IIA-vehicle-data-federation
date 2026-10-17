@@ -106,7 +106,9 @@ def test_mining_is_deterministic():
 def test_seed_tree_is_consistent_with_its_cornerstones():
     tree = RDRTree.load(cleansing.RULES_PATH)
     rules = list(tree.rules())
-    assert 5 <= len(rules) <= 12
+    # PHASE2-REPLACED (workstream H adds R12, acquired from a validation finding, to the 12 seed rules):
+    # assert 5 <= len(rules) <= 12
+    assert 5 <= len(rules) <= 13
     for rule in rules:
         assert rule.cornerstone and rule.because, rule.id
         assert tree.evaluate(rule.cornerstone)[0]["rule"] == rule.id, rule.id
@@ -425,3 +427,71 @@ def test_accept_candidate_and_delete_record_round_trip_live(local_cluster):
     finally:
         cleansing.undo(res["log_id"], actor="pytest")
     assert _stored(spec, pk, rid, "plate_number") == "DL05CD9B76"
+
+
+# ------------------------------------------------------------------ workstream H: colour / model veto (R12)
+
+def _accept(best):
+    return lambda *a: {"decision": "ACCEPT", "best": best, "probability": 0.948, "method": "plate_match",
+                       "candidates": [{"plate": best, "probability": 0.948}], "note": None}
+
+
+def _veto_rule():
+    return RDRTree.load(cleansing.RULES_PATH).find("R5").except_
+
+
+def test_r12_was_added_under_r5_from_the_validation_case():
+    tree = RDRTree.load(cleansing.RULES_PATH)
+    r12 = _veto_rule()
+    assert r12 is not None and r12.id == "R12" and r12.conclusion == {"action": "quarantine"}
+    assert "cleansing_validation seed 20261017" in r12.cornerstone["_provenance"]
+    assert (r12.cornerstone["value"], r12.cornerstone["match_best"]) == ("UP16ABO524", "UP16AB0524")
+    assert r12.cornerstone["match_best_colour_agrees"] is False
+    conclusion, path = tree.evaluate(r12.cornerstone)  # the exact wrong-correction case
+    assert conclusion["action"] == "quarantine" and conclusion["rule"] == "R12"
+    assert [p["rule"] for p in path if p["fired"]] == ["R0", "R5", "R12"]
+    assert tree.evaluate(tree.find("R5").cornerstone)[0]["rule"] == "R5"  # capture 916 still corrected
+
+
+def test_contradicting_colour_vetoes_an_accepted_plate_correction(specs, monkeypatch):
+    # UP16GH0001 is a registered White Hyundai i20; the camera saw a Red one (the validation finding's shape).
+    monkeypatch.setattr(cleansing, "_match_plate", _accept("UP16GH0001"))
+    ctx = make_ctx(specs, [(1, capture("UP16GHO0O1", "Hyundai", "i20", "Red"))])
+    f = fix(cleansing.propose(ctx.record(1), ctx), "plate_number")
+    assert (f.action, f.after, f.rule) == ("quarantine", "UP16GHO0O1", "R12")
+    assert "R12" in [p["rule"] for p in f.path if p["fired"]]
+    assert f.evidence["match_best_colour_agrees"] is False and f.evidence["match_best_model_agrees"] is True
+
+
+def test_contradicting_model_vetoes_too(specs, monkeypatch):
+    monkeypatch.setattr(cleansing, "_match_plate", _accept("HR26EF0001"))  # Hyundai Creta Grey
+    ctx = make_ctx(specs, [(1, capture("HR26EFOO01", "Hyundai", "i20", "Grey"))])
+    f = fix(cleansing.propose(ctx.record(1), ctx), "plate_number")
+    assert (f.action, f.rule) == ("quarantine", "R12")
+
+
+def test_capture_916_like_case_is_still_corrected(specs, monkeypatch):
+    monkeypatch.setattr(cleansing, "_match_plate", _accept("DL05CD9876"))  # Silver Maruti Swift
+    ctx = make_ctx(specs, [(1, capture("DL05CD9B76", "Maruti Suzuki", "Swift", "Silver", ocr_confidence=0.71))])
+    f = fix(cleansing.propose(ctx.record(1), ctx), "plate_number")
+    assert (f.action, f.after, f.rule) == ("set", "DL05CD9876", "R5")
+    assert f.evidence["match_best_colour_agrees"] is True and f.evidence["match_best_model_agrees"] is True
+
+
+def test_colour_agreement_goes_through_the_canonical_form(specs, monkeypatch):
+    monkeypatch.setattr(cleansing, "_match_plate", _accept("HR26EF0001"))  # registered Grey
+    ctx = make_ctx(specs, [(1, capture("HR26EFOO01", "Hyundai", "Creta", "Gray"))])
+    assert cleansing._canon_agrees("colour", "Gray", "Grey", ctx) is True
+    assert cleansing._canon_agrees("colour", "Red", "Grey", ctx) is False
+    f = fix(cleansing.propose(ctx.record(1), ctx), "plate_number")
+    assert (f.action, f.after, f.rule) == ("set", "HR26EF0001", "R5")
+
+
+def test_an_unknown_side_never_vetoes(specs, monkeypatch):
+    monkeypatch.setattr(cleansing, "_match_plate", _accept("HR26EF0001"))
+    ctx = make_ctx(specs, [(1, capture("HR26EFOO01", "Hyundai", None, None))])
+    case = cleansing.features(ctx.record(1), "plate_number", {}, ctx)
+    assert case["match_best_colour_agrees"] is None and case["match_best_model_agrees"] is None
+    assert cleansing._canon_agrees("colour", "Red", None, ctx) is None
+    f = fix(cleansing.propose(ctx.record(1), ctx), "plate_number")
+    assert (f.action, f.rule) == ("set", "R5")
