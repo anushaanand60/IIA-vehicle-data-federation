@@ -29,28 +29,28 @@ COMBINERS = {"logreg", "gbt", "weighted", "rule"}
 
 MATCH_DOT = f"""
 digraph G {{
-  rankdir=LR; bgcolor="transparent"; nodesep=0.35; ranksep=0.45;
+  rankdir=TB; bgcolor="transparent"; nodesep=0.5; ranksep=0.5;
   node [shape=box, style="rounded,filled", fillcolor="#FFFFFF", color="{TOKENS['brand']}",
-        fontname="Helvetica", fontsize=13, fontcolor="{TOKENS['ink']}", margin="0.18,0.10"];
-  edge [color="{TOKENS['ink2']}", fontname="Helvetica", fontsize=11, fontcolor="{TOKENS['ink2']}"];
+        fontname="Helvetica", fontsize=15, fontcolor="{TOKENS['ink']}", margin="0.18,0.10"];
+  edge [color="{TOKENS['ink2']}", fontname="Helvetica", fontsize=13, fontcolor="{TOKENS['ink2']}"];
   img  [label="Plate image\\n(camera / upload)"];
   ocr  [label="OCR\\n(EasyOCR, offline)"];
   raw  [label="Raw read +\\nconfidence"];
   subgraph cluster_fed {{
-    label="Federation: one wrapper per laptop (read-only HTTP)"; fontname="Helvetica"; fontsize=12;
+    label="Federation: one wrapper per laptop (read-only HTTP)"; fontname="Helvetica"; fontsize=14;
     style="rounded,dashed"; color="{TOKENS['ink_muted']}";
     reg [label="REG wrapper\\nregistrations", fillcolor="#E8F1FB"];
   }}
   subgraph cluster_block {{
-    label="Step 1: blocking (deck p. 45-65) - cheap, high recall"; fontname="Helvetica"; fontsize=12;
+    label="Step 1: blocking (deck p. 45-65) - cheap, high recall"; fontname="Helvetica"; fontsize=14;
     style="rounded"; color="{TOKENS['action']}";
     idx [label="q-gram\\ninverted index"]; size [label="size\\nfilter"];
     pre [label="prefix\\nfilter"]; pos [label="position\\nfilter"];
-    idx -> size -> pre -> pos;
+    idx -> size -> pre -> pos; {{rank=same; idx; size; pre; pos;}}
   }}
   cand [label="Candidates\\n(30-plate shortlist)"];
   subgraph cluster_score {{
-    label="Step 2: scoring (deck p. 69-82) - exact, explainable"; fontname="Helvetica"; fontsize=12;
+    label="Step 2: scoring (deck p. 69-82) - exact, explainable"; fontname="Helvetica"; fontsize=14;
     style="rounded"; color="{TOKENS['action']}";
     feat [label="Feature vector\\n10 string measures +\\nmake/model/colour agreement\\n+ OCR confidence"];
     lr   [label="Logistic regression\\n(Platt-calibrated)"];
@@ -68,13 +68,13 @@ digraph G {{
 
 CLEANSE_DOT = f"""
 digraph G {{
-  rankdir=LR; bgcolor="transparent"; nodesep=0.35; ranksep=0.45;
+  rankdir=TB; bgcolor="transparent"; nodesep=0.5; ranksep=0.5;
   node [shape=box, style="rounded,filled", fillcolor="#FFFFFF", color="{TOKENS['brand']}",
-        fontname="Helvetica", fontsize=13, fontcolor="{TOKENS['ink']}", margin="0.18,0.10"];
-  edge [color="{TOKENS['ink2']}", fontname="Helvetica", fontsize=11, fontcolor="{TOKENS['ink2']}"];
+        fontname="Helvetica", fontsize=15, fontcolor="{TOKENS['ink']}", margin="0.18,0.10"];
+  edge [color="{TOKENS['ink2']}", fontname="Helvetica", fontsize=13, fontcolor="{TOKENS['ink2']}"];
   subgraph cluster_fed {{
     label="Federation: five autonomous sources, each behind its own wrapper"; fontname="Helvetica";
-    fontsize=12; style="rounded,dashed"; color="{TOKENS['ink_muted']}";
+    fontsize=14; style="rounded,dashed"; color="{TOKENS['ink_muted']}";
     cam [label="CAM wrapper\\ncamera captures", fillcolor="#E8F1FB"];
     reg [label="REG wrapper\\nregistrations", fillcolor="#E8F1FB"];
     oth [label="INS / THEFT / PUC\\nwrappers", fillcolor="#E8F1FB"];
@@ -86,7 +86,7 @@ digraph G {{
   op   [label="Operator\\nApply / Resolve / Teach", fillcolor="#FFF4E0", color="{TOKENS['warn']}"];
   adm  [label="CAM wrapper\\n/admin/sql"];
   log  [label="Audit log\\n(undo, resolve)"];
-  cam -> rec -> det -> rdr -> prop -> op;
+  cam -> rec -> det -> rdr -> prop -> op; {{rank=same; det; rdr; prop;}}
   reg -> det [label="registered\\nmake/colour"];
   oth -> det [style=dashed, label="context"];
   op -> adm [label="UPDATE /\\nDELETE"];
@@ -169,8 +169,12 @@ def facts(text: str) -> Dict[str, Optional[str]]:
     single = max(singles, key=lambda r: _f(r.get("top-1")), default={})
     ablation = [r for r in table(sec.get("4", "")) if r.get("model") == best.get("contender")]
     full = next((r for r in ablation if r.get("variant") == "full feature set"), None)
+    # PHASE2-REPLACED (the combined "string only" row removes two groups at once and always won, so the
+    # page credited "string only" instead of naming the single most valuable feature group):
+    # gains = sorted(((_f(full["top-1"]) - _f(r["top-1"]), r["variant"]) for r in ablation
+    #                 if full and r is not full), reverse=True)
     gains = sorted(((_f(full["top-1"]) - _f(r["top-1"]), r["variant"]) for r in ablation
-                    if full and r is not full), reverse=True)
+                    if full and r is not full and r["variant"].startswith("no ")), reverse=True)
     retrieval = table(sec.get("1", ""))
     scan = next((r for r in retrieval if r.get("strategy") == "none"), {})
     pos1 = next((r for r in retrieval if r.get("strategy") == "position" and r.get("max_edits") == "1"), {})
@@ -224,13 +228,13 @@ def render() -> None:
         section("Matching pipeline: from a plate image to a decision",
                 "What this shows: every box is one step the Plate Match page runs live. The registration list is "
                 "read from the REG agency's wrapper on each query; nothing is copied into the mediator.")
-        st.graphviz_chart(MATCH_DOT, width="stretch", key="hw_match_dot")
+        st.graphviz_chart(MATCH_DOT, width="stretch")  # graphviz_chart takes no key
     with panel("hw_cleanse"):
         section("Cleansing loop: from a dirty camera record to a fixed one",
                 "What this shows: how the Data Cleansing page finds and fixes a bad record. The mediator never "
                 "writes to a source directly; the camera agency's own wrapper executes the change, and every change "
                 "is logged so it can be undone.")
-        st.graphviz_chart(CLEANSE_DOT, width="stretch", key="hw_cleanse_dot")
+        st.graphviz_chart(CLEANSE_DOT, width="stretch")  # graphviz_chart takes no key
     with panel("hw_why"):
         _combination(facts(DOC.read_text(encoding="utf-8")) if DOC.exists() else
                      {k: None for k in ("winner",)})
