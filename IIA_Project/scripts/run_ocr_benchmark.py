@@ -25,15 +25,16 @@ from __future__ import annotations
 import argparse
 import csv
 import sqlite3
+import sys
 import time
 from collections import Counter, defaultdict
+from contextlib import closing
 from pathlib import Path
 from typing import Any, Iterable
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-import sys
-
-sys.path.insert(0, str(REPO_ROOT))
+if str(REPO_ROOT) not in sys.path:          # so `python scripts/run_ocr_benchmark.py` works too
+    sys.path.insert(0, str(REPO_ROOT))
 
 from mediator.plate_ocr import ALLOWLIST, canonical, normalise_candidates  # noqa: E402
 
@@ -88,22 +89,23 @@ def load_existing(out_path: Path) -> dict[str, dict]:
 
 def observed_rows() -> list[dict]:
     """The 47 unregistered CAM plates plus the two planted story misreads."""
-    norm = lambda s: canonical(s)  # noqa: E731
-    with sqlite3.connect(f"file:{REG_DB}?mode=ro", uri=True) as reg:
-        registered = {norm(r[0]) for r in reg.execute(
+    # closing(), not `with sqlite3.connect(...)`: the connection context manager commits a
+    # transaction, it does not close the handle, and we must not keep a handle on a source DB.
+    with closing(sqlite3.connect(f"file:{REG_DB}?mode=ro", uri=True)) as reg:
+        registered = {canonical(r[0]) for r in reg.execute(
             "SELECT registration_no FROM VEHICLE_REGISTRATION")}
-    with sqlite3.connect(f"file:{CAM_DB}?mode=ro", uri=True) as cam:
+    with closing(sqlite3.connect(f"file:{CAM_DB}?mode=ro", uri=True)) as cam:
         captures = cam.execute(
             "SELECT plate_id, MAX(ocr_confidence) FROM PLATE_CAPTURES GROUP BY plate_id"
         ).fetchall()
     rows = []
     for plate, confidence in sorted(captures):
-        if norm(plate) in registered:
+        if canonical(plate) in registered:
             continue
         rows.append({
             "image_path": "",
             "true_plate": "",                 # unknown: this is the whole point of these rows
-            "ocr_read": norm(plate),
+            "ocr_read": canonical(plate),
             "ocr_confidence": confidence,
             "degradation": "observed",
             "severity": 0,
@@ -191,30 +193,46 @@ def confusions(rows: Iterable[dict]) -> Counter:
     return counter
 
 
+def _repaired(row: dict) -> bool:
+    """Would `plate_ocr.normalise_candidates` turn this read into the true plate?
+
+    Reported alongside the raw exact-read rate because the raw rate is crushed by one systematic
+    confusion (EasyOCR reads the digit 0 in `DL01` as the letter O on almost every image), which
+    would otherwise make every bucket read 0% and tell us nothing about the degradation ladder.
+    """
+    candidates = normalise_candidates(row["ocr_read"])
+    return bool(candidates) and candidates[0] == row["true_plate"]
+
+
 def summarise(rows: list[dict]) -> None:
     labelled = [r for r in rows if r["true_plate"] and r["degradation"] != "observed"]
-    print(f"\nimages read: {len(labelled)}")
+    observed = [r for r in rows if r["degradation"] == "observed"]
+    print(f"\nimages read: {len(labelled)}   observed rows: {len(observed)}")
+    if not labelled:
+        print("no labelled rows — nothing to summarise")
+        return
     hits = sum(int(r["exact_match"]) for r in labelled)
-    print(f"exact-read rate overall: {hits}/{len(labelled)} = {hits / len(labelled):.1%}")
+    repaired = sum(_repaired(r) for r in labelled)
     confs = [float(r["ocr_confidence"]) for r in labelled if r["ocr_confidence"] != ""]
-    print(f"mean confidence: {sum(confs) / len(confs):.3f}")
-
-    repaired = sum(1 for r in labelled
-                   if normalise_candidates(r["ocr_read"])[:1] == [r["true_plate"]])
+    empty = sum(1 for r in labelled if not r["ocr_read"])
+    print(f"exact-read rate overall: {hits}/{len(labelled)} = {hits / len(labelled):.1%}")
     print(f"exact after plate_ocr repair: {repaired}/{len(labelled)} = "
           f"{repaired / len(labelled):.1%}")
+    print(f"mean confidence: {sum(confs) / len(confs):.3f}" if confs else "mean confidence: n/a")
+    print(f"images OCR returned nothing for: {empty}")
 
-    buckets: dict[tuple[str, str], list[dict]] = defaultdict(list)
+    buckets: dict[tuple[str, int], list[dict]] = defaultdict(list)
     for row in labelled:
-        buckets[(row["degradation"], row["severity"])].append(row)
-    print("\ndegradation  sev   n   exact   mean conf")
+        buckets[(row["degradation"], int(row["severity"]))].append(row)
+    print("\ndegradation  sev     n   exact  repaired  mean conf")
     for key in sorted(buckets):
         group = buckets[key]
-        hit = sum(int(r["exact_match"]) for r in group)
+        hit = sum(int(r["exact_match"]) for r in group) / len(group)
+        rep = sum(_repaired(r) for r in group) / len(group)
         conf = sum(float(r["ocr_confidence"]) for r in group) / len(group)
-        print(f"{key[0]:<12} {key[1]:>3} {len(group):>4}  {hit / len(group):>6.1%}   {conf:.3f}")
+        print(f"{key[0]:<12} {key[1]:>3} {len(group):>5}  {hit:>6.1%}  {rep:>7.1%}     {conf:.3f}")
 
-    print("\ntop character confusions (true -> read):")
+    print("\ntop character confusions (true -> read, aligned by position):")
     for (a, b), count in confusions(rows).most_common(10):
         print(f"  {a} -> {b}   {count}")
 
