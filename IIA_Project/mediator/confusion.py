@@ -44,6 +44,7 @@ FLOOR = 0.1          # a confusion is cheap, never free: two plates differing on
 DEFAULT_SEED = 20261017
 
 _cache: Optional[Dict[Tuple[str, str], float]] = None
+_version = 0  # bumped on every reload, so callers memoising learned scores know to drop them
 
 
 def split_by_plate(plates: Iterable[str], seed: int = DEFAULT_SEED,
@@ -109,8 +110,14 @@ def save_costs(costs: Dict[Tuple[str, str], float], counts: Counter, seed: int,
 
 def reload_costs() -> None:
     """Drop the in-process copy so the next call re-reads the JSON (after a re-estimate)."""
-    global _cache
+    global _cache, _version
     _cache = None
+    _version += 1
+
+
+def costs_version() -> int:
+    """Changes whenever the costs may have changed; part of plate_match's memo key."""
+    return _version
 
 
 def load_costs(path: Optional[Path] = None) -> Dict[Tuple[str, str], float]:

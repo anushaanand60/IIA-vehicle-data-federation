@@ -18,23 +18,27 @@ registry it is given, or REG itself (read-only).
 """
 from __future__ import annotations
 
+import hashlib
 import math
 import sqlite3
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple, Union
 
 from mediator import plate_resolve
-from mediator.blocking import BlockingStats, candidate_plates
+from mediator import confusion
+from mediator.blocking import BlockingStats, QGramIndex, candidate_plates
 from mediator.confusion import learned_ocr_similarity
-from mediator.similarity import ALL_MEASURES, ocr_edit_similarity, tfidf_measure
+from mediator.similarity import ALL_MEASURES, _tokens, jaccard, ocr_edit_similarity
 from mediator.transforms import norm_plate
 
 ROOT = Path(__file__).resolve().parent.parent
 REG_DB = ROOT / "sources" / "reg" / "reg.db"
 MODEL_PATH = ROOT / "data" / "match_model.joblib"
 
-SHORTLIST = 30         # TF/IDF costs ~3 ms a pair over 605 plates; 30 bounds a query to ~0.1 s
+PREFILTER = 100        # Jaccard (8 us a pair) cuts a wide candidate set to this first ...
+SHORTLIST = 30         # ... then the confusion-weighted distance (120 us) keeps this many
 DEFAULT_MAX_EDITS = 2  # used only when no model bundle records the validated value
 ACCEPT_MARGIN = 0.10   # the winner must clear the runner-up by this much, else a human looks
 FALLBACK_THRESHOLDS = {"accept": 0.90, "reject": 0.50}  # uncalibrated: only without a bundle
@@ -90,6 +94,75 @@ def _agree(observed: Optional[str], registered: Optional[str]) -> float:
     return 1.0 if plate_resolve._agrees(observed, registered) else -1.0
 
 
+# ------------------------------------------------------------------ per-registry artefacts
+
+class CachedTfidf:
+    """Exactly `similarity.tfidf_cosine(s1, s2, corpus, q)`, with the corpus statistics computed
+    once. The original re-tokenises all N documents on every call (3-5 ms a pair over 605
+    plates); this keeps its formula and its quirk of appending s1/s2 to the collection when they
+    are absent. tests/test_plate_match.py asserts equality against the original."""
+
+    def __init__(self, corpus: Sequence[str], q: int = 2) -> None:
+        self.q = q
+        docs = [tuple(_tokens(c, q)) for c in corpus]
+        self.seen = set(docs)
+        self.n = len(docs)
+        self.df: Counter = Counter(t for d in docs for t in set(d))
+
+    def __call__(self, s1: str, s2: str) -> float:
+        x, y = str(s1 or "").upper(), str(s2 or "").upper()
+        if not x or not y:
+            return 1.0 if x == y else 0.0
+        if x == y:
+            return 1.0
+        tx, ty = tuple(_tokens(x, self.q)), tuple(_tokens(y, self.q))
+        extra = [t for i, t in enumerate((tx, ty)) if t not in self.seen and (i == 0 or t != tx)]
+        n = self.n + len(extra)
+
+        def idf(t: str) -> float:
+            nd = self.df.get(t, 0) + sum(1 for e in extra if t in e)
+            return math.log(n / (nd or 1))
+        vx = {t: f * idf(t) for t, f in Counter(tx).items()}
+        vy = {t: f * idf(t) for t, f in Counter(ty).items()}
+        dot = sum(v * vy.get(t, 0.0) for t, v in vx.items())
+        nx = math.sqrt(sum(v * v for v in vx.values()))
+        ny = math.sqrt(sum(v * v for v in vy.values()))
+        if nx == 0.0 or ny == 0.0:
+            return 0.0
+        return max(0.0, min(1.0, dot / (nx * ny)))
+
+
+# Keyed by a hash of the registry's plate list, so an insert or delete by the examiner changes
+# the key and forces a rebuild: this memoises a *derivation* of the current registry, never a
+# stale copy of it. Make/model/colour are not cached at all -- they are re-read on every call.
+_artefacts: Dict[str, Tuple[QGramIndex, CachedTfidf]] = {}
+_pair_memo: Dict[Tuple[str, int, str, str], Dict[str, float]] = {}
+_MEMO_MAX = 200_000
+
+
+def registry_artefacts(plates: Sequence[str]) -> Tuple[str, QGramIndex, CachedTfidf]:
+    """(content key, q-gram index, TF/IDF statistics) for this exact plate list."""
+    key = hashlib.sha1("\n".join(plates).encode("utf-8")).hexdigest()
+    hit = _artefacts.get(key)
+    if hit is None:
+        if len(_artefacts) >= 4:
+            _artefacts.clear()
+        hit = _artefacts[key] = (QGramIndex.build(plates), CachedTfidf(plates))
+    return key, hit[0], hit[1]
+
+
+def pair_features(key: str, read: str, cand: str, tfidf: Callable[[str, str], float]
+                  ) -> Dict[str, float]:
+    """`string_features`, memoised on (registry key, cost version, read, candidate)."""
+    mk = (key, confusion.costs_version(), read, cand)
+    hit = _pair_memo.get(mk)
+    if hit is None:
+        if len(_pair_memo) >= _MEMO_MAX:
+            _pair_memo.clear()
+        hit = _pair_memo[mk] = string_features(read, cand, tfidf)
+    return hit
+
+
 def string_features(read: str, cand: str, tfidf: Callable[[str, str], float]) -> Dict[str, float]:
     """The string half of the vector; depends on the pair only, so callers may memoise it."""
     out = {name: float(fn(read, cand)) for name, fn in ALL_MEASURES.items()}
@@ -120,7 +193,8 @@ def features(read: str, candidate: str, *, confidence: Optional[float],
              registry_row: Optional[Mapping[str, Any]], corpus: Sequence[str],
              observed_model: Optional[str] = None) -> Dict[str, float]:
     """The full feature vector of p. 71 for one (read, candidate) pair, keyed by FEATURE_NAMES."""
-    out = string_features(read, candidate, tfidf_measure(corpus))
+    key, _, tfidf = registry_artefacts(list(corpus))
+    out = dict(pair_features(key, read, candidate, tfidf))
     out.update(context_features(confidence=confidence, observed_make=observed_make,
                                 observed_colour=observed_colour, observed_model=observed_model,
                                 registry_row=registry_row, read_registered=read in set(corpus)))
@@ -236,10 +310,16 @@ def retrieve(read: str, plates: Sequence[str], *, strategy: str, max_edits: int,
 
 
 def shortlist(read: str, cands: List[str]) -> Tuple[List[str], List[str]]:
+    """Two cheap stages before the full feature vector. On the benchmark the Jaccard pre-filter
+    loses no true plate that the distance-only shortlist kept, at a quarter of the cost."""
     if len(cands) <= SHORTLIST:
         return cands, []
+    n = len(cands)
+    if n > PREFILTER:
+        cands = sorted(cands, key=lambda p: (-jaccard(read, p), p))[:PREFILTER]
     keep = sorted(cands, key=lambda p: (-ocr_edit_similarity(read, p), p))[:SHORTLIST]
-    return keep, [f"shortlisted {SHORTLIST} of {len(cands)} by OCR edit similarity"]
+    return keep, [f"shortlisted {SHORTLIST} of {n} (Jaccard to {min(n, PREFILTER)}, then OCR "
+                  "edit similarity)"]
 
 
 # ------------------------------------------------------------------ entry points
@@ -276,7 +356,8 @@ def match(read: str, *, confidence: Optional[float] = None,
         notes.append("no calibration bundle: probabilities and thresholds are uncalibrated")
     me = max_edits if max_edits is not None else int(
         (bundle or {}).get("max_edits", DEFAULT_MAX_EDITS))
-    cands, stats, more = retrieve(read, plates, strategy=strategy, max_edits=me)
+    key, index, tfidf = registry_artefacts(plates)
+    cands, stats, more = retrieve(read, plates, strategy=strategy, max_edits=me, index=index)
     notes += more
     if model == "rule":
         ranked = rule_match(read, reg, observed_make, observed_colour)
@@ -285,12 +366,12 @@ def match(read: str, *, confidence: Optional[float] = None,
         return ranked[:top_k], stats
     cands, more = shortlist(read, cands)
     notes += more
-    tfidf, plate_set = tfidf_measure(plates), set(plates)
+    plate_set = set(plates)
     ctx = dict(confidence=confidence, observed_make=observed_make,
                observed_colour=observed_colour, observed_model=observed_model,
                read_registered=read in plate_set)
-    vectors = [{**string_features(read, p, tfidf), **context_features(registry_row=reg.get(p),
-                                                                       **ctx)} for p in cands]
+    vectors = [{**pair_features(key, read, p, tfidf),
+                **context_features(registry_row=reg.get(p), **ctx)} for p in cands]
     probs = platt((bundle or {}).get("calibration", {}).get(model),
                   raw_scores(model, vectors, bundle))
     ranked = [Candidate(p, {m: v[m] for m in SCORE_NAMES}, v, pr, "REJECT", list(notes))
