@@ -462,3 +462,98 @@ Full table, per-degradation breakdown, ablation and the viva text: `docs/MATCHIN
 `plate_match.CachedTfidf`, which is tested equal to it. `blocking.py`'s bounds are only
 recall-safe to `max_edits`, and on real EasyOCR reads even max_edits 5 keeps 0.95; this is a
 property of the reads, documented, not a code bug.
+
+
+## Workstream F — the GUI for all three rubrics, the CLI fallback, and the resolution step
+
+**Prompt (summary).** Build one Streamlit page per rubric in the civic theme, reusing the phase-2
+backend and never reimplementing it: **Plate Match** (upload / benchmark image / typed read, OCR raw
+read and repaired guesses, blocking funnel, ranked candidates with every measure's score, calibrated
+probability, decision and reasons, plus the reverse direction over live CAM captures), **Data
+Cleansing** (KPIs with unhandled = 0, live scan with re-scan, per-record RDR path with `stepper`,
+apply / undo / resolve, bulk apply behind a checkbox, a teach form showing refusals verbatim, the
+rule tree, and an examiner toolbox that inserts, modifies and deletes CAM captures through the
+wrapper's `/admin/sql` with an automatic re-scan) and **Matching Evaluation** (the evaluation
+document's tables and a chart). Add a `scripts/match_plate.py` CLI fallback that uses the live
+federation (with `--local-db` for offline use) and a small `resolve()` step in `mediator/cleansing.py`
+(confirm_clone with watchlist, accept_candidate, delete_record, dismiss with a mandatory note; logged,
+reported by `scan()` as `resolved`, undoable). AppTest tests for every page on the `local_cluster`
+fixture. Mid-task team rule: replaced pre-phase-2 lines stay in place as `# PHASE2-REPLACED` comments.
+
+| Unit | generated | reviewed |
+|---|---|---|
+| `mediator/cleansing.py` — `resolve()` | `c324000` | `19484fc`, `2aee597` (markers) |
+| `scripts/match_plate.py` | `27b4e97` | `77d0ffc` |
+| `app/tabs/plate_match_lab.py` | `129ce05` | `f940034`, `0fc549b` (visual check) |
+| `app/tabs/cleansing_tab.py` + `cleansing_toolbox.py` | `d6ba3f3` | `67ad084`, `a9c9942` (visual check) |
+| `app/tabs/matching_eval.py` | `88dae79` | `149d50a` |
+| `app/app.py` + `app/theme.py` (Data quality nav group) | `0300d26` | `9c40031` |
+
+Tests: `tests/test_plate_match_lab.py`, `tests/test_cleansing_tab.py`, `tests/test_matching_eval_tab.py`,
+`tests/test_match_plate_cli.py`, resolve tests appended to `tests/test_cleansing.py`, nav counts in
+`tests/test_tabs_render.py` and `tests/test_self_check.py` (`4247208`). Screenshots: `3b008ca`.
+
+### `mediator/cleansing.py` — `resolve()`
+
+- **accept_candidate was refused on exactly the reads it exists for.** It only looked at anomalies
+  left *after* the proposals; for capture 916 the RDR proposal already clears the plate anomaly, so the
+  operator could not pick a different candidate. Data-changing decisions now see the record's current
+  anomalies; confirm_clone and dismiss (which leave the data as is) still only close what is left open.
+- **accept_candidate could erase clone evidence.** Rewriting a registered, well-read plate whose make
+  or colour disagree would destroy the phase-1 cloned-plate signal; it now needs a plate anomaly.
+- **confirm_clone closed quarantined anomalies too**; it now vouches for flagged clone evidence only.
+- **A second resolution overwrote the first's anomaly codes**, and already-resolved codes were
+  re-closed; resolutions are merged per record and only open codes count.
+- An empty note left a dangling `:` in the watchlist reason.
+
+### `scripts/match_plate.py`
+
+- **`--image` matched the wrong read.** It used `read_plate`'s repaired top guess, but the benchmark
+  and the calibrated thresholds were evaluated on the raw joined read, and `read_plate` drops a plate
+  EasyOCR splits into two boxes down to a fragment (a test now pins this). It now prints raw read,
+  repairs and `read_plate` output, matches the raw read, and `--repaired` opts in.
+- **Reverse rows shared one probability per read** although captures sharing a read can carry
+  different make, colour and confidence; such captures are re-scored through `reverse_match`.
+- A dead wrapper or a missing EasyOCR was a traceback; now `error:` plus the `--local-db` way out,
+  exit 2. Added `--meta`; the funnel reuses the matcher's cached q-gram index; a missing REG/CAM role
+  is a refusal; an unregistered reverse target is explained.
+
+### `app/tabs/plate_match_lab.py`
+
+- The OCR recorder was duplicated and its confidence was an unweighted mean that did not reproduce the
+  benchmark CSV; it now shares `scripts.match_plate.run_ocr` (length-weighted, as the benchmark).
+- The benchmark picker was keyed on list position, so changing the degradation filter silently pointed
+  at a different car; now keyed on the image path. A failed OCR was cached as an empty read.
+- A refused registry read left the previous result on screen as if current; results now say which read
+  and when. The "why" text hard-coded numbers that would go stale.
+- Visual check: the 17-column candidates table hid the learned score and the context columns behind a
+  horizontal scroll; split into a verdict table and a measure-score table.
+
+### `app/tabs/cleansing_tab.py` + `cleansing_toolbox.py`
+
+- Every refused action (stale record, RDR refusal, unknown capture, admin disabled) raised a traceback
+  into the page; refusals are now shown verbatim.
+- The capture selectbox crashed when the selected capture was deleted; an inserted capture could not be
+  pre-selected (int vs str ids).
+- "Apply all automatic fixes" ran `apply()` on flags and quarantines too; it now writes only set and
+  delete, and one stale record no longer aborts the rest.
+- The teach form could not express a flag name and required a value for unary operators. The toolbox
+  quoted numeric ids as text, reported success for a 0-row modify or delete, and took the camera foreign
+  key from `joins[0]` instead of the join that carries the location.
+- Visual check: 60+ anomaly rows pushed every action thousands of pixels down; now a scrolling list.
+- Deliberate: the toolbox uses `cleansing._admin` (the existing non-UI admin-call helper); the Source
+  Editor's and SQL Console's helpers draw Streamlit messages and cannot be called from another page.
+
+### `app/tabs/matching_eval.py`
+
+- The "chosen model" KPIs read whatever row came first, not the contender the Decision section names.
+- Backticks leaked into parsed cells; a header-only table parsed as data; a non-numeric cell would crash
+  the chart; the chart had no labels, winner marker or axis title.
+- Deliberate: the page parses `docs/MATCHING_EVALUATION.md` instead of adding `--json-out` to the
+  evaluation script, so it cannot show a number the viva document lacks and re-running the (75 s,
+  model-rewriting) evaluation was not needed.
+
+### `app/app.py` + `app/theme.py`
+
+- The generated comment was split mid-sentence; the nav tests still pinned ten pages. Replaced CSS lines
+  are kept as CSS comments, since a Python `#` inside the stylesheet string would be invalid CSS.
