@@ -28,6 +28,7 @@ if str(_APP_DIR) not in sys.path:
 import streamlit as st  # noqa: E402
 
 from components import chip, chip_strip, group_label, kpi_row, page_head, panel, section, styled_table  # noqa: E402
+from components import what_this_shows  # noqa: E402  (phase-2 accessibility pass)
 from mediator import plate_match, plate_ocr  # noqa: E402
 from scripts.match_plate import (funnel, live_captures, live_registry, max_edits, reverse_rows,  # noqa: E402
                                  run_ocr)
@@ -97,6 +98,7 @@ def _benchmark_input(got: Dict[str, Any]) -> None:
 
 def _input_panel() -> Dict[str, Any]:
     section("Read a plate", "Type what a camera read, pick a rendered benchmark image, or upload a photo.")
+    what_this_shows("the three ways to give the matcher a plate: type a read, pick a damaged test image whose real plate is known, or upload a photo.")
     mode = st.radio("Input", MODES, key="pm_mode", horizontal=True)
     got: Dict[str, Any] = {"image": None, "raw": None, "confidence": None, "truth": None, "source": "typed"}
     if mode == "Type a read":
@@ -120,6 +122,7 @@ def _input_panel() -> Dict[str, Any]:
 def _read_panel(got: Dict[str, Any]) -> str:
     section("What the camera read", "The raw read is what the matcher was evaluated on; the repairs are "
             "plate_ocr's pattern-licensed confusion swaps (O→0 where a digit belongs, B→8 …).")
+    what_this_shows("the text the OCR engine read and how sure it was; the matcher works on this raw text.")
     raw = plate_ocr.canonical(got["raw"] or "")
     repaired = plate_ocr.normalise_candidates(raw)
     left, right = st.columns([2, 3]) if got["image"] is not None else (None, st.container())
@@ -198,6 +201,7 @@ def _candidates_panel(res: Dict[str, Any]) -> None:
         f"hand-weighted fallback — {err}"
     section(f"Ranked candidates for {res['read']}", f"Model: {model}. Each measure's score side by side; "
             "the decision reads the calibrated probability against thresholds chosen on validation.")
+    what_this_shows("the registered plates the read could be, best first, with the probability that each is the right car and the decision.")
     # Two tables, one row per candidate in both: one table of 17 columns overflowed the panel and hid
     # the learned score and the context columns behind a horizontal scroll.
     verdict, measures = [], []
@@ -223,6 +227,7 @@ def _reverse_panel() -> None:
     section("Reverse: camera reads for a registration",
             "Every CAM capture, read live, whose plate read could be this vehicle. Each read is scored by the "
             "same forward matcher, so a read that is really another registered car is never claimed.")
+    what_this_shows("the opposite direction: start from a registration and find every camera record that could be that car.")
     c1, c2 = st.columns([3, 1])
     plate = c1.text_input("Registration number", "DL05CD9876", key="pm_rev_plate")
     c2.markdown("<div style='height:34px'></div>", unsafe_allow_html=True)
@@ -288,9 +293,12 @@ def render() -> None:
         _separation(res)
     with panel("pm_why"):
         section("Why this algorithm")
+        what_this_shows("one sentence on why this combination was chosen; the full comparison is on Matching Evaluation.")
         st.markdown("Logistic regression over ten string measures plus the camera's make, model and colour ranked "
                     "the right vehicle first most often on held-out vehicles, and at the precision target it accepts the most "
                     "reads unattended — the numbers, and why the others lost, are on "
                     "[Matching Evaluation](?page=Matching%20Evaluation).")
+        st.markdown("How the whole pipeline fits together, and which slide each method comes from: "
+                    "[How it works](?page=How%20it%20works).")
     with panel("pm_reverse"):
         _reverse_panel()
