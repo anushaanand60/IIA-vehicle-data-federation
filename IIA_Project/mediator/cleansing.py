@@ -197,6 +197,8 @@ def _canon_agrees(attr: str, observed: Any, registered: Any, ctx: Context) -> Op
     None when either side is unknown, so a missing value can never veto anything."""
     if not observed or not registered:
         return None
+    # Trade-off: a token the lexicon cannot place (e.g. a model with digits it has never seen) is
+    # compared raw, which can only make agreement stricter, i.e. err towards quarantine, never a write.
     lex = ctx.lex.for_attr(attr)
     return _agrees(lex.lookup(observed)[0] or str(observed), lex.lookup(registered)[0] or str(registered))
 
@@ -377,8 +379,15 @@ def propose(record: Dict[str, Any], ctx: Optional[Context] = None) -> Proposal:
         after = case.get(after[1:]) if isinstance(after, str) and after.startswith("$") else after
         rule = conclusion.get("rule")
         because = next((p["because"] for p in path if p["rule"] == rule), "")
+        # PHASE2-REPLACED (evidence also carries the candidate's agreement features, so an operator sees
+        # why a plate correction was vetoed):
+        # evidence = {k: case[k] for k in ("match_best", "match_probability", "match_method", "match_decision",
+        #                                  "match_candidates", "registered_value", "canonical", "lexicon_kind")
+        #             if k in case}
         evidence = {k: case[k] for k in ("match_best", "match_probability", "match_method", "match_decision",
-                                         "match_candidates", "registered_value", "canonical", "lexicon_kind")
+                                         "match_candidates", "registered_value", "canonical", "lexicon_kind",
+                                         "match_best_make_agrees", "match_best_colour_agrees",
+                                         "match_best_model_agrees")
                     if k in case}
         # Two invariants no taught rule can override: a plate is only rewritten on the matcher's
         # ACCEPT (REVIEW means a person decides), and a "set" with nothing to set is not a fix.
