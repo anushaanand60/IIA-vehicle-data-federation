@@ -31,6 +31,9 @@ from components import chip, chip_strip, group_label, kpi_row, page_head, panel,
 from theme import TOKENS  # noqa: E402
 
 STATE = "sc2_results"
+# The backend tags each scenario "1", "2" or "1+2"; the page groups by rubric in this order.
+RUBRICS = {"1": "Rubric 1: approximate plate matching", "2": "Rubric 2: cleansing camera records",
+           "1+2": "Rubrics 1 and 2 together"}
 
 
 def backend() -> Any:
@@ -65,7 +68,13 @@ def run_one(mod: Any, key: str) -> Dict[str, Any]:
 def _chip(res: Optional[Dict[str, Any]]) -> str:
     if res is None:
         return chip("NOT RUN", TOKENS["neutral"])
+    if res["passed"] is None:  # the backend's "cannot run on this deployment"; its data says why
+        return chip("SKIPPED", TOKENS["warn"])
     return chip("PASS", TOKENS["ok"]) if res["passed"] else chip("FAIL", TOKENS["bad"])
+
+
+def rubric_name(tag: Any) -> str:
+    return RUBRICS.get(str(tag), str(tag or "Other"))
 
 
 def _steps(steps: List[Any]) -> List[Dict[str, Any]]:
@@ -112,12 +121,14 @@ def _histogram(key: str, name: str, values: List[float]) -> None:
         x=alt.X("value:Q", bin=alt.Bin(maxbins=30), title=name.replace("_", " "),
                 axis=alt.Axis(labelFontSize=14, titleFontSize=15)),
         y=alt.Y("count():Q", title="reads", axis=alt.Axis(labelFontSize=14, titleFontSize=15)))
-    st.altair_chart(chart.properties(height=240), key=f"sc2_hist_{key}_{name}")
+    st.altair_chart(chart.properties(height=260).configure_axis(labelFontSize=15, titleFontSize=15,
+                    labelColor=TOKENS["ink"], titleColor=TOKENS["ink"]), key=f"sc2_hist_{key}_{name}",
+                    theme=None, width="stretch")  # theme=None: Streamlit's theme shrank the axis text
 
 
 def _result(key: str, res: Dict[str, Any]) -> None:
     restored = {True: "data restored", False: "data NOT restored", None: "changed no data"}.get(res.get("restored"), "—")
-    chip_strip([_chip(res), chip(f"{res.get('elapsed_ms') or 0} ms", TOKENS["info"]),
+    chip_strip([_chip(res), chip(f"{float(res.get('elapsed_ms') or 0):,.0f} ms", TOKENS["info"]),
                 chip(restored, TOKENS["ok"] if res.get("restored") is not False else TOKENS["bad"])])
     styled_table([{"Expected": res.get("expected"), "Actual": res.get("actual")}])
     if res.get("steps"):
@@ -131,7 +142,7 @@ def _scenario(mod: Any, key: str, spec: Dict[str, Any], results: Dict[str, Any])
     head, button = st.columns([5, 1])
     with head:
         group_label(spec.get("title", key))
-        chip_strip([_chip(res), chip(spec.get("rubric", "—"), TOKENS["neutral"])])
+        chip_strip([_chip(res), chip(rubric_name(spec.get("rubric")), TOKENS["neutral"])])
         st.markdown(f"**What it does:** {spec.get('what', '—')}  \n**Why it matters:** {spec.get('why', '—')}")
     if button.button("Run", key=f"sc2_run_{key}", width="stretch"):
         with st.spinner(f"Running {spec.get('title', key)} live…"):
@@ -160,7 +171,8 @@ def render() -> None:
                 "agency wrappers and checks its own result. Every scenario that changes data restores it afterwards.")
         done = [results[k] for k in catalogue if k in results]
         kpi_row([("Scenarios", len(catalogue)), ("Run", len(done)), ("Passed", sum(1 for r in done if r["passed"])),
-                 ("Failed", sum(1 for r in done if not r["passed"])),
+                 ("Failed", sum(1 for r in done if r["passed"] is False)),
+                 ("Skipped", sum(1 for r in done if r["passed"] is None)),
                  ("Total time", f"{sum(r.get('elapsed_ms') or 0 for r in done) / 1000:.1f} s")])
         c1, c2 = st.columns([1, 1])
         if c1.button("Run all scenarios", key="sc2_run_all", type="primary", width="stretch"):
@@ -172,8 +184,10 @@ def render() -> None:
         if c2.button("Clear results", key="sc2_clear", width="stretch"):
             results.clear()
     rubrics: Dict[str, List[str]] = {}
-    for key, spec in catalogue.items():
-        rubrics.setdefault(str(spec.get("rubric") or "Other"), []).append(key)
+    order = list(RUBRICS)
+    for key, spec in sorted(catalogue.items(), key=lambda kv: order.index(str(kv[1].get("rubric")))
+                            if str(kv[1].get("rubric")) in order else len(order)):
+        rubrics.setdefault(rubric_name(spec.get("rubric")), []).append(key)
     for i, (rubric, keys) in enumerate(rubrics.items()):
         with panel(f"sc2_rubric_{i}"):
             passed = sum(1 for k in keys if results.get(k, {}).get("passed"))
