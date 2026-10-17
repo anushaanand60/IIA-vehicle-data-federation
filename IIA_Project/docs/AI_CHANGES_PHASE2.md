@@ -709,3 +709,72 @@ Tests: `tests/test_gui_refinement.py` (`e742866`, `e1f523c`). Screenshots: `bf3a
   `Restore:` steps. A `changed: bool` field would make that explicit.
 - `cleansing_validation.json` per-type entries carry `detection_recall: null` for control types and a
   `false_alarm_rate` instead; the panel shows whichever applies in one column.
+
+## Workstream H — colour veto (RDR exception from a validation case)
+
+### The defect
+
+The cleansing validation (`docs/CLEANSING_VALIDATION.md`, seed 20261017, n=300) found one wrong plate
+correction. Noise type `plate_misread_double`: the noisy read `UP16ABO524` (truth `UP16AB0521`) was corrected
+by R5 to `UP16AB0524`, because the plate matcher ACCEPTed it (p=0.948). That plate is registered Grey (model
+I20, make not on record); the camera saw a Red Hyundai i20. The plate case the RDR tree saw carried only
+`match_best_make_agrees` (None here), so nothing could veto the correction.
+
+### The fix (knowledge acquisition, Week 8 deck slides 26-29)
+
+- **Features** (`mediator/cleansing.py`, additive): `match_best_colour_agrees` and `match_best_model_agrees`
+  next to `match_best_make_agrees`. Both sides go through the lexicon's canonical form first (`Gray` meets
+  `Grey` through the colour lexicon's edit variant); None when either side is unknown, so a missing value
+  never vetoes. The three agreement features are also put in the proposal's evidence.
+- **Rule R12**, an *except* child of R5, added by `scripts/add_colour_veto_rule.py` through
+  `RDRTree.add_exception` (not by editing JSON), so the engine's cornerstone protection ran; it accepted the
+  rule (no other cornerstone changed conclusion):
+  - condition: `field == plate_number` and (`match_best_colour_agrees is_false` or
+    `match_best_model_agrees is_false`) -- `is_false`, not "not true", so unknowns do not veto;
+  - conclusion: `quarantine`;
+  - because: "a plate correction is only made when nothing the camera saw contradicts the candidate's
+    registration";
+  - cornerstone: the full validation case (replayed from the seeded run), `_provenance` =
+    "cleansing_validation seed 20261017: plate_misread_double, noisy read UP16ABO524 of UP16AB0521 corrected
+    by R5 to UP16AB0524 (registered Grey, camera saw Red)".
+
+### Before / after (validation, `--local-db`, seed 20261017, n=300)
+
+| measure | before | after |
+|---|---|---|
+| wrong plate corrections | 1 | **0** |
+| wrong corrections (all fields) | 1 | 0 |
+| detection recall | 1.0 | 1.0 |
+| control false-alarm rate | 0.0 | 0.0 |
+| correction accuracy (overall) | 0.952 | 0.952 |
+| `plate_misread_double` correction accuracy | 0.76 | 0.76 |
+| `plate_misread_double` quarantine rate | 0.20 | 0.24 |
+
+The vetoed record moves from "wrong set" to "quarantine": a safe outcome that is still not a correct
+correction, so correction accuracy does not move and the quarantine rate rises by exactly one record. Every
+other type is unchanged.
+
+### Real data (918 CAM captures)
+
+The wrappers on 8001-8005 belonged to the user's running site, so the scan ran as `cleansing.scan` over a
+Context built from the local SQLite copies (read-only), once with the old rules and once with R12, on the
+same snapshot: identical, `flag 116 / set 34 / quarantine 18`. R12 fires on no real capture. Capture 916
+(`DL05CD9B76`, Silver Maruti Swift seen as Silver Maruti Swift) is still `set` to `DL05CD9876` by R5 (colour
+and model agree). An earlier reading of `flag 115 / set 35` was taken before `cam.db` was written by another
+process (20:35); it is not a change caused by R12.
+
+### Tests
+
+`tests/test_rdr.py`, `tests/test_cleansing.py` (6 new tests: R12's cornerstone is the validation case and
+evaluates R0 > R5 > R12 -> quarantine; colour and model contradictions veto; capture-916-like case stays
+`set`; Gray/Grey agree; an unknown side never vetoes), `tests/test_cleansing_validation.py`,
+`tests/test_scenarios.py` (own free ports; `misread_plate_cleansed` and `examiner_insert_dirty` pass) and
+`tests/test_gui_refinement.py`: all pass. The seed-tree size bound in `test_cleansing.py` went 12 -> 13 (old
+assertion kept as PHASE2-REPLACED).
+
+### Commits
+
+- `f19ce97` generated: mediator/cleansing.py — colour/model veto features (unreviewed AI output)
+- `955006b` reviewed: mediator/cleansing.py — Gray/Grey verified, None never vetoes, evidence carries the features
+- `640edb1` workstream H: add_colour_veto_rule.py, validation doc text, tests
+- `4681db2` data: R12 in data/rdr_rules.json and the re-run validation outputs
