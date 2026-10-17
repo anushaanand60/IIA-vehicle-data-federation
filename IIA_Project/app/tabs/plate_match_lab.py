@@ -31,6 +31,7 @@ from components import chip, chip_strip, group_label, kpi_row, page_head, panel,
 from mediator import plate_match, plate_ocr  # noqa: E402
 from scripts.match_plate import (funnel, live_captures, live_registry, max_edits, reverse_rows,  # noqa: E402
                                  run_ocr)
+from tabs import plate_separation  # noqa: E402
 from theme import TOKENS  # noqa: E402
 
 BENCHMARK = _ROOT / "data" / "match_benchmark.csv"
@@ -40,6 +41,15 @@ SHORT = {"edit_similarity": "edit", "ocr_edit_similarity": "ocr-edit", "jaro": "
          "overlap": "overlap", "jaccard": "jaccard", "ratcliff_obershelp": "r-o", "soundex_similarity": "soundex",
          "tfidf": "tf-idf", "learned_ocr_similarity": "learned"}
 AGREE = {1.0: "agrees", -1.0: "differs", 0.0: "—"}
+EDIT_CHOICES = (1, 2, 3, 5)
+# One plain-words line per blocking stage (deck p. 40-65), shown next to the counts.
+STAGE_WORDS = {
+    "none": "Full scan: every registered plate is a candidate. This is the cost blocking avoids.",
+    "index": "Inverted index: keep plates that share at least one 2-character piece (q-gram) with the read.",
+    "size": "Size filter: drop plates whose number of q-grams is too different for the allowed errors.",
+    "prefix": "Prefix filter: a true match must share one of the read's rarest q-grams; check only those lists.",
+    "position": "Position filter: the shared q-grams must also sit at nearly the same place in both strings.",
+}
 
 
 def decision_chip(decision: str, label: Optional[str] = None) -> str:
@@ -126,6 +136,12 @@ def _read_panel(got: Dict[str, Any]) -> str:
             group_label("read_plate output (repaired per box)")
             st.markdown(" · ".join(f"`{t}` ({c})" for t, c in got["guesses"]))
         use = st.radio("Match on", ["raw read", "best repaired guess"], key="pm_use", horizontal=True)
+        validated = max_edits()
+        choices = sorted(set(EDIT_CHOICES) | {validated})
+        st.selectbox("Errors the blocking filters must tolerate (max_edits)", choices, key="pm_edits",
+                     index=choices.index(validated), help=f"{validated} was chosen on validation. Fewer allowed "
+                     "errors = far fewer candidates, but a read with more errors than this can lose its plate.")
+    got["repaired"] = repaired[0] if repaired else None
     return raw if use == "raw read" or not repaired else repaired[0]
 
 
@@ -139,14 +155,23 @@ def _forward(read: str, got: Dict[str, Any]) -> None:
         st.session_state.pop("pm_result", None)
         st.error(f"Refused: the registration authority could not be read live ({exc}).")
         return
-    me = max_edits()
+    # PHASE2-REPLACED (max_edits is now the examiner's choice, default the validated value):
+    # me = max_edits()
+    # cands, stats = plate_match.match(read, confidence=got["confidence"], observed_make=got["make"],
+    #                                  observed_colour=got["colour"], registry=registry)
+    me = int(st.session_state.get("pm_edits") or max_edits())
     cands, stats = plate_match.match(read, confidence=got["confidence"], observed_make=got["make"],
-                                     observed_colour=got["colour"], registry=registry)
+                                     observed_colour=got["colour"], registry=registry, max_edits=me)
+    truth = plate_ocr.canonical(got["truth"]) if got.get("truth") else None
+    target = truth or (cands[0].plate if cands else None)
     st.session_state["pm_result"] = {
         "read": read, "make": got["make"], "colour": got["colour"], "meta": meta, "max_edits": me,
         "stages": funnel(read, sorted(registry), me), "stats": stats, "cands": cands,
         "registry": {c.plate: registry.get(c.plate, {}) for c in cands},
-        "at": datetime.now().strftime("%H:%M:%S")}
+        "at": datetime.now().strftime("%H:%M:%S"),
+        "raw": plate_ocr.canonical(got["raw"] or ""), "repaired": got.get("repaired"), "truth": truth,
+        "target": target, "plates": sorted(registry),
+        "grid": plate_separation.damage_grid(target, registry, me) if target else None}
 
 
 def _funnel_panel(res: Dict[str, Any]) -> None:
@@ -155,8 +180,16 @@ def _funnel_panel(res: Dict[str, Any]) -> None:
             f"max_edits = {res['max_edits']} (chosen on validation).")
     kpi_row([(s["stage"], s["candidates"]) for s in res["stages"]]
             + [("scored", min(plate_match.SHORTLIST, res["stats"].candidates_after) or len(res["cands"]))])
-    styled_table([{"Stage": s["stage"], "Filters applied": s["filters"], "Candidates left": s["candidates"],
-                   "Elapsed ms": s["elapsed_ms"]} for s in res["stages"]])
+    # PHASE2-REPLACED (each stage now says in plain words what it does):
+    # styled_table([{"Stage": s["stage"], "Filters applied": s["filters"], "Candidates left": s["candidates"],
+    #                "Elapsed ms": s["elapsed_ms"]} for s in res["stages"]])
+    st.markdown("**What this shows:** how many registered plates are still in the running after each cheap "
+                "filter, before any expensive scoring. Try 1 allowed error to see the set collapse.")
+    styled_table([{"Stage": s["stage"], "What the filter does": STAGE_WORDS.get(s["stage"], s["filters"]),
+                   "Candidates left": s["candidates"], "Elapsed ms": s["elapsed_ms"]} for s in res["stages"]])
+    notes = [r for c in res["cands"][:1] for r in c.reasons if "widened" in r or "full scan" in r]
+    if notes:
+        st.info("Nothing survived at this setting, so the matcher widened the search: " + "; ".join(notes) + ".")
 
 
 def _candidates_panel(res: Dict[str, Any]) -> None:
@@ -220,6 +253,23 @@ def _reverse_panel() -> None:
         chip_strip([decision_chip(r["decision"], f"#{r['capture_id']} · {r['decision']}") for r in rev["rows"]])
 
 
+def _separation(res: Dict[str, Any]) -> None:
+    """The three Separation panels; the real plate is the benchmark label, else the matcher's winner."""
+    target = res.get("target")
+    if not target:
+        return
+    if not res.get("truth"):
+        st.info(f"The real plate of a typed or uploaded read is not known, so the Separation panels compare "
+                f"against the matcher's winner {target}. Pick a benchmark image to compare against the truth.")
+    with panel("pm_sep_diff"):
+        plate_separation.render_diff(target, res.get("raw") or res["read"], res.get("repaired"))
+    with panel("pm_sep_dist"):
+        plate_separation.render_distance(res["read"], target, res["cands"], res.get("plates") or [])
+    if res.get("grid"):
+        with panel("pm_sep_grid"):
+            plate_separation.render_grid(res["grid"])
+
+
 def render() -> None:
     page_head("Plate Match", "A noisy plate read, matched approximately against every registered vehicle "
               "— and the reverse: every camera read that could be one registration.")
@@ -235,6 +285,7 @@ def render() -> None:
             _funnel_panel(res)
         with panel("pm_cands"):
             _candidates_panel(res)
+        _separation(res)
     with panel("pm_why"):
         section("Why this algorithm")
         st.markdown("Logistic regression over ten string measures plus the camera's make, model and colour ranked "
