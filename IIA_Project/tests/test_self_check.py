@@ -240,7 +240,9 @@ def test_unknown_plate_shows_not_registered(cluster):
 def test_app_file_renders_every_tab_with_no_exceptions():
     at = AppTest.from_file(str(ROOT / "app" / "app.py"), default_timeout=180).run()
     assert not at.exception, [e.value for e in at.exception]
-    assert len(at.sidebar.radio(key="nav").options) == 10  # the sidebar menu (Task D2)
+    # PHASE2-REPLACED (three Data quality pages added to the menu):
+    # assert len(at.sidebar.radio(key="nav").options) == 10  # the sidebar menu (Task D2)
+    assert len(at.sidebar.radio(key="nav").options) == 13  # the sidebar menu (Task D2 + phase-2 F)
 
 
 # ----------------------------------------------------------- (6) citizen dispute loop
