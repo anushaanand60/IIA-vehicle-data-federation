@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import sys
 from collections import Counter
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
@@ -464,18 +465,52 @@ def _db() -> Iterator[sqlite3.Connection]:
         for col in ("decision", "note"):  # additive migration for the resolution step
             if col not in cols:
                 conn.execute(f"ALTER TABLE CLEANSING_LOG ADD COLUMN {col} TEXT")
+        if "undo_sql" not in cols:  # additive migration (workstream G): the exact SQL undo() sent
+            conn.execute("ALTER TABLE CLEANSING_LOG ADD COLUMN undo_sql TEXT")
+        # Every write the mediator sends to a source's /admin/sql, with its exact text (workstream G).
+        conn.execute("""CREATE TABLE IF NOT EXISTS ADMIN_LOG (
+            admin_id INTEGER PRIMARY KEY AUTOINCREMENT, sent_at TEXT, source_id TEXT, origin TEXT,
+            sql_text TEXT, http_status INTEGER, rows_affected INTEGER, error TEXT)""")
         yield conn
         conn.commit()
     finally:
         conn.close()
 
 
+# PHASE2-REPLACED (every admin write is recorded in ADMIN_LOG with its exact SQL, workstream G):
+# def _admin(spec: SourceSpec, sql: str) -> int:
+#     with httpx.Client(trust_env=False) as client:
+#         r = client.post(spec.base_url.rstrip("/") + "/admin/sql", json={"sql": sql}, timeout=spec.timeout_ms / 1000)
+#     if r.status_code != 200:
+#         raise CleansingError(f"{spec.source_id} refused the write: HTTP {r.status_code} {r.text[:200]}")
+#     return int(r.json().get("rows_affected", 0))
 def _admin(spec: SourceSpec, sql: str) -> int:
-    with httpx.Client(trust_env=False) as client:
-        r = client.post(spec.base_url.rstrip("/") + "/admin/sql", json={"sql": sql}, timeout=spec.timeout_ms / 1000)
+    origin = sys._getframe(1).f_code.co_name  # trade-off: caller's name as the label, so no caller changes
+    try:
+        with httpx.Client(trust_env=False) as client:
+            r = client.post(spec.base_url.rstrip("/") + "/admin/sql", json={"sql": sql},
+                            timeout=spec.timeout_ms / 1000)
+    except httpx.HTTPError as exc:
+        _log_admin(spec, origin, sql, None, None, f"{type(exc).__name__}: {exc}")
+        raise
     if r.status_code != 200:
+        _log_admin(spec, origin, sql, r.status_code, None, r.text[:200])
         raise CleansingError(f"{spec.source_id} refused the write: HTTP {r.status_code} {r.text[:200]}")
-    return int(r.json().get("rows_affected", 0))
+    rows = int(r.json().get("rows_affected", 0))
+    _log_admin(spec, origin, sql, r.status_code, rows, None)
+    return rows
+
+
+def _log_admin(spec: SourceSpec, origin: str, sql: str, status: Optional[int], rows: Optional[int],
+               error: Optional[str]) -> None:
+    """Audit one admin call. Never raises: a full or locked meta.db must not undo a write already made."""
+    try:
+        with _db() as conn:
+            conn.execute("INSERT INTO ADMIN_LOG (sent_at, source_id, origin, sql_text, http_status, rows_affected, "
+                         "error) VALUES (?,?,?,?,?,?,?)", (datetime.now(timezone.utc).isoformat(), spec.source_id,
+                                                           origin, sql, status, rows, error))
+    except sqlite3.Error:
+        pass
 
 
 def _fetch_row(spec: SourceSpec, pk: str, record_id: Any) -> Dict[str, Any]:
@@ -562,9 +597,13 @@ def undo(log_id: int, actor: str = "operator", ctx: Optional[Context] = None) ->
         vals = ", ".join(lexicons.sql_literal(v) for v in before.values())
         sql = f"INSERT INTO {spec.table} ({cols}) VALUES ({vals})"
         _admin(spec, sql)
+    # PHASE2-REPLACED (undo also stores the exact SQL it sent, workstream G):
+    # with _db() as conn:
+    #     conn.execute("UPDATE CLEANSING_LOG SET undone_at = ?, undone_by = ? WHERE log_id = ?",
+    #                  (datetime.now(timezone.utc).isoformat(), actor, log_id))
     with _db() as conn:
-        conn.execute("UPDATE CLEANSING_LOG SET undone_at = ?, undone_by = ? WHERE log_id = ?",
-                     (datetime.now(timezone.utc).isoformat(), actor, log_id))
+        conn.execute("UPDATE CLEANSING_LOG SET undone_at = ?, undone_by = ?, undo_sql = ? WHERE log_id = ?",
+                     (datetime.now(timezone.utc).isoformat(), actor, sql, log_id))
     return {"log_id": log_id, "action": row["action"], "sql": sql}
 
 
