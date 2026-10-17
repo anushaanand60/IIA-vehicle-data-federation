@@ -320,3 +320,17 @@ def test_examiner_insert_modify_delete_loop(local_cluster, monkeypatch):
     finally:
         _admin(spec, f"DELETE FROM {spec.table} WHERE {pk} = {rid}")
     assert _scan_item(rid) is None  # delete: gone from the report, no stale cache anywhere
+
+
+def test_cli_teach_is_non_interactive_and_names_missing_flags(capsys):
+    from scripts import cleanse
+    with pytest.raises(SystemExit) as exc:
+        cleanse.main(["--teach", "--capture", "5"])
+    assert exc.value.code == 2 and "--field" in capsys.readouterr().err
+
+
+def test_cli_prints_rule_tree(capsys):
+    from scripts import cleanse
+    assert cleanse.main(["--tree"]) == 0
+    out = capsys.readouterr().out
+    assert "R0:" in out and "R11:" in out

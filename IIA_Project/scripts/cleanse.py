@@ -24,8 +24,10 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from mediator import catalog, cleansing  # noqa: E402
-from mediator.rdr import RDRTree  # noqa: E402
+from mediator import catalog, cleansing, lexicons  # noqa: E402
+from mediator.rdr import RDRConflict, RDRTree  # noqa: E402
+
+TEACH_FLAGS = ("capture", "field", "under", "condition", "conclusion", "because")
 
 
 def _print_proposal(prop: cleansing.Proposal) -> None:
@@ -39,7 +41,36 @@ def _print_proposal(prop: cleansing.Proposal) -> None:
             print(f"  {'':16} because {f.because}")
 
 
+def _print_scan(report: dict, show: int) -> None:
+    if report.get("status") != "OK":
+        print(f"scan refused: {report.get('error')}")
+        return
+    print(f"{report['source_id']}: {report['records_scanned']} records scanned, "
+          f"{report['records_with_anomalies']} with anomalies")
+    for title, key in (("anomalies before", "anomalies_before"), ("proposals", "proposals"),
+                       ("would remain after applying", "remaining_after"),
+                       ("remaining, by disposition", "remaining_by_disposition")):
+        counts = report.get(key) or {}
+        print(f"  {title}: {sum(counts.values())}")
+        for code, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])):
+            print(f"    {code:32} {n}")
+    for item in report["items"][:show]:
+        changes = [f"{f['field']} {f['action']}" + (f" -> {f['after']}" if f["action"] == "set" else "")
+                   + f" ({f['rule']})" for f in item["fixes"] if f["action"] != "keep"]
+        print(f"  record {item['record_id']} {item['record'].get('plate_number')}: "
+              f"{', '.join(a['code'] for a in item['anomalies']) or '-'}  =>  {'; '.join(changes) or 'keep'}")
+
+
 def main(argv: list[str] | None = None) -> int:
+    try:
+        return _main(argv)
+    except (cleansing.CleansingError, RDRConflict, lexicons.SourceUnavailable, ValueError, KeyError) as exc:
+        # an operator mistake or an unreachable source is a message and exit code 2, never a traceback
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+
+def _main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     act = ap.add_mutually_exclusive_group(required=True)
     act.add_argument("--scan", action="store_true")
@@ -51,6 +82,7 @@ def main(argv: list[str] | None = None) -> int:
     act.add_argument("--log", action="store_true")
     ap.add_argument("--limit", type=int)
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--show", type=int, default=20, help="--scan: list this many records")
     ap.add_argument("--actor", default="operator")
     ap.add_argument("--capture", help="--teach: the record whose case becomes the cornerstone")
     ap.add_argument("--field", help="--teach: global attribute (plate_number, observed_colour, ..., record)")
@@ -62,6 +94,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--rules", default=str(cleansing.RULES_PATH), help="RDR rule file")
     ap.add_argument("--meta", help="meta.db to use (registry, catalog and CLEANSING_LOG)")
     args = ap.parse_args(argv)
+    if args.teach and (missing := [f"--{f}" for f in TEACH_FLAGS if not getattr(args, f)]):
+        ap.error(f"--teach needs {', '.join(missing)}")
     if args.meta:
         catalog.META_DB_PATH = args.meta
     rules = Path(args.rules)
@@ -81,10 +115,9 @@ def main(argv: list[str] | None = None) -> int:
         report = cleansing.scan(limit=args.limit, ctx=ctx)
         if args.json:
             print(json.dumps(report, indent=2, default=str))
-            return 0
-        summary = {k: v for k, v in report.items() if k != "items"}
-        print(json.dumps(summary, indent=2))
-        return 0
+        else:
+            _print_scan(report, args.show)
+        return 0 if report.get("status") == "OK" else 2
     if args.teach:
         result = cleansing.teach(args.capture, args.field, args.under, json.loads(args.condition),
                                  json.loads(args.conclusion), args.because, args.branch, args.actor, ctx, rules)
