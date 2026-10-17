@@ -253,6 +253,7 @@ def validate(n: int = 300, seed: int = SEED, local_db: bool = False) -> Dict[str
     ctx = _context(full, rows)
     per_type: Dict[str, Counter] = defaultdict(Counter)
     examples: List[Dict[str, Any]] = []
+    wrong: List[Dict[str, Any]] = []
     for kind, original, noisy in labelled:
         prop = cleansing.propose(ctx.record(noisy["record_id"]), ctx)
         s = score(kind, original, prop)
@@ -264,15 +265,26 @@ def validate(n: int = 300, seed: int = SEED, local_db: bool = False) -> Dict[str
         c["flagged"] += s["flagged"]
         c["wrong_corrections"] += len(s["wrong"])
         c["plate_wrong_corrections"] += PLATE in s["wrong"]
+        for fld in s["wrong"]:  # every wrong correction is listed, not just counted: each one is a finding
+            fix = next(f for f in prop.fixes if f.field == fld)
+            wrong.append({"type": kind, "field": fld, "original": original.get(fld), "noisy": noisy.get(fld),
+                          "set_to": fix.after, "rule": fix.rule, "because": fix.because,
+                          "registered_profile_of_set_value": {k: v for k, v in ctx.profiles.get(
+                              norm_plate(fix.after) or "", {}).items() if k in ("vehicle_make", "vehicle_model",
+                                                                               "vehicle_colour")} if fld == PLATE else None,
+                          "observed": {f: noisy.get(f) for f in ("observed_make", "observed_model", "observed_colour")}})
         if sum(1 for e in examples if e["type"] == kind) < 2:
             fld = EXPECT[kind][1] or "observed_colour"
+            fld = PLATE if fld == "record" else fld  # a duplicate is shown by its plate, not an empty "record"
             fix = s["fix"]
             examples.append({"type": kind, "field": fld, "original": original.get(fld), "noisy": noisy.get(fld),
                              "detected": s["codes"],
                              "proposed": f"{fix.action} {fix.after!r}" if fix else "keep",
                              "rule_path": [p["rule"] for p in (fix.path if fix else []) if p["fired"]],
                              "correct": s["correct"]})
-    return _report(per_type, examples, seed, n, len(clean), local_db)
+    rep = _report(per_type, examples, seed, n, len(clean), local_db)
+    rep["wrong_corrections_detail"] = wrong
+    return rep
 
 
 def _context(full: cleansing.Context, rows: List[Dict[str, Any]]) -> cleansing.Context:

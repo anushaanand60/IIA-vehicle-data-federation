@@ -72,6 +72,21 @@ def markdown(rep: Dict[str, Any]) -> str:
         lines.append(f"| {e['type']} | {e['field']} | `{e['original']}` | `{e['noisy']}` | "
                      f"{', '.join(e['detected']) or '-'} | {e['proposed']} | {' > '.join(e['rule_path']) or '-'} | "
                      f"{'yes' if e['correct'] else 'no'} |")
+    if rep.get("wrong_corrections_detail"):
+        lines += ["", "## Every wrong correction (findings)", "",
+                  "| type | field | original | noisy | set to | rule | registered make/model/colour of the set value | camera saw |",
+                  "|---|---|---|---|---|---|---|---|"]
+        for w in rep["wrong_corrections_detail"]:
+            prof = w.get("registered_profile_of_set_value") or {}
+            lines.append(f"| {w['type']} | {w['field']} | `{w['original']}` | `{w['noisy']}` | `{w['set_to']}` | {w['rule']} | "
+                         f"{' / '.join(_cell(prof.get(k)) for k in ('vehicle_make', 'vehicle_model', 'vehicle_colour'))} | "
+                         f"{' / '.join(_cell(v) for v in w['observed'].values())} |")
+        lines += ["", "Each row is the matcher ACCEPTing a plate one cheap OCR confusion away from a double misread. "
+                  "The registered colour of the accepted plate contradicts what the camera saw, and the make is not on "
+                  "record, so the context features could not veto it. Proposed remedy (not applied here): an RDR "
+                  "exception under R5 that quarantines a plate correction whose candidate's registered colour "
+                  "disagrees with the observed colour, which needs a colour-agreement feature next to the existing "
+                  "`match_best_make_agrees`."]
     lines += ["", "## Reading the numbers", "",
               "- A plate the matcher does not ACCEPT is **quarantined**, never guessed: for misreads a quarantine is a "
               "safe outcome that counts against correction accuracy but never as a wrong correction.",

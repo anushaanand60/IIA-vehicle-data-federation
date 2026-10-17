@@ -1,0 +1,525 @@
+{
+  "overall": {
+    "records": 300,
+    "noisy": 250,
+    "controls": 25,
+    "clean_pool": 823,
+    "detection_recall": 1.0,
+    "detection_precision": 1.0,
+    "control_false_alarm_rate": 0.0,
+    "correction_accuracy": 0.952,
+    "wrong_corrections": 1,
+    "plate_wrong_corrections": 1
+  },
+  "per_type": {
+    "control": {
+      "n": 25,
+      "expected": "no anomaly, keep",
+      "detection_recall": null,
+      "false_alarm_rate": 0.0,
+      "correction_accuracy": 1.0,
+      "quarantine_rate": 0.0,
+      "flag_rate": 0.0,
+      "wrong_corrections": 0,
+      "plate_wrong_corrections": 0
+    },
+    "colour_misspelling": {
+      "n": 25,
+      "expected": "COLOUR_NOT_IN_LEXICON -> set",
+      "detection_recall": 1.0,
+      "false_alarm_rate": null,
+      "correction_accuracy": 1.0,
+      "quarantine_rate": 0.0,
+      "flag_rate": 0.0,
+      "wrong_corrections": 0,
+      "plate_wrong_corrections": 0
+    },
+    "make_misspelling": {
+      "n": 25,
+      "expected": "MAKE_NOT_IN_LEXICON -> set",
+      "detection_recall": 1.0,
+      "false_alarm_rate": null,
+      "correction_accuracy": 1.0,
+      "quarantine_rate": 0.0,
+      "flag_rate": 0.0,
+      "wrong_corrections": 0,
+      "plate_wrong_corrections": 0
+    },
+    "plate_misread_single": {
+      "n": 25,
+      "expected": "PLATE_NOT_REGISTERED -> set",
+      "detection_recall": 1.0,
+      "false_alarm_rate": null,
+      "correction_accuracy": 1.0,
+      "quarantine_rate": 0.0,
+      "flag_rate": 0.0,
+      "wrong_corrections": 0,
+      "plate_wrong_corrections": 0
+    },
+    "plate_misread_double": {
+      "n": 25,
+      "expected": "PLATE_NOT_REGISTERED -> set",
+      "detection_recall": 1.0,
+      "false_alarm_rate": null,
+      "correction_accuracy": 0.76,
+      "quarantine_rate": 0.2,
+      "flag_rate": 0.0,
+      "wrong_corrections": 1,
+      "plate_wrong_corrections": 1
+    },
+    "invalid_shape": {
+      "n": 25,
+      "expected": "PLATE_SHAPE_INVALID or PLATE_NOT_REGISTERED -> set",
+      "detection_recall": 1.0,
+      "false_alarm_rate": null,
+      "correction_accuracy": 0.76,
+      "quarantine_rate": 0.24,
+      "flag_rate": 0.0,
+      "wrong_corrections": 0,
+      "plate_wrong_corrections": 0
+    },
+    "duplicate": {
+      "n": 25,
+      "expected": "DUPLICATE_CAPTURE -> delete",
+      "detection_recall": 1.0,
+      "false_alarm_rate": null,
+      "correction_accuracy": 1.0,
+      "quarantine_rate": 0.0,
+      "flag_rate": 0.0,
+      "wrong_corrections": 0,
+      "plate_wrong_corrections": 0
+    },
+    "timestamp_unparseable": {
+      "n": 25,
+      "expected": "TIMESTAMP_UNPARSEABLE -> quarantine",
+      "detection_recall": 1.0,
+      "false_alarm_rate": null,
+      "correction_accuracy": 1.0,
+      "quarantine_rate": 1.0,
+      "flag_rate": 0.0,
+      "wrong_corrections": 0,
+      "plate_wrong_corrections": 0
+    },
+    "timestamp_future": {
+      "n": 25,
+      "expected": "TIMESTAMP_FUTURE -> quarantine",
+      "detection_recall": 1.0,
+      "false_alarm_rate": null,
+      "correction_accuracy": 1.0,
+      "quarantine_rate": 1.0,
+      "flag_rate": 0.0,
+      "wrong_corrections": 0,
+      "plate_wrong_corrections": 0
+    },
+    "low_confidence": {
+      "n": 25,
+      "expected": "LOW_OCR_CONFIDENCE -> quarantine",
+      "detection_recall": 1.0,
+      "false_alarm_rate": null,
+      "correction_accuracy": 1.0,
+      "quarantine_rate": 1.0,
+      "flag_rate": 0.0,
+      "wrong_corrections": 0,
+      "plate_wrong_corrections": 0
+    },
+    "low_confidence_corroborated": {
+      "n": 25,
+      "expected": "no anomaly, keep",
+      "detection_recall": null,
+      "false_alarm_rate": 0.0,
+      "correction_accuracy": 1.0,
+      "quarantine_rate": 0.0,
+      "flag_rate": 0.0,
+      "wrong_corrections": 0,
+      "plate_wrong_corrections": 0
+    },
+    "clone_swap": {
+      "n": 25,
+      "expected": "MAKE_DISAGREES_REGISTRATION or COLOUR_DISAGREES_REGISTRATION -> flag",
+      "detection_recall": 1.0,
+      "false_alarm_rate": null,
+      "correction_accuracy": 1.0,
+      "quarantine_rate": 0.0,
+      "flag_rate": 1.0,
+      "wrong_corrections": 0,
+      "plate_wrong_corrections": 0
+    }
+  },
+  "examples": [
+    {
+      "type": "control",
+      "field": "observed_colour",
+      "original": "Black",
+      "noisy": "Black",
+      "detected": [],
+      "proposed": "keep",
+      "rule_path": [],
+      "correct": true
+    },
+    {
+      "type": "colour_misspelling",
+      "field": "observed_colour",
+      "original": "Red",
+      "noisy": "Rde",
+      "detected": [
+        "COLOUR_NOT_IN_LEXICON"
+      ],
+      "proposed": "set 'Red'",
+      "rule_path": [
+        "R0",
+        "R3"
+      ],
+      "correct": true
+    },
+    {
+      "type": "make_misspelling",
+      "field": "observed_make",
+      "original": "Kia",
+      "noisy": "Kiaa",
+      "detected": [
+        "MAKE_NOT_IN_LEXICON"
+      ],
+      "proposed": "set 'Kia'",
+      "rule_path": [
+        "R0",
+        "R1"
+      ],
+      "correct": true
+    },
+    {
+      "type": "plate_misread_single",
+      "field": "plate_number",
+      "original": "DL01GH0055",
+      "noisy": "DL01GHO055",
+      "detected": [
+        "PLATE_NOT_REGISTERED",
+        "PLATE_SHAPE_INVALID"
+      ],
+      "proposed": "set 'DL01GH0055'",
+      "rule_path": [
+        "R0",
+        "R5"
+      ],
+      "correct": true
+    },
+    {
+      "type": "plate_misread_double",
+      "field": "plate_number",
+      "original": "DL01EF0517",
+      "noisy": "DL0IEFO517",
+      "detected": [
+        "PLATE_NOT_REGISTERED",
+        "PLATE_SHAPE_INVALID"
+      ],
+      "proposed": "set 'DL01EF0517'",
+      "rule_path": [
+        "R0",
+        "R5"
+      ],
+      "correct": true
+    },
+    {
+      "type": "invalid_shape",
+      "field": "plate_number",
+      "original": "DL01GH0033",
+      "noisy": "DL01GH003",
+      "detected": [
+        "PLATE_NOT_REGISTERED",
+        "PLATE_SHAPE_INVALID"
+      ],
+      "proposed": "set 'DL01GH0033'",
+      "rule_path": [
+        "R0",
+        "R5"
+      ],
+      "correct": true
+    },
+    {
+      "type": "duplicate",
+      "field": "plate_number",
+      "original": "DL01AB0169",
+      "noisy": "DL01AB0169",
+      "detected": [
+        "DUPLICATE_CAPTURE"
+      ],
+      "proposed": "delete None",
+      "rule_path": [
+        "R0",
+        "R11"
+      ],
+      "correct": true
+    },
+    {
+      "type": "timestamp_unparseable",
+      "field": "last_seen_time",
+      "original": "2026-08-12T09:00:00",
+      "noisy": "31/02/2026 25:61",
+      "detected": [
+        "TIMESTAMP_UNPARSEABLE"
+      ],
+      "proposed": "quarantine '31/02/2026 25:61'",
+      "rule_path": [
+        "R0",
+        "R10"
+      ],
+      "correct": true
+    },
+    {
+      "type": "timestamp_future",
+      "field": "last_seen_time",
+      "original": "2026-07-13T11:00:00",
+      "noisy": "2027-04-22T20:21:57",
+      "detected": [
+        "TIMESTAMP_FUTURE"
+      ],
+      "proposed": "quarantine '2027-04-22T20:21:57'",
+      "rule_path": [
+        "R0",
+        "R10"
+      ],
+      "correct": true
+    },
+    {
+      "type": "low_confidence",
+      "field": "plate_number",
+      "original": "DL05AB0126",
+      "noisy": "DL05AB0126",
+      "detected": [
+        "LOW_OCR_CONFIDENCE"
+      ],
+      "proposed": "quarantine 'DL05AB0126'",
+      "rule_path": [
+        "R0",
+        "R7"
+      ],
+      "correct": true
+    },
+    {
+      "type": "low_confidence_corroborated",
+      "field": "observed_colour",
+      "original": "Silver",
+      "noisy": "Silver",
+      "detected": [],
+      "proposed": "keep",
+      "rule_path": [],
+      "correct": true
+    },
+    {
+      "type": "clone_swap",
+      "field": "observed_colour",
+      "original": "Black",
+      "noisy": "Red",
+      "detected": [
+        "MAKE_DISAGREES_REGISTRATION",
+        "MODEL_DISAGREES_REGISTRATION",
+        "COLOUR_DISAGREES_REGISTRATION"
+      ],
+      "proposed": "flag 'Red'",
+      "rule_path": [
+        "R0",
+        "R4"
+      ],
+      "correct": true
+    },
+    {
+      "type": "control",
+      "field": "observed_colour",
+      "original": "Red",
+      "noisy": "Red",
+      "detected": [],
+      "proposed": "keep",
+      "rule_path": [],
+      "correct": true
+    },
+    {
+      "type": "colour_misspelling",
+      "field": "observed_colour",
+      "original": "Silver",
+      "noisy": "Silvar",
+      "detected": [
+        "COLOUR_NOT_IN_LEXICON"
+      ],
+      "proposed": "set 'Silver'",
+      "rule_path": [
+        "R0",
+        "R1"
+      ],
+      "correct": true
+    },
+    {
+      "type": "make_misspelling",
+      "field": "observed_make",
+      "original": "Mahindra",
+      "noisy": "Mahendra",
+      "detected": [
+        "MAKE_NOT_IN_LEXICON"
+      ],
+      "proposed": "set 'Mahindra'",
+      "rule_path": [
+        "R0",
+        "R1"
+      ],
+      "correct": true
+    },
+    {
+      "type": "plate_misread_single",
+      "field": "plate_number",
+      "original": "HR26EF0479",
+      "noisy": "HR26EFO479",
+      "detected": [
+        "PLATE_NOT_REGISTERED",
+        "PLATE_SHAPE_INVALID"
+      ],
+      "proposed": "set 'HR26EF0479'",
+      "rule_path": [
+        "R0",
+        "R5"
+      ],
+      "correct": true
+    },
+    {
+      "type": "plate_misread_double",
+      "field": "plate_number",
+      "original": "MH12AB0196",
+      "noisy": "MU12ABU196",
+      "detected": [
+        "PLATE_NOT_REGISTERED",
+        "PLATE_SHAPE_INVALID"
+      ],
+      "proposed": "set 'MH12AB0196'",
+      "rule_path": [
+        "R0",
+        "R5"
+      ],
+      "correct": true
+    },
+    {
+      "type": "invalid_shape",
+      "field": "plate_number",
+      "original": "HR26IJ0194",
+      "noisy": "HR26IJ019",
+      "detected": [
+        "PLATE_NOT_REGISTERED",
+        "PLATE_SHAPE_INVALID"
+      ],
+      "proposed": "set 'HR26IJ0194'",
+      "rule_path": [
+        "R0",
+        "R5"
+      ],
+      "correct": true
+    },
+    {
+      "type": "duplicate",
+      "field": "plate_number",
+      "original": "MH12GH0284",
+      "noisy": "MH12GH0284",
+      "detected": [
+        "DUPLICATE_CAPTURE"
+      ],
+      "proposed": "delete None",
+      "rule_path": [
+        "R0",
+        "R11"
+      ],
+      "correct": true
+    },
+    {
+      "type": "timestamp_unparseable",
+      "field": "last_seen_time",
+      "original": "2026-08-25T21:00:00",
+      "noisy": "2026-13-45T99:00:00",
+      "detected": [
+        "TIMESTAMP_UNPARSEABLE"
+      ],
+      "proposed": "quarantine '2026-13-45T99:00:00'",
+      "rule_path": [
+        "R0",
+        "R10"
+      ],
+      "correct": true
+    },
+    {
+      "type": "timestamp_future",
+      "field": "last_seen_time",
+      "original": "2026-07-12T10:00:00",
+      "noisy": "2027-06-15T20:21:57",
+      "detected": [
+        "TIMESTAMP_FUTURE"
+      ],
+      "proposed": "quarantine '2027-06-15T20:21:57'",
+      "rule_path": [
+        "R0",
+        "R10"
+      ],
+      "correct": true
+    },
+    {
+      "type": "low_confidence",
+      "field": "plate_number",
+      "original": "DL05CD0421",
+      "noisy": "DL05CD0421",
+      "detected": [
+        "LOW_OCR_CONFIDENCE"
+      ],
+      "proposed": "quarantine 'DL05CD0421'",
+      "rule_path": [
+        "R0",
+        "R7"
+      ],
+      "correct": true
+    },
+    {
+      "type": "low_confidence_corroborated",
+      "field": "observed_colour",
+      "original": "Black",
+      "noisy": "Black",
+      "detected": [],
+      "proposed": "keep",
+      "rule_path": [],
+      "correct": true
+    },
+    {
+      "type": "clone_swap",
+      "field": "observed_colour",
+      "original": "Black",
+      "noisy": "Silver",
+      "detected": [
+        "MAKE_DISAGREES_REGISTRATION",
+        "MODEL_DISAGREES_REGISTRATION",
+        "COLOUR_DISAGREES_REGISTRATION"
+      ],
+      "proposed": "flag 'Silver'",
+      "rule_path": [
+        "R0",
+        "R4"
+      ],
+      "correct": true
+    }
+  ],
+  "seed": 20261017,
+  "n_requested": 300,
+  "source": "local SQLite copies",
+  "generated_at": "2026-10-17T20:22:32",
+  "wrong_corrections_detail": [
+    {
+      "type": "plate_misread_double",
+      "field": "plate_number",
+      "original": "UP16AB0521",
+      "noisy": "UP16ABO524",
+      "set_to": "UP16AB0524",
+      "rule": "R5",
+      "because": "an unregistered read is corrected only to the candidate the plate matcher ACCEPTs -- matcher plate_match accepts UP16AB0524 with probability 0.9478",
+      "registered_profile_of_set_value": {
+        "vehicle_make": null,
+        "vehicle_model": "I20",
+        "vehicle_colour": "Grey"
+      },
+      "observed": {
+        "observed_make": "Hyundai",
+        "observed_model": "i20",
+        "observed_colour": "Red"
+      }
+    }
+  ]
+}
