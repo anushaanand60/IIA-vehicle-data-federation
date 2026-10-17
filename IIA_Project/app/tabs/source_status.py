@@ -37,10 +37,16 @@ def render_sidebar() -> None:
     """Under the health badges: one chip per source, and a restart button."""
     status: Dict[str, Any] = st.session_state.get("source_status") or {}
     if status:
-        chip_strip([chip(f"{sid}: {describe(s)[0]}", TOKENS[describe(s)[1]]) for sid, s in status.items()])
+        # The chip carries the short state; a failure's reason goes on its own wrapping line, because
+        # chips never wrap and a long reason ran out of the 300 px sidebar.
+        described = {sid: describe(s) for sid, s in status.items()}
+        chip_strip([chip(f"{sid}: {words.split(' — ')[0]}", TOKENS[token]) for sid, (words, token) in described.items()])
+        for sid, (words, _) in described.items():
+            if " — " in words:
+                st.caption(f"{sid}: {words}")
     else:
         st.caption("Start-up status not reported yet on this rerun.")
-    if st.button("Restart local sources", key="ss_restart", width="stretch",
+    if st.button("Restart local sources", key="ss_restart", width="stretch", type="primary",
                  help="Clears the status and reruns: the app's start-up check restarts any local wrapper that "
                       "is not answering. Wrappers on other laptops are never touched."):
         st.session_state.pop("source_status", None)
