@@ -17,8 +17,6 @@ A source that does not answer raises `lexicons.SourceUnavailable` (a refusal wit
 """
 from __future__ import annotations
 
-import json
-import sqlite3
 from typing import Any, Dict, List, Optional
 
 from mediator import catalog, cleansing, lexicons
@@ -81,12 +79,12 @@ def last_admin_statements(limit: int = 10) -> List[Dict[str, Any]]:
     out = [{"at": a["sent_at"], "source_id": a["source_id"], "origin": a["origin"], "sql": a["sql_text"],
             "http_status": a["http_status"], "rows_affected": a["rows_affected"], "error": a["error"],
             "log": "ADMIN_LOG", "id": a["admin_id"]} for a in admin]
+    # Only the forward write of a legacy row: an undo of it, if any, ran after ADMIN_LOG existed and is
+    # already one of the ADMIN_LOG rows above (listing undo_sql too would show that write twice).
     for row in legacy:
-        for sql, at, what in ((row.get("undo_sql"), row.get("undone_at"), "undo"),
-                              (row.get("sql_sent"), row.get("applied_at"), row.get("action"))):
-            if sql:
-                out.append({"at": at, "source_id": row["source_id"], "origin": f"cleansing {what}", "sql": sql,
-                            "http_status": None, "rows_affected": None, "error": None,
-                            "log": "CLEANSING_LOG", "id": row["log_id"]})
+        if row.get("sql_sent"):
+            out.append({"at": row.get("applied_at"), "source_id": row["source_id"],
+                        "origin": f"cleansing {row.get('action')}", "sql": row["sql_sent"], "http_status": None,
+                        "rows_affected": None, "error": None, "log": "CLEANSING_LOG", "id": row["log_id"]})
     out.sort(key=lambda r: str(r["at"] or ""), reverse=True)
     return out[:limit]
