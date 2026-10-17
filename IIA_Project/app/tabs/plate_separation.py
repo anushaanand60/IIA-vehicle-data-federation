@@ -185,13 +185,17 @@ def render_distance(read: str, truth: str, cands: List[Any], registry_plates: Li
         st.info("No other candidate survived blocking, so there is no runner-up to separate from.")
         return
     t_scores = true_c.scores if true_c else plate_match.string_features(read, truth, tfidf)
+    margins = {n: t_scores.get(n, 0.0) - wrong.scores.get(n, 0.0) for n in plate_match.SCORE_NAMES}
     rows = [{"Measure": n, f"read vs {truth}": f"{t_scores.get(n, 0):.3f}",
-             f"read vs {wrong.plate}": f"{wrong.scores.get(n, 0):.3f}",
-             "Margin": f"{t_scores.get(n, 0) - wrong.scores.get(n, 0):+.3f}"} for n in plate_match.SCORE_NAMES]
-    p_true = true_c.probability if true_c else 0.0
-    kpi_row([("P(real plate)", f"{p_true:.3f}"), (f"P(runner-up {wrong.plate})", f"{wrong.probability:.3f}"),
-             ("Probability gap", f"{p_true - wrong.probability:+.3f}"),
-             ("Measures preferring the right plate", f"{sum(1 for r in rows if r['Margin'].startswith('+') and r['Margin'] != '+0.000')} of {len(rows)}")])
+             f"read vs {wrong.plate}": f"{wrong.scores.get(n, 0):.3f}", "Margin": f"{m:+.3f}",
+             "Prefers": "right plate" if m > 1e-9 else ("runner-up" if m < -1e-9 else "tie")}
+            for n, m in margins.items()]
+    # a plate blocking dropped has no probability at all; printing 0.000 would read as "scored, and lost"
+    p_true = f"{true_c.probability:.3f}" if true_c else "not ranked"
+    gap = f"{true_c.probability - wrong.probability:+.3f}" if true_c else "—"
+    kpi_row([("P(real plate)", p_true), (f"P(runner-up {wrong.plate})", f"{wrong.probability:.3f}"),
+             ("Probability gap", gap),
+             ("Measures preferring the right plate", f"{sum(1 for m in margins.values() if m > 1e-9)} of {len(margins)}")])
     if true_c is None:
         st.warning(f"{truth} is not among the ranked candidates: blocking or the shortlist dropped it, so its "
                    "string scores are shown but it had no probability.")
@@ -207,7 +211,11 @@ def render_distance(read: str, truth: str, cands: List[Any], registry_plates: Li
                                                   range=[TOKENS["ok"], TOKENS["neutral"]]),
                         legend=alt.Legend(title=None, orient="top", labelFontSize=15)))
     text = chart.mark_text(align="left", dx=4, fontSize=14, color=TOKENS["ink"]).encode(text="probability:Q")
-    st.altair_chart((chart + text).properties(height=34 * len(df) + 40), key="pm_sep_chart")
+    # theme=None: Streamlit's chart theme overrode the axis font sizes down to ~11 px
+    layered = (chart + text).properties(height=36 * len(df) + 60).configure_axis(
+        labelFontSize=15, titleFontSize=15, labelColor=TOKENS["ink"], titleColor=TOKENS["ink"]).configure_legend(
+        labelFontSize=15, labelColor=TOKENS["ink"]).configure_view(strokeWidth=0)
+    st.altair_chart(layered, key="pm_sep_chart", theme=None, width="stretch")
 
 
 def render_grid(grid: Dict[str, Any]) -> None:
@@ -220,13 +228,16 @@ def render_grid(grid: Dict[str, Any]) -> None:
         st.info(f"{plate} is not one of the 100 benchmark vehicles, so there are no rendered images of it.")
         return
     n = len(rows)
-    kpi_row([("Images", n), ("OCR read exactly right", f"{sum(r['exact'] for r in rows)} of {n}"),
-             ("Matcher ranked the car first", f"{sum(r['right'] for r in rows)} of {n}"),
-             ("ACCEPTed and right", f"{sum(r['right'] and r['decision'] == 'ACCEPT' for r in rows)} of {n}"),
-             ("ACCEPTed and wrong", f"{sum((not r['right']) and r['decision'] == 'ACCEPT' for r in rows)} of {n}")])
+    # "x/22", not "x of 22": five tiles share one row and the longer text wrapped mid-number
+    kpi_row([("Images", n), ("OCR read exactly right", f"{sum(r['exact'] for r in rows)}/{n}"),
+             ("Matcher ranked the car first", f"{sum(r['right'] for r in rows)}/{n}"),
+             ("ACCEPTed and right", f"{sum(r['right'] and r['decision'] == 'ACCEPT' for r in rows)}/{n}"),
+             ("Wrong car ACCEPTed", f"{sum((not r['right']) and r['decision'] == 'ACCEPT' for r in rows)}/{n}")])
     cols = st.columns(4)
     for i, r in enumerate(rows):
-        verdict = f"{r['decision']} {r['top'] or '—'} (p={r['p']:.2f})" + ("" if r["right"] or not r["top"] else " — wrong car")
+        wrong = "" if r["right"] or not r["top"] else (
+            " — WRONG CAR ACCEPTED" if r["decision"] == "ACCEPT" else " — not this car, and not accepted")
+        verdict = f"{r['decision']} {r['top'] or '—'} (p={r['p']:.2f})" + wrong
         cap = (f"{r['damage']} · OCR read {r['read'] or '(nothing)'} · "
                f"{'exact' if r['exact'] else 'not exact'} · {verdict}")
         path = _ROOT / r["path"]
