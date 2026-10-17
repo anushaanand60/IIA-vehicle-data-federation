@@ -24,6 +24,12 @@ reportlab>=4.0         # Ministry report PDFs (mediator/report.py)
 # rest of the app is unaffected -- mediator/plate_ocr.py imports it lazily.
 easyocr>=1.7
 
+# --- Phase 2 plate matching (mediator/plate_match.py, scripts/evaluate_matching.py) ---
+# The learned combiners (logistic regression, gradient-boosted trees) and their saved bundle.
+# Imported lazily: without them the matcher falls back to the hand-weighted combiner.
+scikit-learn>=1.5
+joblib>=1.3
+
 # --- Synthetic data generation (run once, then the CSVs are committed) ---
 faker>=25.0
 
