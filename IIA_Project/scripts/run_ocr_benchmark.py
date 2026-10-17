@@ -161,7 +161,9 @@ def run(manifest: Path, out_path: Path, force: bool, limit: int | None) -> list[
         })
         if index % 100 == 0:
             rate = (time.time() - started) / index
-            print(f"  {index}/{len(jobs)}  {rate:.2f}s/image")
+            # flush: a full run is ~15 minutes and stdout is block-buffered when redirected to a
+            # log file, so without this the progress line only appears once the run is over.
+            print(f"  {index}/{len(jobs)}  {rate:.2f}s/image", flush=True)
     rows.extend(observed_rows())
     with out_path.open("w", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(fh, fieldnames=FIELDS)
