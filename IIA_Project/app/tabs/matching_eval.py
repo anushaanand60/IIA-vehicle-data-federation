@@ -1,15 +1,17 @@
 """Matching Evaluation page (rubric 1, "justify why"): the measured comparison, on screen.
 
 Reads `docs/MATCHING_EVALUATION.md`, which `scripts/evaluate_matching.py` writes deterministically,
-and parses its markdown tables, so the page can never show a number the document does not contain
-(and re-running the evaluation updates both at once). Keys carry the `me_` prefix.
+and parses its markdown tables, so the page can never show a number the document does not contain,
+and re-running the evaluation updates both at once. (Trade-off: parsing markdown is looser than a
+JSON side-file, but it needs no change to the evaluation script and no second artefact that could
+drift from the document the viva cites.) Keys carry the `me_` prefix.
 """
 from __future__ import annotations
 
 import re
 import sys
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 _ROOT = Path(__file__).resolve().parents[2]
 if str(_ROOT) not in sys.path:
@@ -22,13 +24,13 @@ import plotly.graph_objects as go  # noqa: E402
 import streamlit as st  # noqa: E402
 
 from components import kpi_row, page_head, panel, section, styled_table  # noqa: E402
-from theme import TOKENS  # noqa: E402
+from theme import FONTS, TOKENS  # noqa: E402
 
 DOC = _ROOT / "docs" / "MATCHING_EVALUATION.md"
 
 
 def sections(text: str) -> Dict[str, str]:
-    """'## 2. Scoring, ...' -> {'2': body}."""
+    """'## 2. Scoring, evaluated on its own' -> {'2': body}; keyed on the number the generator writes."""
     out = {}
     for block in re.split(r"^## ", text, flags=re.M)[1:]:
         title, _, body = block.partition("\n")
@@ -36,59 +38,93 @@ def sections(text: str) -> Dict[str, str]:
     return out
 
 
+def _cells(line: str) -> List[str]:
+    return [c.strip().replace("**", "").replace("`", "") for c in line.strip().strip("|").split("|")]
+
+
 def table(body: str) -> List[Dict[str, str]]:
-    lines = [l.strip() for l in body.splitlines() if l.strip().startswith("|")]
-    if len(lines) < 2:
+    """The first markdown table in a section, as rows keyed by its header."""
+    lines = [l for l in body.splitlines() if l.strip().startswith("|")]
+    if len(lines) < 3:
         return []
-    cells = lambda l: [c.strip().strip("*") for c in l.strip("|").split("|")]
-    head = cells(lines[0])
-    return [dict(zip(head, cells(l))) for l in lines[2:]]
+    head = _cells(lines[0])
+    return [dict(zip(head, _cells(l))) for l in lines[2:]]
 
 
 def prose(body: str) -> str:
     return "\n".join(l for l in body.splitlines() if not l.strip().startswith("|")).strip()
 
 
-def _chart(rows: List[Dict[str, str]]) -> None:
-    names = [r["contender"] for r in rows]
-    fig = go.Figure([go.Bar(name="top-1", x=names, y=[float(r["top-1"]) for r in rows], marker_color=TOKENS["brand"]),
-                     go.Bar(name="ACCEPT recall", x=names, y=[float(r["ACCEPT R"]) for r in rows],
-                            marker_color=TOKENS["action"])])
-    fig.update_layout(barmode="group", height=380, margin=dict(l=10, r=10, t=10, b=10),
+def winner(decision: str, scoring: List[Dict[str, str]]) -> Optional[Dict[str, str]]:
+    """The contender the Decision section names ("**Use `logreg`.**"), not whatever row is first."""
+    m = re.search(r"Use `([^`]+)`", decision)
+    name = m.group(1) if m else None
+    return next((r for r in scoring if r.get("contender") == name), None)
+
+
+def _num(value: str) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _chart(rows: List[Dict[str, str]], best: Optional[str]) -> None:
+    names = [r["contender"] + (" ★" if r["contender"] == best else "") for r in rows]
+    bars = [("top-1", "top-1", TOKENS["brand"]), ("ACCEPT recall", "ACCEPT R", TOKENS["action"])]
+    fig = go.Figure([go.Bar(name=label, x=names, y=[_num(r[col]) for r in rows], marker_color=colour,
+                            text=[r[col] for r in rows], textposition="outside", textfont=dict(size=11))
+                     for label, col, colour in bars])
+    fig.update_layout(barmode="group", height=420, margin=dict(l=10, r=10, t=30, b=10),
                       paper_bgcolor=TOKENS["panel"], plot_bgcolor=TOKENS["panel"],
-                      font=dict(color=TOKENS["ink"]), yaxis=dict(range=[0, 1]))
-    st.plotly_chart(fig, key="me_chart")
+                      font=dict(color=TOKENS["ink"], family=FONTS["body"], size=14),
+                      legend=dict(orientation="h", y=1.08, x=0),
+                      yaxis=dict(range=[0, 1.1], gridcolor=TOKENS["line"], title="share of test reads"),
+                      xaxis=dict(tickangle=-35))
+    st.plotly_chart(fig, key="me_chart", config={"displayModeBar": False})
 
 
 def render() -> None:
-    page_head("Matching Evaluation", "Why the matcher is logistic regression: every contender scored on 20 held-out "
-              "vehicles, with the retrieval step and the scoring step evaluated separately.")
+    page_head("Matching Evaluation", "Why the matcher is what it is: every contender measured on vehicles it "
+              "never saw in training, with retrieval and scoring evaluated separately.")
     if not DOC.exists():
         st.error("docs/MATCHING_EVALUATION.md is missing: run python scripts/evaluate_matching.py")
         return
     sec = sections(DOC.read_text(encoding="utf-8"))
     scoring = table(sec.get("2", ""))
-    best = scoring[0] if scoring else {}
+    best = winner(sec.get("7", ""), scoring) or {}
     with panel("me_head"):
-        section("The decision")
-        kpi_row([("Chosen model", best.get("contender", "—")), ("Top-1 (test)", best.get("top-1", "—")),
-                 ("ACCEPT precision", best.get("ACCEPT P", "—")), ("ACCEPT recall", best.get("ACCEPT R", "—"))])
-        st.markdown(prose(sec.get("7", "")))
-    with panel("me_chart"):
-        section("Top-1 and ACCEPT recall per contender", "Test split; every contender ranks the same blocked candidates.")
-        _chart(scoring)
+        section("The decision", "From docs/MATCHING_EVALUATION.md, written by scripts/evaluate_matching.py "
+                "(seeded, deterministic).")
+        kpi_row([("Chosen model", best.get("contender", "—")), ("Top-1, test", best.get("top-1", "—")),
+                 ("MRR, test", best.get("MRR", "—")), ("ACCEPT precision", best.get("ACCEPT P", "—")),
+                 ("ACCEPT recall", best.get("ACCEPT R", "—")), ("Sent to review", best.get("REVIEW rate", "—"))])
+    with panel("me_chart_panel"):
+        section("Top-1 and unattended ACCEPT recall per contender",
+                "Test split. Every contender ranks the same blocked candidates, so the gaps are scoring, not retrieval.")
+        if scoring:
+            _chart(scoring, best.get("contender"))
+    with panel("me_why"):
+        section("Why, in plain sentences")
+        st.markdown(prose(sec.get("7", "")) or "The Decision section is missing from the document.")
     with panel("me_scoring"):
-        section("Scoring, evaluated on its own")
+        section("Scoring, evaluated on its own", "Calibrated, with thresholds chosen on validation per contender.")
         styled_table(scoring)
     with panel("me_ablation"):
-        section("Ablation: what the combination adds")
+        section("Ablation: what each part of the combination is worth",
+                "Each row retrains the combiner without the named features.")
         styled_table(table(sec.get("4", "")))
     with panel("me_blocking"):
-        section("Blocking funnel: retrieval recall per filter", prose(sec.get("1", "")).split("\n")[0])
+        section("Blocking funnel: retrieval recall per filter",
+                "Recall = the true plate survives into the candidate set; mean candidates = work left for scoring.")
         styled_table(table(sec.get("1", "")))
+        st.markdown(prose(sec.get("1", "")))
     with panel("me_weights"):
-        section("Logistic-regression weights")
+        section("Logistic-regression weights", "Standardised features: a positive weight pushes towards the same vehicle.")
         styled_table(table(sec.get("5", "")))
     with panel("me_degradation"):
-        section("By degradation and severity")
+        section("By degradation and severity", "Top-1 on test, one read per test vehicle per bucket.")
         styled_table(table(sec.get("3", "")), max_rows=40)
+    with panel("me_observed"):
+        section("Real camera reads with no ground truth")
+        st.markdown(prose(sec.get("6", "")))
