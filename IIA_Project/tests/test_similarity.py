@@ -106,13 +106,10 @@ def test_jaro_slide_example_jon_john():
     assert jaro("jon", "john") == pytest.approx(0.917, abs=0.001)
 
 
-def test_jaro_formula_slide_example_jon_ojhn():
-    # p. 21 states jaro("jon", "ojhn") = 0.81 from c = 3, t = 2. With the matching window the
-    # same slide defines, max(|x|,|y|)/2 - 1 = 1, only j and o are common (c = 2), so the
-    # implementation cannot reproduce 0.81; the formula itself does, checked here directly.
-    c, t, lx, ly = 3, 2, 3, 4
-    assert (c / lx + c / ly + (c - t / 2) / c) / 3 == pytest.approx(0.81, abs=0.005)
-    assert jaro("jon", "ojhn") == pytest.approx(0.722, abs=0.001)
+def test_jaro_slide_example_jon_ojhn_with_transpositions():
+    # p. 21: jaro("jon", "ojhn") = 0.81 from c = 3 and t = 2 (common sequence "jon" in x
+    # against "ojn" in y). The deck rounds 1/3(3/3 + 3/4 + (3 - 1)/3) = 0.8056 to 0.81.
+    assert jaro("jon", "ojhn") == pytest.approx(0.8056, abs=0.0005)
 
 
 def test_jaro_and_winkler_slide_example_vishwanathan():
@@ -218,9 +215,15 @@ def test_soundex_padding_and_w_h_removal():
 
 
 def test_soundex_is_useless_on_plates_as_predicted():
-    # The deck's measure is for surnames; plates are not phonetic. Documented, not fixed.
+    # The deck's measure is for surnames (p. 36); plates are not phonetic and Soundex throws
+    # the digits away entirely. Both failure directions, documented rather than fixed:
+    # a false positive -- two different vehicles share the code D410 ...
+    assert soundex("DL01AB1234") == soundex("DL01AB9999") == "D410"
+    assert soundex_similarity("DL01AB1234", "DL01AB9999") == 1.0
+    # ... and a false negative -- the 8/B misread is invisible to it, but a different series
+    # letter makes it disagree even though the two plates differ by one character.
     assert soundex_similarity("DL05CD9B76", "DL05CD9876") == 1.0
-    assert soundex_similarity("DL01AB1234", "DL09KL3321") == 1.0
+    assert soundex_similarity("DL01AB1234", "DL01AC1234") == 0.0
 
 
 # ----------------------------------------------------------------- properties
@@ -253,6 +256,12 @@ def test_empty_string_rules(name, fn):
 @pytest.mark.parametrize("name,fn", sorted(ALL_MEASURES.items()))
 def test_case_folding(name, fn):
     assert fn("dl01ab1234", "DL01AB1234") == pytest.approx(1.0)
+
+
+def test_tfidf_identity_holds_on_a_degenerate_corpus():
+    # With a one-document collection every idf is log(1/1) = 0, so both vectors are zero;
+    # identity must still be 1.0 for the harness to compare measures fairly.
+    assert tfidf_cosine("DL01AB1234", "DL01AB1234", ["DL01AB1234"]) == pytest.approx(1.0)
 
 
 def test_tfidf_obeys_the_same_empty_rules():

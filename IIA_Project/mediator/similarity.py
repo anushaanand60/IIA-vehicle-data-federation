@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import math
 from collections import Counter
-from typing import Callable, Dict, List, Optional, Sequence
+from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 from mediator.plate_resolve import CONFUSABLE
 
@@ -268,10 +268,17 @@ def tfidf_cosine(s1: str, s2: str, corpus: Sequence[str], q: Optional[int] = 2) 
     rule = _empty_rule(x, y)
     if rule is not None:
         return rule
-    docs = [list(_tokens(c, q)) for c in corpus]
-    for extra in (x, y):
-        if not any(d == list(_tokens(extra, q)) for d in docs):
-            docs.append(list(_tokens(extra, q)))
+    if x == y:
+        # Identity must hold even on a degenerate corpus where every term has idf = 0
+        # (log(N/N) = 0) and both vectors are therefore the zero vector.
+        return 1.0
+    tf_x, tf_y = Counter(_tokens(x, q)), Counter(_tokens(y, q))
+    docs = [_tokens(c, q) for c in corpus]
+    seen = {tuple(d) for d in docs}
+    for extra_tokens in (_tokens(x, q), _tokens(y, q)):
+        if tuple(extra_tokens) not in seen:
+            seen.add(tuple(extra_tokens))
+            docs.append(extra_tokens)
     n_docs = len(docs)
     df: Counter = Counter()
     for d in docs:
@@ -282,7 +289,6 @@ def tfidf_cosine(s1: str, s2: str, corpus: Sequence[str], q: Optional[int] = 2) 
         nd = df.get(t, 1) or 1
         return math.log(n_docs / nd)
 
-    tf_x, tf_y = Counter(_tokens(x, q)), Counter(_tokens(y, q))
     vx = {t: f * idf(t) for t, f in tf_x.items()}
     vy = {t: f * idf(t) for t, f in tf_y.items()}
     dot = sum(vx[t] * vy.get(t, 0.0) for t in vx)
@@ -305,7 +311,7 @@ def tfidf_measure(corpus: Sequence[str], q: Optional[int] = 2) -> Callable[[str,
 
 # --------------------------------------------------------------------------- similarity based
 
-def _longest_common_substring(x: str, y: str) -> tuple:
+def _longest_common_substring(x: str, y: str) -> Tuple[int, int, int]:
     """Returns (start_in_x, start_in_y, length) of the longest common substring. O(|x||y|)."""
     best_i = best_j = best_len = 0
     prev = [0] * (len(y) + 1)
