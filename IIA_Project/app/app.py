@@ -134,6 +134,27 @@ def sidebar() -> str:
     return page
 
 
+def heal_sources() -> dict[str, str]:
+    """Restart any local wrapper that is not answering, on every rerun (workstream G).
+
+    `ensure_cluster_running` is cached once per server, so on its own it never notices a wrapper that
+    died or a port that was busy at start-up and freed later. This costs one 0.2 s TCP probe per local
+    source; remote sources are only reported. The result is published as session_state
+    ["source_status"] for the sidebar.
+    """
+    from sources.server_manager import ensure_local_sources
+    try:
+        status = ensure_local_sources(get_source_catalog(), include_puc=True, cluster=cluster)
+    except Exception as exc:  # the healer must never take the page down with it
+        status = {"cluster": f"failed: {exc}"}
+    st.session_state["source_status"] = status
+    if any(v == "started" for v in status.values()):
+        source_health.clear()  # a just-restarted source must not show a cached DOWN for 5 s
+    return status
+
+
+heal_sources()
+
 # The whole look of the page comes from app/theme.py: tokens -> CSS variables, injected once.
 inject()
 PAGES[sidebar()]()
