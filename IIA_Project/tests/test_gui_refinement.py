@@ -116,9 +116,11 @@ def _fake_scenarios(passed: bool = True) -> types.ModuleType:
     def run_scenario(key, *, registry=None):
         return {"key": key, "title": mod.SCENARIOS[key]["title"], "rubric": mod.SCENARIOS[key]["rubric"],
                 "expected": "DL01AB1234 ACCEPT", "actual": "DL01AB1234 ACCEPT" if passed else "REVIEW",
-                "passed": passed, "elapsed_ms": 42, "restored": key == "examiner_delete" or None,
-                "steps": [{"title": "matched", "detail": "p=0.99", "ok": True},
-                          {"title": "note", "detail": "info only", "ok": None}],
+                "passed": passed, "elapsed_ms": 42, "restored": key == "examiner_delete",
+                "steps": [{"title": "matched", "detail": "p=0.99", "ok": True}]
+                + ([{"title": "Restore: delete the inserted capture", "detail": "DELETE ...", "ok": True}]
+                   if key == "examiner_delete" else []) + [{"title": "note", "detail": "info only", "ok": None},
+                          ],
                 "data": {"accuracy": 0.95, "latencies_ms": [3.0, 4.0, 5.5, 4.2],
                          "rows": [{"read": "DLO1AB1234", "top": "DL01AB1234"}]}}
     mod.run_scenario = run_scenario
@@ -160,8 +162,15 @@ def test_scenarios_run_all_keeps_results_and_shows_failures(monkeypatch):
     assert set(at.session_state["sc2_results"]) == {"ocr_zero_o", "batch_stress", "examiner_delete"}
     _ok(at.run())  # a plain rerun keeps them
     assert len(at.session_state["sc2_results"]) == 3 and "FAIL" in _text(at)
-    assert "data restored" in _text(at)
+    assert "data restored" in _text(at) and "changed no data" in _text(at)
     assert at.get("vega_lite_chart"), "batch latencies should draw a histogram"
+
+
+def test_restore_state_tells_read_only_from_a_failed_undo():
+    from app.tabs.scenarios_tab import restore_state
+    assert restore_state({"restored": False, "steps": [{"title": "Match", "ok": True}]}) == "changed no data"
+    assert restore_state({"restored": False, "steps": [{"title": "Restore: x", "ok": False}]}) == "data NOT restored"
+    assert restore_state({"restored": True, "steps": [{"title": "Restore: x", "ok": True}]}) == "data restored"
 
 
 def test_scenarios_page_survives_a_missing_backend(monkeypatch):
@@ -264,7 +273,7 @@ def test_validation_panel_renders_the_saved_file(tmp_path, monkeypatch):
         cleansing_validation_panel.render()
     at = _ok(AppTest.from_function(page, default_timeout=60).run())
     text = _text(at)
-    assert "plate_confusion" in text and "DL05CD9B76" in text and "detection recall" in text and "seed 7" in text
+    assert "plate_confusion" in text and "DL05CD9B76" in text and "corrected right" in text and "seed 7" in text
     assert at.get("vega_lite_chart")
     df = panel_mod.chart_frame(VALIDATION["per_type"])
     assert set(df["metric"]) == {"detection recall", "correction accuracy"} and len(df) == 4
