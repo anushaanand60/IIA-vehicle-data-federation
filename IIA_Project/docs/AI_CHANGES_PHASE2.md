@@ -337,3 +337,128 @@ was committed with the reviewed engine.
 
 Known limit: a full scan calls `plate_match.match` once per distinct unregistered read; at roughly
 0.5 s a call (it rebuilds its TF/IDF corpus each time) a full scan takes 10-25 s on this laptop.
+
+
+## Workstream C — learned confusion costs, the combined matcher, and the evaluation
+
+**Prompt summary.** Implement workstream C plus the evaluation harness from B (rubric 1: "apply
+the matching algorithm which gives the best accuracy and justify why"). Reuse
+`mediator/similarity.py`, `mediator/blocking.py` and `mediator/plate_resolve.py`, never
+reimplement them. (1) `mediator/confusion.py`: substitution costs estimated from the benchmark's
+**training split only** (1 − normalised frequency, floored, Laplace-smoothed, symmetric), saved to
+`data/confusion_costs.json`, hand table for unseen pairs. (2) `mediator/plate_match.py`: a
+`Candidate` dataclass, the p. 71 feature vector, `match()` = blocking retrieve → score → rerank
+with a chosen combiner (`rule`, any single measure, `weighted`, `logreg`, `gbt`) → calibrate
+(p. 81) → ACCEPT / REVIEW / REJECT, and `reverse_match()` for registration → camera reads; lazy
+model loading with a fallback to `weighted`. (3) `scripts/evaluate_matching.py`: split by true
+plate 60/20/20 with a fixed seed, hard negatives from blocking (p. 78), simulated camera context,
+retrieval and scoring evaluated separately (p. 82), per-degradation table, ablation, observed
+rows, and a viva-ready Decision section in `docs/MATCHING_EVALUATION.md`. (4) Fast tests. Mid-task
+the coordinator added: report retrieval recall at max_edits 1–3 and choose max_edits on
+validation for recall ≥ 0.99; widen blocking when nothing survives; then, from the cleansing
+workstream, near-zero probabilities coming back REVIEW and ~0.5 s per `match()` call.
+
+**Commits.**
+
+| file | generated | reviewed |
+|---|---|---|
+| `mediator/confusion.py` | `65beee4` | `dff6b33` |
+| `mediator/plate_match.py` | `d1c773e` | `25e5bd8`, second pass `9d4eacf` |
+| `scripts/evaluate_matching.py` | `f800bff` | `c7fc071` (with the doc, model and costs) |
+
+### `mediator/confusion.py` — what changed and why
+
+- **Wrong formula, measured.** The generated estimate divided `n(a,b)+1` by `n(b)+36` (Laplace
+  over the whole alphabet). With 16 observations of 5/S that gave cost 0.71 — *more* expensive
+  than the hand table's 0.2 — and left every real confusion except 0/O at ~0.9, i.e. barely
+  cheaper than an arbitrary substitution. Replaced by an add-one, log-normalised frequency,
+  `1 − log(1+n)/log(1+n_max)`, floored at 0.1; log because the counts are heavy-tailed (0/O alone
+  is 62 %). 5/S now costs ~0.52, H/4 ~0.61, 0/O 0.1.
+- **Leakage of demo fixtures.** The two planted story misreads (`degradation=observed`) were
+  counted as noise samples when their plate fell in the training split. Excluded.
+- **Stale cache.** Costs were cached on first use and never invalidated, so a process that
+  re-estimated them kept scoring with the old (or empty) table. `save_costs` now calls
+  `reload_costs()`; a version counter lets callers drop memoised scores.
+- **Default bound at import.** `COSTS_PATH` was a default argument, so tests could not redirect
+  it; resolved at call time now.
+- **Counts and costs returned together**, so the JSON cannot record counts made under a
+  different filter from the costs it stores.
+
+### `mediator/plate_match.py` — what changed and why
+
+First review (`25e5bd8`):
+
+- **Silent REJECT on noisy reads.** When nothing survived blocking (a read with more errors than
+  `max_edits`) the generated code returned no candidates. Now `retrieve()` widens to
+  `max_edits+1`, then a full scan, and says so in the reasons (coordinator's request).
+- **A failed model load was cached forever**, so a bundle written later in the same process was
+  never used. `reload_bundle()` added; the evaluation calls it after saving.
+- The `rule` contender ran blocking it ignored and dropped the fallback notes; `reverse_match`
+  ignored the validated `max_edits` and could fall back to a forward match per capture; empty and
+  one-character reads were not handled; the reason text did not say when a close rival forced
+  REVIEW. String and context features split so the pair half can be memoised.
+
+Second pass (`9d4eacf`, prompted by the cleansing workstream):
+
+- **~0.5 s per call.** Profiling showed TF/IDF dominating: `similarity.tfidf_cosine` re-tokenises
+  all 605 plates and recounts document frequencies on *every pair* (2–5 ms a pair), the q-gram
+  index was rebuilt per call, and the shortlist ran the 120 µs confusion distance over ~320
+  candidates. Fixes: `CachedTfidf` computes the corpus statistics once and is asserted equal to
+  `tfidf_cosine` (to 1e-12, including its quirk of appending the two strings to the collection);
+  the index and IDF are cached under a SHA-1 of the registry's plate list, so an examiner's insert
+  or delete changes the key and forces a rebuild (no stale source data; make/colour are never
+  cached); a pair-feature memo keyed on that hash and on `confusion.costs_version()`; a Jaccard
+  pre-filter to 100 before the distance shortlist (same shortlist recall on test within one read).
+  Timing, same 10 reads, idle machine: **38.6 ms → 17.6 ms** per call with cold pair memo,
+  **9.7 ms** warm (CPU time 34.4 → 17.2 / 9.4 ms); the coordinator's 0.5 s was measured while the
+  machine was saturated by another process, where the old code took 529 ms.
+- **REVIEW for p ≈ 0.002.** Root cause was in the evaluation's threshold choice (below); the
+  matcher now gets a REJECT floor ≥ 0.05 from the bundle, and a test asserts that reads with no
+  plausible candidate are REJECT and that every REVIEW candidate clears the floor.
+
+### `scripts/evaluate_matching.py` — what changed and why
+
+- **Degenerate thresholds (correctness).** The saved logistic-regression and GBT thresholds were
+  `accept 0.0, reject 0.0`: the "winner 0.1 clear of the runner-up" rule alone already met the
+  0.98 precision target at t = 0, so ACCEPT ignored the probability and REJECT could never fire —
+  a threshold "chosen without calibration" in all but name, exactly the failure the plan predicted.
+  ACCEPT now also needs calibrated p ≥ 0.5; REJECT is below max(1st percentile of correctly ranked
+  reads' p, 0.05). The cost is reported per contender as `right lost` (2.7 % for logreg).
+- **Spec items silently missing.** The observed CAM rows were featurised but never reported; the
+  logistic-regression coefficients were not in the doc; no train/test gap.
+- **Selection leakage made explicit.** The winner is chosen on validation, and the doc now says
+  so; the margin is given as paired read counts on test, not only a percentage.
+- **Dishonest ceiling.** An empty read "retrieved" the whole registry under the full scan and
+  counted as a hit; empty reads are misses everywhere now.
+- **Unreachable target handled out loud.** Recall ≥ 0.99 is impossible with q-gram blocking here
+  (best 0.95 at max_edits 5; the remaining reads share almost no bigram with their plate). The
+  generated code returned the last grid value silently; now the rule is "smallest k within 0.005
+  of the best", the doc says the target was not met, and a rescue check shows a full scan lets
+  logreg recover **0** of the reads blocking lost.
+- Shortlist recall and the reads it drops are reported; logistic-regression `C` is chosen on
+  validation from {0.01, 0.1, 1, 10} (ties to the more regularised, more readable model); the
+  coefficient table explains collinearity among the string measures; the Decision text is
+  generated from the ablation, so it cannot claim a feature helps when the numbers say it does
+  not (learned costs +0.002, confidence −0.002 inside the combination); the elapsed time was
+  removed from the doc so two runs produce identical files (checked with `diff`).
+- **Runtime.** 1 163 s on a loaded machine → 75 s by reusing the matcher's cached TF/IDF and memo.
+
+### Result (test split, 20 vehicles never seen in training)
+
+| contender | top-1 | MRR | ACCEPT P | ACCEPT R | REVIEW |
+|---|---|---|---|---|---|
+| **logreg** | 0.902 | 0.911 | 0.997 | 0.842 | 0.039 |
+| gbt | 0.895 | 0.907 | 0.994 | 0.828 | 0.055 |
+| weighted | 0.895 | 0.907 | 0.986 | 0.699 | 0.173 |
+| learned_ocr_similarity | 0.868 | 0.891 | 1.000 | 0.603 | 0.189 |
+| ocr_edit_similarity | 0.859 | 0.884 | 1.000 | 0.612 | 0.205 |
+| rule (phase-1 plate_resolve) | 0.608 | 0.608 | 1.000 | 0.565 | 0.041 |
+| soundex_similarity | 0.045 | 0.116 | 0.000 | 0.000 | 0.000 |
+
+Full table, per-degradation breakdown, ablation and the viva text: `docs/MATCHING_EVALUATION.md`.
+
+**Problems found in files we must not edit (reported, not changed).**
+`similarity.tfidf_cosine` recomputes corpus statistics per pair (O(N) per call); worked around by
+`plate_match.CachedTfidf`, which is tested equal to it. `blocking.py`'s bounds are only
+recall-safe to `max_edits`, and on real EasyOCR reads even max_edits 5 keeps 0.95; this is a
+property of the reads, documented, not a code bug.
