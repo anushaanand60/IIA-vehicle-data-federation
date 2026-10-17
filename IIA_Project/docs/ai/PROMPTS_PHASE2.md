@@ -279,3 +279,105 @@ in the meanwhile, give me an overall overview of our project, what have we tried
 ```text
 what is top-1 correct, accepts safely and sent to review? so after using string match we do logistic regression, and create a probability which an engine then decides to accepts as a match, match being a noisy car plate to an actual car plate?
 ```
+
+### Prompt 15 — 2026-10-17 14:20 UTC — student
+
+```text
+Ok can you refine the gui to make it as accessible? Make it so that it is clear what combination or method is used, how the architecture works is clear, i want to see how modifying data would work, stress test the system using different scenarios, i could t really see the matching happen worh our database because they were all down, need to fix that, need to see for a given number playe, what the separation between ocr and real measuring is, explainer on how it works, different test scenarios in the gui, cleaning vlaidation all showed and as many details to make it clear that the thing works as possible
+```
+
+### Prompt 16 — 2026-10-17 14:22 UTC — sub-agent task
+
+**Task given to a coding sub-agent** (Backend: self-heal, scenarios, validation, model opus):
+
+Repo: C:\Users\siddh_ygv5bws\IIA-vehicle-data-federation\IIA_Project (git, main). Phase-2 evaluation is in class on 21 Oct (approximate plate matching from images; cleansing noisy records; examiner inserts/deletes/modifies data). Read docs/superpowers/plans/2026-10-17-phase2-noisy-matching.md, docs/AI_CHANGES_PHASE2.md, docs/MATCHING_EVALUATION.md first. You build the BACKEND for a GUI refinement; a second agent is building the GUI pages in parallel and will call exactly the interfaces below. Do NOT edit anything under `app/tabs/` or `app/theme.py` or `app/components.py` (theirs). You own `app/app.py` only for item 1.
+
+## 1. Self-healing local sources (real bug, fix first)
+Root cause (verified): `app/app.py::ensure_cluster_running` is `@st.cache_resource`, so it runs once per server; `sources/server_manager.py::start_all` skips any port already in use at that moment. When the website was started while another process (a test run) held ports 8001-8005, it skipped all five; when that process exited, the website was left with no wrappers and every source showed DOWN forever.
+Fix:
+- In `sources/server_manager.py` add `ensure_local_sources(catalog: dict, include_puc=True) -> dict[str, str]`: for every source whose catalog base_url host is 127.0.0.1/localhost, if its port is not answering `/health`, (re)start it in-process; never start anything for a source pointed at another machine. Return per-source status: `running`, `started`, `remote`, `failed: <reason>`. Also drop dead `WrapperServerThread` entries from `self.servers` so a restart is possible.
+- In `app/app.py`: keep the cached cluster object, but call `ensure_local_sources(get_source_catalog())` on every rerun (cheap: a 0.2 s TCP check per local port, skip /health if port open). Expose the status in `st.session_state["source_status"]` for the GUI agent's sidebar.
+- Test: start the app's cluster logic with a port held by a dummy socket, release it, call ensure again -> the wrapper is started. Tests in `tests/test_server_manager_heal.py`; use free high ports or the existing `local_cluster` fixture pattern; never leave servers running.
+
+## 2. Scenario runner — `mediator/scenarios.py`
+A stress-test / demo harness the GUI renders as a "Test scenarios" page. Interface (the GUI agent codes against this, keep it exact):
+```python
+@dataclass
+class Step: title: str; detail: str; ok: bool | None   # None = informational
+@dataclass
+class ScenarioResult:
+    key: str; title: str; rubric: str            # "1", "2" or "1+2"
+    expected: str; actual: str; passed: bool
+    steps: list[Step]; data: dict                # data: tables/numbers for the GUI (json-serialisable)
+    elapsed_ms: float; restored: bool            # True once any data change was undone
+SCENARIOS: dict[str, dict]   # key -> {"title","rubric","what","why"} metadata for listing
+def run_scenario(key: str, *, registry=None) -> ScenarioResult
+def run_all(keys=None) -> list[ScenarioResult]
+```
+Scenarios (each must restore any data it changes, through the same admin path, and set `restored=True`; read the registry and captures LIVE through the federation like `mediator/cleansing.py` does):
+1. `clean_image` — a clean benchmark image -> OCR -> ACCEPT of the true plate.
+2. `ocr_zero_o` — `DLO1AB1234` -> DL01AB1234 ACCEPT; show the char diff.
+3. `ocr_b8` — `DL05CD9B76` -> DL05CD9876 ACCEPT.
+4. `two_errors_rotated` — benchmark `HR26EF4455__rotate_s2.png` (OCR reads 2 wrong chars) -> still ACCEPT.
+5. `unreadable_image` — a severity-3 occlude/motion image -> REVIEW or REJECT, never a wrong ACCEPT.
+6. `unregistered_plate` — `DL09QQ9009` -> REJECT.
+7. `ambiguous_twins` — insert, via REG admin, a second registered plate one confusable character away from an existing one (e.g. the 0/O twin), then match the ambiguous read -> REVIEW (not ACCEPT); then delete the inserted plate; restored.
+8. `context_breaks_tie` — same twins, but with observed make/colour matching only one -> ACCEPT of that one; restored.
+9. `reverse_search` — DL05CD9876 -> captures 911 and 916 ACCEPT.
+10. `examiner_insert_dirty` — insert a CAM capture with colour `Blu` -> scan detects it, R1 proposes Blue -> apply -> rescan clean -> undo -> delete; restored.
+11. `examiner_modify_conflict` — modify that capture's colour to contradict REG -> flagged as clone evidence -> restore.
+12. `examiner_delete` — delete the inserted capture -> gone from scan.
+13. `misread_plate_cleansed` — a CAM capture with a misread plate (insert one, e.g. `DL05CD9B76`-style for a real registered vehicle) -> proposal corrects it citing matcher probability -> apply -> undo -> delete.
+14. `source_down_refusal` — stop the local INS wrapper (only if it is local; otherwise skip with passed=None-equivalent explained) -> Challan-Guard-style decision refuses (UNDETERMINED/HOLD) -> restart it; restored.
+15. `batch_stress` — N (default 100, parameter) random benchmark rows (raw OCR reads, fixed se
+
+[… 4057 characters omitted …]
+
+### Prompt 17 — 2026-10-17 14:22 UTC — sub-agent task
+
+**Task given to a coding sub-agent** (GUI: explainers, separation, scenarios, model opus):
+
+Repo: C:\Users\siddh_ygv5bws\IIA-vehicle-data-federation\IIA_Project (git, main). Phase-2 evaluation is in class on 21 Oct. The user (a student) tried the new pages and said: make the GUI as accessible as possible; make it obvious which combination of methods is used and how the architecture works; show how modifying data works; stress-test the system with different scenarios in the GUI; for a given number plate show the separation between the OCR read and the real plate (and how well the matcher separates the right vehicle from the rest); an explainer on how it works; cleansing validation shown; as many details as possible to make it clear that it works.
+
+Read first: docs/superpowers/plans/2026-10-17-phase2-noisy-matching.md, docs/MATCHING_EVALUATION.md, docs/BENCHMARK_NOISE.md, docs/AI_CHANGES_PHASE2.md (Workstream F describes the existing pages), the existing pages `app/tabs/plate_match_lab.py`, `app/tabs/cleansing_tab.py`, `app/tabs/matching_eval.py`, `app/app.py` (PAGES, nav groups), `app/theme.py`, `app/components.py`. Look at the current screenshots `docs/screenshots/plate-match.png`, `cleansing.png`, `matching-eval.png` with the Read tool.
+
+A backend agent is working IN PARALLEL and will deliver these interfaces; code against them, import lazily, and show a clear "not available yet" panel if an import fails so your pages never crash:
+- `mediator/scenarios.py`: `SCENARIOS: dict[key, {"title","rubric","what","why"}]`, `run_scenario(key, *, registry=None) -> ScenarioResult`, `run_all(keys=None)`. `ScenarioResult` fields: key, title, rubric, expected, actual, passed, steps (list of Step: title, detail, ok: bool|None), data (json-serialisable dict of tables/numbers), elapsed_ms, restored. Keys: clean_image, ocr_zero_o, ocr_b8, two_errors_rotated, unreadable_image, unregistered_plate, ambiguous_twins, context_breaks_tie, reverse_search, examiner_insert_dirty, examiner_modify_conflict, examiner_delete, misread_plate_cleansed, source_down_refusal, batch_stress, rdr_teach_refusal.
+- `mediator/cleansing_validation.py::validate(n, seed, local_db) -> dict` and its saved output `data/cleansing_validation.json` with keys overall, per_type (type -> detection recall/precision, correction accuracy, quarantine rate, wrong corrections), examples (type, original, noisy, detected, proposed, rule_path, correct), seed.
+- `mediator/change_audit.py`: `capture_row(capture_id)`, `registration_row(plate)` (raw source rows read live), `last_admin_statements(limit)` (the exact SQL the mediator sent to sources).
+- `st.session_state["source_status"]`: per-source `running | started | remote | failed: <reason>` set by app.py on every rerun (the backend agent owns app.py's cluster logic; you may only edit `PAGES`/nav entries in app.py, and must coordinate by touching only those lines).
+Do NOT edit mediator/, sources/, scripts/ (backend's), except reading.
+
+## What to build (all forced-light civic theme, existing primitives, unique `key=` per widget, one `section()` per block, no st.subheader / caption-as-heading — tests/test_tabs_render.py enforces this)
+1. **"How it works" page** (`app/tabs/how_it_works.py`, keys `hw_`), first page of the "Data quality" group. A clear architecture explainer:
+   - A pipeline diagram drawn with Graphviz via `st.graphviz_chart` (built-in, no new dependency): Image -> OCR (EasyOCR) -> raw read + confidence -> Blocking (q-gram inverted index -> size filter -> prefix filter -> position filter; slide pages) -> Candidates -> Feature vector (10 string measures + make/model/colour agreement + OCR confidence) -> Logistic regression (Platt-calibrated) -> probability -> ACCEPT/REVIEW/REJECT; and a second diagram for cleansing: CAM record -> detect anomalies vs live REG -> RDR tree (rules with cornerstones) -> proposal -> apply via CAM wrapper /admin/sql -> audit log -> undo/resolve. Show where the federation (wrappers on 5 laptops) sits.
+   - "The combination we use, and why" in plain sentences with the real numbers read from docs/MATCHING_EVALUATION.md (parse it; do not hard-code numbers): winner, its top-1, ACCEPT precision/recall, REVIEW rate, the best single measure, and the ablation (context is the biggest gain).
+   - A table "Method -> slide page -> where in the code -> what it contributes", covering every implemented method (edit distance p.16-19, Jaro/JW p.20-22, overlap/Jaccard p.24-26, TF/IDF p.27-31, Ratcliff-Obershelp p.33-34, Soundex p.36-37, 2-step framework p.44, inverted index/size/prefix/position p.45-65, pair classification/feature vector/GBT/calibration/separate evaluation p.69-82, Week 8 RDR slides 8-32).
+   - A glossary of terms a non-expert needs (top-1, ACCEPT/REVIEW/REJECT, calibration, blocking, q-gram, cornerstone case, precision, recall).
+2. **Plate Match page — add a "Separation" section** (edit `plate_match_lab.py`):
+   - For the chosen plate/image: the true plate (benchmark) vs the raw OCR re
+
+[… 4964 characters omitted …]
+
+### Prompt 18 — 2026-10-17 15:01 UTC — sub-agent task
+
+**Task given to a coding sub-agent** (RDR colour veto exception, model opus):
+
+Repo: C:\Users\siddh_ygv5bws\IIA-vehicle-data-federation\IIA_Project (git, main). Small, precise fix for rubric 2 (cleansing). Read docs/CLEANSING_VALIDATION.md (section "Every wrong correction"), mediator/cleansing.py, mediator/rdr.py, data/rdr_rules.json, mediator/cleansing_validation.py, docs/AI_CHANGES_PHASE2.md (Workstream E and G sections).
+
+## The defect (found by the validation)
+Noise type `plate_misread_double`: noisy read `UP16ABO524` (truth `UP16AB0521`) was corrected by rule R5 to `UP16AB0524` because the matcher ACCEPTed it (p=0.948). That candidate is registered colour Grey (make not on record); the camera saw Red. The proposal context only carries `match_best_make_agrees`, so a contradicting colour could not veto the correction. Wrong plate corrections must be 0.
+
+## The fix — RDR knowledge acquisition, exactly as the Week 8 deck prescribes
+1. In `mediator/cleansing.py`, add the missing context features next to `match_best_make_agrees`: `match_best_colour_agrees` and `match_best_model_agrees` (True / False / None when either side is unknown; colour compared through the lexicon's canonical colour form so `Gray`/`Grey` agree). Additive change only.
+2. Add an RDR exception under R5, created through the engine's own `RDRTree.add_exception` (not by hand-editing JSON), so the cornerstone protection check runs: condition "the accepted candidate's registered colour disagrees with the observed colour, or its registered model disagrees" (use `False` explicitly, not None, so unknowns do not veto), conclusion `quarantine`, because "a plate correction is only made when nothing the camera saw contradicts the candidate's registration", cornerstone = the validation case above (store it as a full case dict with its provenance `cleansing_validation seed 20261017`). Write a tiny script or test fixture that performs the add and saves `data/rdr_rules.json`; commit the resulting rules file. If the engine refuses (because it would change another rule's cornerstone conclusion), report the refusal verbatim and stop rather than force it.
+3. Re-run `python scripts\validate_cleansing.py` (offline `--local-db` is fine) and update `docs/CLEANSING_VALIDATION.md` + `data/cleansing_validation.json`. Required: wrong plate corrections = 0, detection recall unchanged, no new false alarms on controls. Report the before/after table (correction accuracy and quarantine rate per type will move; say exactly how).
+4. Check the 918 real CAM rows: `python scripts\cleanse.py --scan` (needs wrappers; if ports 8001-8005 are held by the user's running website, use `mediator.cleansing.scan` against the `local_cluster` fixture or the GUI agent's spare-port approach used in `mediator/scenarios.py`). Report how the proposal counts changed (set / quarantine / flag) and confirm capture 916 (`DL05CD9B76` -> `DL05CD9876`, a registered Silver Maruti Swift seen as Silver Maruti Swift) is still corrected.
+5. Tests: a unit test reproducing the exact wrong-correction case now yields `quarantine` with the new rule id on the path; capture-916-like case still `set`; `match_best_colour_agrees` canonicalises Gray/Grey; None does not veto. Run `tests/test_rdr.py tests/test_cleansing.py tests/test_cleansing_validation.py` plus `tests/test_scenarios*.py` if it exists (scenarios `misread_plate_cleansed` and `examiner_insert_dirty` must still pass; run them only on free ports — check `Get-NetTCPConnection -State Listen -LocalPort 8001,8002,8003,8004,8005` first; never kill processes you did not start).
+
+## Rules
+- Rubric-3 workflow: commit your first version unreviewed (`generated: mediator/cleansing.py — colour/model veto features (unreviewed AI output)`), then the reviewed one (`reviewed: ... — <reasons>`); the rules file and validation outputs in a separate commit. Append a `## Workstream H — colour veto (RDR exception from a validation case)` section to docs/AI_CHANGES_PHASE2.md (append only): the defect, the rule added with its cornerstone, before/after numbers, commit hashes.
+- Never delete pre-existing code; any line you replace stays as a comment above with `# PHASE2-REPLACED (<reason>):`.
+- Do not edit app/ (another agent is working there), mediator/plate_match.py, or mediator/meta.db's SOURCE_CATALOG.
+- No `Co-Authored-By` or any trailer. Do not push.
+Final report (<=200 words): commits, the new rule (id, condition, conclusion, cornerstone), before/after validation table, real-scan proposal counts before/after, tests run.
