@@ -304,7 +304,109 @@
             },
             "created_at": "",
             "created_by": "seed",
-            "except": null,
+            "except": {
+              "id": "R12",
+              "condition": {
+                "all": [
+                  {
+                    "field": "field",
+                    "op": "eq",
+                    "value": "plate_number"
+                  },
+                  {
+                    "any": [
+                      {
+                        "field": "match_best_colour_agrees",
+                        "op": "is_false"
+                      },
+                      {
+                        "field": "match_best_model_agrees",
+                        "op": "is_false"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "conclusion": {
+                "action": "quarantine"
+              },
+              "because": "a plate correction is only made when nothing the camera saw contradicts the candidate's registration (registered colour or model disagrees with the observation)",
+              "cornerstone": {
+                "field": "plate_number",
+                "value": "UP16ABO524",
+                "record_id": 445,
+                "registered": false,
+                "shape": "LLDDLLLDDD",
+                "shape_support": 0,
+                "pattern": "S^+^",
+                "pattern_support": 605,
+                "shape_valid": false,
+                "plate": "UP16ABO524",
+                "confidence": 0.892,
+                "below_floor": false,
+                "corroborated": false,
+                "match_decision": "ACCEPT",
+                "match_best": "UP16AB0524",
+                "match_probability": 0.9478,
+                "match_method": "plate_match",
+                "match_candidates": [
+                  {
+                    "plate": "UP16AB0524",
+                    "probability": 0.9478,
+                    "decision": "ACCEPT",
+                    "reasons": [
+                      "shortlisted 30 of 297 (Jaccard to 100, then OCR edit similarity)",
+                      "p=0.948 >= accept threshold 0.511, 0.475 clear of the runner-up"
+                    ]
+                  },
+                  {
+                    "plate": "UP16AB0521",
+                    "probability": 0.4726,
+                    "decision": "REVIEW",
+                    "reasons": [
+                      "shortlisted 30 of 297 (Jaccard to 100, then OCR edit similarity)",
+                      "p=0.473: between thresholds; needs an operator"
+                    ]
+                  },
+                  {
+                    "plate": "UP16AB0529",
+                    "probability": 0.0021,
+                    "decision": "REJECT",
+                    "reasons": [
+                      "shortlisted 30 of 297 (Jaccard to 100, then OCR edit similarity)",
+                      "p=0.002 < reject threshold 0.050"
+                    ]
+                  },
+                  {
+                    "plate": "UP16AB0434",
+                    "probability": 0.002,
+                    "decision": "REJECT",
+                    "reasons": [
+                      "shortlisted 30 of 297 (Jaccard to 100, then OCR edit similarity)",
+                      "p=0.002 < reject threshold 0.050"
+                    ]
+                  },
+                  {
+                    "plate": "UP16AB0361",
+                    "probability": 0.0018,
+                    "decision": "REJECT",
+                    "reasons": [
+                      "shortlisted 30 of 297 (Jaccard to 100, then OCR edit similarity)",
+                      "p=0.002 < reject threshold 0.050"
+                    ]
+                  }
+                ],
+                "match_note": null,
+                "match_best_make_agrees": null,
+                "match_best_colour_agrees": false,
+                "match_best_model_agrees": true,
+                "_provenance": "cleansing_validation seed 20261017: plate_misread_double, noisy read UP16ABO524 of UP16AB0521 corrected by R5 to UP16AB0524 (registered Grey, camera saw Red)"
+              },
+              "created_at": "2026-10-17T15:05:19+00:00",
+              "created_by": "expert (workstream H, from a validation finding)",
+              "except": null,
+              "else": null
+            },
             "else": {
               "id": "R6",
               "condition": {
