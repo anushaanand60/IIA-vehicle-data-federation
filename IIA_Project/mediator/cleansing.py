@@ -393,26 +393,40 @@ def scan(limit: Optional[int] = None, ctx: Optional[Context] = None) -> Dict[str
     except lexicons.SourceUnavailable as exc:  # refuse rather than crash: "undetermined" is an answer
         return {"status": "UNAVAILABLE", "error": str(exc)}
     before, after, actions, disposition = Counter(), Counter(), Counter(), Counter()
+    resolved = active_resolutions(ctx.cam.source_id)
     items = []
     for rec in ctx.records[:limit]:
         prop = propose(rec, ctx)
         before.update(a.code for a in prop.anomalies)
         actions.update(f.action for f in prop.changes)
-        fixed = _after(prop)
-        remaining = detect(fixed, ctx.profile_for(fixed), ctx) if fixed else []
+        remaining = _remaining(prop, ctx)
         after.update(a.code for a in remaining)
-        disposition.update(_disposition(a, prop) for a in remaining)
+        resolution = resolved.get(str(rec["record_id"]))
+        dispositions = [_disposition(a, prop, resolution) for a in remaining]
+        disposition.update(dispositions)
         if prop.anomalies or prop.changes:
-            items.append({**prop.to_dict(), "remaining": [a.code for a in remaining]})
+            items.append({**prop.to_dict(), "remaining": [a.code for a in remaining],
+                          "dispositions": dispositions, "resolution": resolution})
+    open_after = sum(n for d, n in disposition.items() if d != "resolved")
     return {"status": "OK", "source_id": ctx.cam.source_id, "records_scanned": len(ctx.records[:limit]),
             "records_with_anomalies": sum(1 for i in items if i["anomalies"]),
             "anomalies_before": dict(before), "proposals": dict(actions),
-            "remaining_after": dict(after), "remaining_by_disposition": dict(disposition), "items": items}
+            "remaining_after": dict(after), "remaining_by_disposition": dict(disposition),
+            "remaining_after_resolution": open_after, "items": items}
 
 
-def _disposition(anomaly: Anomaly, proposal: Proposal) -> str:
+def _remaining(prop: Proposal, ctx: Context) -> List[Anomaly]:
+    """The anomalies a record would still carry once every proposal for it were applied."""
+    fixed = _after(prop)
+    return detect(fixed, ctx.profile_for(fixed), ctx) if fixed else []
+
+
+def _disposition(anomaly: Anomaly, proposal: Proposal, resolution: Optional[Dict[str, Any]] = None) -> str:
     """What happens to an anomaly a proposal does not remove: flagged as evidence (a clone signal
-    must survive cleansing), quarantined for a person, or unhandled -- the number to drive to 0."""
+    must survive cleansing), quarantined for a person, or unhandled -- the number to drive to 0.
+    An operator's recorded resolution (confirm_clone / dismiss) turns it into `resolved`."""
+    if resolution and anomaly.code in resolution.get("anomalies", []):
+        return "resolved"
     fld = PLATE if anomaly.field == CONF else anomaly.field
     action = next((f.action for f in proposal.fixes if f.field == fld), "keep")
     return {"flag": "flagged", "quarantine": "quarantined"}.get(action, "unhandled")
@@ -430,6 +444,10 @@ def _db() -> Iterator[sqlite3.Connection]:
             log_id INTEGER PRIMARY KEY AUTOINCREMENT, source_id TEXT, record_id TEXT, field TEXT,
             action TEXT, before_value TEXT, after_value TEXT, rule_id TEXT, rule_path TEXT,
             evidence TEXT, actor TEXT, applied_at TEXT, sql_sent TEXT, undone_at TEXT, undone_by TEXT)""")
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(CLEANSING_LOG)")}
+        for col in ("decision", "note"):  # additive migration for the resolution step
+            if col not in cols:
+                conn.execute(f"ALTER TABLE CLEANSING_LOG ADD COLUMN {col} TEXT")
         yield conn
         conn.commit()
     finally:
@@ -509,12 +527,17 @@ def undo(log_id: int, actor: str = "operator", ctx: Optional[Context] = None) ->
     pk = ctx.pk if ctx else lexicons.primary_key(spec)
     before, after, sql = json.loads(row["before_value"]), json.loads(row["after_value"]), None
     where = f"{pk} = {lexicons.sql_literal(row['record_id'])}"
-    if row["action"] == "set":
+    kind = row["action"]
+    if kind == "resolve":
+        kind = {"accept_candidate": "set", "delete_record": "delete"}.get(row["decision"], "resolve")
+        if row["decision"] == "confirm_clone":
+            _undo_watch(json.loads(row["evidence"] or "{}"))
+    if kind == "set":
         col = _column(spec, row["field"])
         sql = f"UPDATE {spec.table} SET {col} = {lexicons.sql_literal(before)} WHERE {where} AND {_match(col, after)}"
         if _admin(spec, sql) != 1:  # someone edited it after us: never overwrite their change blindly
             raise CleansingError(f"record {row['record_id']} no longer holds {after!r}; not undone")
-    elif row["action"] == "delete":
+    elif kind == "delete":
         cols = ", ".join(before)
         vals = ", ".join(lexicons.sql_literal(v) for v in before.values())
         sql = f"INSERT INTO {spec.table} ({cols}) VALUES ({vals})"
@@ -523,6 +546,96 @@ def undo(log_id: int, actor: str = "operator", ctx: Optional[Context] = None) ->
         conn.execute("UPDATE CLEANSING_LOG SET undone_at = ?, undone_by = ? WHERE log_id = ?",
                      (datetime.now(timezone.utc).isoformat(), actor, log_id))
     return {"log_id": log_id, "action": row["action"], "sql": sql}
+
+
+RESOLUTIONS = ("confirm_clone", "accept_candidate", "delete_record", "dismiss")
+
+
+def resolve(capture_id: Any, decision: str, note: str = "", actor: str = "operator",
+            candidate: Optional[str] = None, ctx: Optional[Context] = None) -> Dict[str, Any]:
+    """Close what the proposals leave open with a recorded human decision (the resolution step).
+
+    confirm_clone    keep the camera's observation, record it as verified clone evidence and put the
+                     plate on the watchlist (mediator.watchlist) -- no source write
+    accept_candidate rewrite the plate to a candidate the matcher listed for this read
+    delete_record    delete the capture through the source's /admin/sql (full row logged for undo)
+    dismiss          the operator judges the anomaly harmless; a note saying why is mandatory
+    Every resolution is a CLEANSING_LOG row, so scan() reports it as `resolved` and undo() reverts it.
+    """
+    if decision not in RESOLUTIONS:
+        raise CleansingError(f"unknown resolution {decision!r}; expected one of {', '.join(RESOLUTIONS)}")
+    if decision == "dismiss" and not (note or "").strip():
+        raise CleansingError("dismiss needs a note saying why the anomaly is acceptable")
+    ctx = ctx or Context.build()
+    spec, pk = ctx.cam, ctx.pk
+    record = ctx.record(capture_id)
+    prop = propose(record, ctx)
+    open_codes = [a.code for a in _remaining(prop, ctx)]
+    if not open_codes:
+        raise CleansingError(f"record {capture_id} has nothing left to resolve")
+    where = f"{pk} = {lexicons.sql_literal(record['record_id'])}"
+    fld, before, after, sql = "record", None, decision, None
+    evidence: Dict[str, Any] = {"anomalies": open_codes}
+    if decision == "confirm_clone":
+        from mediator import watchlist
+        plate = norm_plate(record.get(PLATE)) or ""
+        previous = catalog.watchlist_get(plate)
+        watchlist.add(plate, f"verified clone evidence, {spec.source_id} capture {capture_id}: {note}".strip(),
+                      actor)
+        evidence.update(plate=plate, watch_previous=previous)
+    elif decision == "accept_candidate":
+        m = match_plate(norm_plate(record.get(PLATE)) or "", _number(record.get(CONF)), record.get("observed_make"),
+                        record.get("observed_colour"), ctx, record.get("observed_model"))
+        listed = [c["plate"] for c in m["candidates"]]
+        if norm_plate(candidate) not in listed:
+            raise CleansingError(f"{candidate} is not among the matcher's candidates for this read ({', '.join(listed)})")
+        fld, col = PLATE, _column(spec, PLATE)
+        before = record["_raw"].get(col, record.get(PLATE))
+        after = render_plate(norm_plate(candidate), spec.key_predicate.render)
+        sql = f"UPDATE {spec.table} SET {col} = {lexicons.sql_literal(after)} WHERE {where} AND {_match(col, before)}"
+        if _admin(spec, sql) != 1:
+            raise CleansingError(f"record {capture_id} changed since the scan; re-scan first")
+        evidence.update(candidates=m["candidates"][:5])
+    elif decision == "delete_record":
+        before = _fetch_row(spec, pk, record["record_id"])
+        sql = f"DELETE FROM {spec.table} WHERE {where}"
+        if _admin(spec, sql) != 1:
+            raise CleansingError(f"record {capture_id} no longer exists; re-scan first")
+    with _db() as conn:
+        cur = conn.execute(
+            "INSERT INTO CLEANSING_LOG (source_id, record_id, field, action, before_value, after_value, rule_id, "
+            "rule_path, evidence, actor, applied_at, sql_sent, decision, note) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (spec.source_id, str(record["record_id"]), fld, "resolve", json.dumps(before, default=str),
+             json.dumps(after, default=str), None, "[]", json.dumps(evidence, default=str), actor,
+             datetime.now(timezone.utc).isoformat(), sql, decision, note))
+    return {"log_id": cur.lastrowid, "decision": decision, "record_id": record["record_id"], "sql": sql,
+            "resolved": open_codes}
+
+
+def active_resolutions(source_id: str) -> Dict[str, Dict[str, Any]]:
+    """record_id -> the latest resolution still in force that leaves the record in place."""
+    with _db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM CLEANSING_LOG WHERE action = 'resolve' AND undone_at IS NULL AND source_id = ? "
+            "AND decision IN ('confirm_clone', 'dismiss') ORDER BY log_id", (source_id,)).fetchall()
+    out: Dict[str, Dict[str, Any]] = {}
+    for r in rows:
+        ev = json.loads(r["evidence"] or "{}")
+        out[str(r["record_id"])] = {"log_id": r["log_id"], "decision": r["decision"], "note": r["note"],
+                                    "actor": r["actor"], "at": r["applied_at"], "anomalies": ev.get("anomalies", [])}
+    return out
+
+
+def _undo_watch(evidence: Dict[str, Any]) -> None:
+    """Put the watchlist back the way confirm_clone found it."""
+    plate, previous = evidence.get("plate"), evidence.get("watch_previous")
+    if not plate:
+        return
+    if previous:
+        catalog.watchlist_upsert(plate, previous.get("reason") or "", previous.get("added_by") or "operator",
+                                 previous.get("added_at") or "")
+    else:
+        catalog.watchlist_delete(plate)
 
 
 def log_entries(limit: int = 50) -> List[Dict[str, Any]]:
