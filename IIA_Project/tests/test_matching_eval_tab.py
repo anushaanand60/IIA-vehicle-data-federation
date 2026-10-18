@@ -37,3 +37,17 @@ def test_page_renders_chart_tables_and_decision():
     best = matching_eval.winner(sec["7"], matching_eval.table(sec["2"]))
     assert best["contender"] in kpis and best["top-1"] in kpis
     assert at.get("plotly_chart"), "no chart rendered"
+
+
+def test_simplified_page_keeps_details_collapsed_and_three_sentence_decision():
+    at = AppTest.from_function(_page, default_timeout=60).run()
+    assert not at.exception, [e.value for e in at.exception]
+    text = " ".join(str(m.value) for m in at.markdown)
+    assert "How to use" in text and "What this shows" not in text
+    details = [e for e in at.expander if e.label.startswith("Details")]
+    assert len(details) == 1 and not details[0].proto.expanded
+    assert len(at.get("plotly_chart")) == 1
+    sec = matching_eval.sections(DOC.read_text(encoding="utf-8"))
+    decision = matching_eval.decision_text(sec["7"])
+    assert decision.startswith("**Use `") and "camera's make" in decision
+    assert decision.count(". ") <= 3

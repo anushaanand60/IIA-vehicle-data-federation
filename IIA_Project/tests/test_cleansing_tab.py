@@ -48,10 +48,19 @@ def test_scan_renders_with_zero_unhandled(local_cluster):
     at = _run()
     report = _report(at)
     assert report["status"] == "OK" and report["records_scanned"] > 0
-    assert _kpi(at, "Unhandled (must be 0)") == "0"
-    assert int(_kpi(at, "Anomalies before")) == sum(report["anomalies_before"].values())
+    # PHASE2-REPLACED (simplified GUI, 19 Oct 2026: six KPI tiles with shorter labels; advanced tools in one collapsed expander):
+    # assert _kpi(at, "Unhandled (must be 0)") == "0"
+    # assert int(_kpi(at, "Anomalies before")) == sum(report["anomalies_before"].values())
+    # text = " ".join(str(m.value) for m in at.markdown)
+    # assert "The rule tree" in text and "Examiner toolbox" in text and "R11" in text
+    assert _kpi(at, "Unhandled") == "0"
+    assert int(_kpi(at, "Anomalies found")) == sum(report["anomalies_before"].values())
     text = " ".join(str(m.value) for m in at.markdown)
-    assert "The rule tree" in text and "Examiner toolbox" in text and "R11" in text
+    assert "The rule tree" in text and "Examiner toolbox" in text and "R11" in text and "How to use" in text
+    advanced = next(e for e in at.expander if e.label.startswith("Advanced"))
+    assert not advanced.proto.expanded  # rule tree, teach, bulk apply and validation start collapsed
+    watch = next(e for e in at.expander if e.label == "Watch the data change")
+    assert not watch.proto.expanded  # open only right after a write
 
 
 def test_resolve_then_undo_round_trip(local_cluster):

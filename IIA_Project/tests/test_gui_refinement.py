@@ -86,17 +86,33 @@ def test_how_it_works_facts_come_from_the_evaluation_document():
     assert float(f["top1"]) > float(f["single_top1"]) and f["scan"] == "605.0"
 
 
-def test_how_it_works_renders_diagrams_methods_and_glossary():
+# PHASE2-REPLACED (simplified GUI, 19 Oct 2026: the method table, glossary and links are hidden; only the diagrams and the combination box remain):
+# def test_how_it_works_renders_diagrams_methods_and_glossary():
+#     def page() -> None:
+#         from app.tabs.how_it_works import render
+#         render()
+#     at = _ok(AppTest.from_function(page, default_timeout=60).run())
+#     heads = " ".join(_headings(at))
+#     for title in ("Matching pipeline", "Cleansing loop", "The combination we use", "Every method", "Glossary"):
+#         assert title in heads, heads
+#     text = _text(at)
+#     assert "learned_ocr_similarity" in text and "no camera context" in text
+#     assert "p. 47-51" in text and "slides 24-29" in text and "Cornerstone case" in text
+#     assert len(at.get("graphviz_chart")) == 2
+def test_how_it_works_renders_diagrams_and_the_combination_box_only():
     def page() -> None:
         from app.tabs.how_it_works import render
         render()
     at = _ok(AppTest.from_function(page, default_timeout=60).run())
     heads = " ".join(_headings(at))
-    for title in ("Matching pipeline", "Cleansing loop", "The combination we use", "Every method", "Glossary"):
+    for title in ("Matching pipeline", "Cleansing loop", "Combination we use"):
         assert title in heads, heads
+    for gone in ("Every method", "Glossary", "Where to see it"):
+        assert gone not in heads, heads
     text = _text(at)
-    assert "learned_ocr_similarity" in text and "no camera context" in text
-    assert "p. 47-51" in text and "slides 24-29" in text and "Cornerstone case" in text
+    assert "How to use" in text and "learned ocr similarity" in text and "no camera context" in text
+    assert "camera context is the biggest gain" in text and "costs the combiner 0.045 top-1" in text
+    assert "p. 47-51" not in text and "Cornerstone case" not in text and "What this shows" not in text
     assert len(at.get("graphviz_chart")) == 2
 
 
@@ -145,14 +161,21 @@ def _scenarios_page() -> None:
 def test_scenarios_page_lists_by_rubric_and_runs_one(monkeypatch):
     _install(monkeypatch, _fake_scenarios())
     at = _ok(AppTest.from_function(_scenarios_page, default_timeout=60).run())
+    # PHASE2-REPLACED (simplified GUI, 19 Oct 2026: groups are no longer named after rubrics; one line per scenario):
+    # heads = " ".join(_headings(at))
+    # assert "Rubric 1: approximate plate matching" in heads and "Rubric 2: cleansing camera records" in heads
+    # assert "NOT RUN" in _text(at) and "restores it" in _text(at)
     heads = " ".join(_headings(at))
-    assert "Rubric 1: approximate plate matching" in heads and "Rubric 2: cleansing camera records" in heads
-    assert "NOT RUN" in _text(at) and "restores it" in _text(at)
+    assert "Plate matching" in heads and "Cleansing camera records" in heads and "Rubric" not in _text(at)
+    assert "NOT RUN" in _text(at) and "How to use" in _text(at) and "Run all scenarios" in [b.label for b in at.button]
+    assert "**OCR reads 0 as O** — the commonest OCR error" in _text(at)
     _ok(at.button(key="sc2_run_ocr_zero_o").click().run())
     res = at.session_state["sc2_results"]["ocr_zero_o"]
     assert res["passed"] and res["elapsed_ms"] == 42
     text = _text(at)
     assert "PASS" in text and "DL01AB1234 ACCEPT" in text and "[ok] matched" in text and "[info] note" in text
+    details = [e for e in at.expander if e.label.startswith("Details")]
+    assert details and not any(e.proto.expanded for e in details)  # details collapsed by default
 
 
 def test_scenarios_run_all_keeps_results_and_shows_failures(monkeypatch):
@@ -185,8 +208,11 @@ def test_scenarios_page_renders_the_real_catalogue():
     if not hasattr(scenarios, "run_scenario"):
         pytest.skip("mediator.scenarios has no run_scenario yet (backend workstream in progress)")
     at = _ok(AppTest.from_function(_scenarios_page, default_timeout=60).run())
+    # PHASE2-REPLACED (simplified GUI, 19 Oct 2026: groups are no longer named after rubrics):
+    # heads = " ".join(_headings(at))
+    # assert "Rubric 1: approximate plate matching" in heads and "Rubrics 1 and 2 together" in heads
     heads = " ".join(_headings(at))
-    assert "Rubric 1: approximate plate matching" in heads and "Rubrics 1 and 2 together" in heads
+    assert "Plate matching" in heads and "Matching and cleansing together" in heads
     assert "Batch stress test" in _text(at)
 
 
@@ -329,20 +355,38 @@ def test_plate_match_separation_for_a_benchmark_image(local_cluster):
     _ok(at.button(key="pm_run").click().run())
     res = at.session_state["pm_result"]
     assert res["truth"] and res["target"] == res["truth"]
+    # PHASE2-REPLACED (simplified GUI, 19 Oct 2026: the funnel and the two-row diff are hidden; separation views sit in one collapsed expander):
+    # heads = " ".join(_headings(at))
+    # assert "Separation" in heads and "How far apart" in heads and "every damage level" in heads
+    # assert len(res["grid"]["rows"]) == 22
+    # text = _text(at)
+    # assert "Real plate" in text and "Probability gap" in text and "What the filter does" in text
     heads = " ".join(_headings(at))
-    assert "Separation" in heads and "How far apart" in heads and "every damage level" in heads
+    assert "How far apart" in heads and "every damage level" in heads and "Blocking funnel" not in heads
     assert len(res["grid"]["rows"]) == 22
     text = _text(at)
-    assert "Real plate" in text and "Probability gap" in text and "What the filter does" in text
+    assert "Probability gap" in text and "What the filter does" not in text
+    assert 'aria-label="character comparison' in text  # the compact true / OCR / repaired rows
+    details = next(e for e in at.expander if e.label.startswith("Details: every measure"))
+    assert not details.proto.expanded
 
 
-def test_plate_match_max_edits_one_collapses_the_funnel(local_cluster):
+# PHASE2-REPLACED (simplified GUI, 19 Oct 2026: the blocking funnel and its max_edits selector are hidden from the page):
+# def test_plate_match_max_edits_one_collapses_the_funnel(local_cluster):
+#     at = _ok(AppTest.from_function(_plate_page, default_timeout=300).run())
+#     at.text_input(key="pm_typed").set_value("DL05CD9B76").run()
+#     at.selectbox(key="pm_edits").set_value(1).run()
+#     _ok(at.button(key="pm_run").click().run())
+#     res = at.session_state["pm_result"]
+#     assert res["max_edits"] == 1 and res["stages"][0]["candidates"] > 100
+#     assert res["stages"][-1]["candidates"] <= 5
+#     assert res["cands"][0].plate == "DL05CD9876"
+#     assert "matcher's winner DL05CD9876" in _text(at)
+def test_plate_match_hides_the_funnel_and_the_max_edits_selector(local_cluster):
     at = _ok(AppTest.from_function(_plate_page, default_timeout=300).run())
     at.text_input(key="pm_typed").set_value("DL05CD9B76").run()
-    at.selectbox(key="pm_edits").set_value(1).run()
+    assert "pm_edits" not in [s.key for s in at.selectbox]
     _ok(at.button(key="pm_run").click().run())
     res = at.session_state["pm_result"]
-    assert res["max_edits"] == 1 and res["stages"][0]["candidates"] > 100
-    assert res["stages"][-1]["candidates"] <= 5
     assert res["cands"][0].plate == "DL05CD9876"
-    assert "matcher's winner DL05CD9876" in _text(at)
+    assert "Blocking funnel" not in " ".join(_headings(at))

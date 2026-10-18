@@ -24,10 +24,19 @@ def _text(at: AppTest) -> str:
                     + [str(w.value) for w in at.warning])
 
 
-def test_page_renders_and_explains_the_algorithm():
+# PHASE2-REPLACED (simplified GUI, 19 Oct 2026: the 'Why this algorithm' panel is hidden; the page is give a plate -> what OCR read -> matches):
+# def test_page_renders_and_explains_the_algorithm():
+#     at = _run()
+#     text = _text(at)
+#     assert "Read a plate" in text and "Why this algorithm" in text and "Matching%20Evaluation" in text
+def test_page_renders_the_three_step_flow():
     at = _run()
     text = _text(at)
-    assert "Read a plate" in text and "Why this algorithm" in text and "Matching%20Evaluation" in text
+    assert "How to use" in text and "1. Give a plate" in text and "2. What OCR read" in text
+    assert "Why this algorithm" not in text and "What this shows" not in text
+    labels = [m.label for m in at.metric]
+    assert "EasyOCR read (raw)" in labels and "Pattern-repaired read" in labels
+    assert "Reverse: camera reads for a registration" in text
 
 
 def test_typed_misread_ranks_the_story_vehicle_first_with_accept(local_cluster):
@@ -37,8 +46,11 @@ def test_typed_misread_ranks_the_story_vehicle_first_with_accept(local_cluster):
     assert not at.exception, [e.value for e in at.exception]
     res = at.session_state["pm_result"]
     assert res["cands"][0].plate == "DL05CD9876" and res["cands"][0].decision == "ACCEPT"
+    # PHASE2-REPLACED (simplified GUI, 19 Oct 2026: the funnel is hidden; the verdict is one line under the highlighted top row):
+    # text = _text(at)
+    # assert "Blocking funnel" in text and "DL05CD9876 · ACCEPT" in text
     text = _text(at)
-    assert "Blocking funnel" in text and "DL05CD9876 · ACCEPT" in text
+    assert "Blocking funnel" not in text and "DL05CD9876 — ACCEPT" in text and 'class="cv-best"' in text
     assert res["stages"][0]["candidates"] >= res["stages"][-1]["candidates"]  # the funnel only narrows
 
 
@@ -48,8 +60,12 @@ def test_benchmark_image_shows_its_raw_read_and_truth():
     assert not at.exception, [e.value for e in at.exception]
     path = at.selectbox(key="pm_img").value
     truth = path.split("/")[-1].split("__")[0]           # images are named <true plate>__<degradation>
-    kpis = " ".join(str(m.value) for m in at.markdown if "cv-kpi" in str(m.value))
-    assert "True plate" in kpis and "Raw read" in kpis and truth in kpis
+    # PHASE2-REPLACED (simplified GUI, 19 Oct 2026: the read is shown as metrics plus the true / OCR / repaired character rows):
+    # kpis = " ".join(str(m.value) for m in at.markdown if "cv-kpi" in str(m.value))
+    # assert "True plate" in kpis and "Raw read" in kpis and truth in kpis
+    assert f"True plate:** `{truth}`" in _text(at)
+    assert "EasyOCR read (raw)" in [m.label for m in at.metric]
+    assert "OCR" in _text(at) and 'aria-label="character comparison' in _text(at)
 
 
 def test_reverse_lists_capture_916_for_the_story_vehicle(local_cluster):
@@ -60,4 +76,6 @@ def test_reverse_lists_capture_916_for_the_story_vehicle(local_cluster):
     rows = at.session_state["pm_rev"]["rows"]
     assert 916 in [r["capture_id"] for r in rows]
     assert next(r for r in rows if r["capture_id"] == 916)["decision"] == "ACCEPT"
-    assert "#916 · ACCEPT" in _text(at)
+    # PHASE2-REPLACED (simplified GUI, 19 Oct 2026: the reverse result is one table, no chip strip):
+    # assert "#916 · ACCEPT" in _text(at)
+    assert "916" in _text(at) and "Capture" in _text(at)
