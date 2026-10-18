@@ -393,6 +393,9 @@ def _primitives() -> str:
 .cv-howto li {font-size:1.0625rem; line-height:1.6; color:var(--cv-ink);}
 .cv-table tbody tr.cv-best td {background:#E6F4EA; font-weight:600;}
 .cv-table tbody tr.cv-best td:first-child {box-shadow:inset 4px 0 0 var(--cv-ok);}
+/* Review: a six-tile KPI row (Data Cleansing, Test scenarios) wrapped 5 + 1, leaving one orphan tile on
+   its own line; six tiles now share one row on a wide panel. */
+@media (min-width: 1100px) {.cv-kpi:has(> div:nth-child(6):last-child) {grid-template-columns:repeat(6,minmax(0,1fr));}}
 """
 
 
