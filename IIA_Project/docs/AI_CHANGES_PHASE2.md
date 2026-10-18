@@ -778,3 +778,79 @@ assertion kept as PHASE2-REPLACED).
 - `955006b` reviewed: mediator/cleansing.py — Gray/Grey verified, None never vetoes, evidence carries the features
 - `640edb1` workstream H: add_colour_veto_rule.py, validation doc text, tests
 - `4681db2` data: R12 in data/rdr_rules.json and the re-run validation outputs
+
+## Workstream I — GUI simplification
+
+**Task (student, 19 Oct 2026).** The Data quality pages had grown walls of explanation. Cut each page to
+the functionality it needs, open it with one sentence and at most three "How to use" steps, collapse the
+detail, and delete nothing: removed code stays in the file as an uncalled function (PHASE2-HIDDEN) or as
+commented lines (PHASE2-REPLACED). Write a changelog of all of phase 2 for the viva.
+
+### What was generated
+
+- `app/components.py`: `how_to(steps)`; `what_this_shows()` silenced in one place (call sites kept).
+  `app/theme.py`: CSS for the how-to box and the highlighted best row.
+- Each page's previous `render()` renamed `_render_before_simplification()` under a PHASE2-HIDDEN header,
+  and a new `render()` appended:
+  - **How it works**: the two diagrams and a "Combination we use" box (combiner, top-1, ACCEPT precision,
+    REVIEW rate, best single measure, the ablation conclusion), all parsed from `docs/MATCHING_EVALUATION.md`.
+  - **Plate Match**: give a plate -> "EasyOCR read (raw)" + confidence + "Pattern-repaired read" (with the
+    tooltip) + raw/repaired choice + true / OCR / repaired character rows -> one matches table with decision
+    chips and the top row highlighted -> per-measure scores, probability chart, margins and the 22-image
+    grid in one collapsed expander. Blocking funnel and max_edits selector hidden. Reverse search reduced
+    to input, button, table.
+  - **Data Cleansing**: Scan + six KPIs, compact anomaly table, selected capture with one line per fix and
+    the rule path in a small expander, Apply / Undo / Resolve side by side, compact "Watch the data change"
+    (changed columns + SQL, open only right after a write), examiner toolbox visible, rule tree / teach /
+    bulk apply / validation in one collapsed "Advanced" expander.
+  - **Matching Evaluation**: decision (three sentences quoted from section 7), comparison table, one chart;
+    the rest in a collapsed expander.
+  - **Test scenarios**: "Run all" on top, one "title — what it checks" line per scenario, details collapsed,
+    group names without the word rubric.
+
+### What the review found and changed (the `reviewed:` commits)
+
+- How it works: the best-single-measure tile broke the name mid-word; the ablation line printed "+0.046"
+  as a cost and disagreed with the 0.045 the Matching Evaluation page quotes from the same document (the
+  page now quotes the document's own figure).
+- Plate Match: for a typed or uploaded read the details expander compared against the matcher's own winner
+  as if it were the true plate, without saying so (the hidden code did say so; one info line restored).
+- Data Cleansing: anomaly rows were four lines tall (repeated per-field fixes and repeated codes); each
+  anomaly chip was drawn twice; one rule flagging three fields printed its reason three times; the toolbox
+  insert form stacked seven fields in a third of the panel (`render_compact`, same widget keys). Page
+  3.4 -> 2.9 screen heights.
+- Matching Evaluation: one name for the REVIEW rate across pages.
+- Test scenarios: after a single Run the KPIs and the group's "n of m passed" line showed the old count
+  (drawn before the click; now `st.rerun`); the status chips took their own line under every scenario.
+- Theme: a six-tile KPI row wrapped 5 + 1; six tiles now share one row on a wide panel.
+- Changelog: the marker-search command sat in a table cell, so the escaped pipe would be copied into the
+  shell; moved to code blocks. Every hash and file:line reference was checked mechanically.
+
+### Verification
+
+- `tests/test_gui_refinement.py`, `tests/test_tabs_render.py`, `tests/test_matching_eval_tab.py`,
+  `tests/test_components.py`, `tests/test_theme.py` and the non-cluster tests of `tests/test_plate_match_lab.py`
+  and `tests/test_cleansing_tab.py`: 83 passed. New assertions: expanders collapsed by default, blocking
+  funnel and max_edits selector not rendered, "EasyOCR read (raw)" / "Pattern-repaired read" present, no
+  "Rubric" and no "What this shows" text. Replaced assertions kept as PHASE2-REPLACED.
+- The student's website held ports 8001-8005, so the shared `local_cluster` fixture refused to start
+  (by design). The read-only cluster tests (typed misread -> DL05CD9876 ACCEPT, benchmark image, reverse
+  search -> capture 916 ACCEPT, separation views, funnel hidden, cleansing scan with 0 unhandled) were run
+  from a scratch file against those running wrappers with a scratch copy of `meta.db`: 7 passed. The
+  cleansing tests that write (resolve/undo, toolbox insert/delete, teach) were not run, so nothing was
+  written into the live sources.
+- Screenshots (app on port 8599, Selenium + Edge, scratch copy of `meta.db`; only two read-only scenarios
+  were run): `docs/screenshots/how-it-works.png`, `plate-match-separation.png` (details collapsed),
+  `plate-match.png` (details open), `cleansing.png`, `cleansing-validation.png` (Advanced open),
+  `matching-eval.png`, `scenarios.png`. Page heights at a 1000 px window: 2.9, 2.6, 2.9, 2.3, 2.7 screens.
+
+### Commits
+
+- `2792719` generated / `7ea2773` reviewed: app/components.py + app/theme.py
+- `55cea90` generated / `498d6b4` reviewed: app/tabs/how_it_works.py
+- `83ef041` generated / `b92d7dd` reviewed: app/tabs/plate_match_lab.py + plate_separation.py
+- `7eecaa9` generated / `d4926c7` reviewed: app/tabs/cleansing_tab.py + change_watch.py, cleansing_toolbox.py, cleansing_validation_panel.py
+- `c152ed3` generated / `913f78e` reviewed: app/tabs/matching_eval.py
+- `2a76bfe` generated / `a68dcb8` reviewed: app/tabs/scenarios_tab.py
+- `f4aa468` tests, `f4a51a7` screenshots
+- `88288a3` generated / `163316c` reviewed: docs/CHANGELOG_PHASE2.md
