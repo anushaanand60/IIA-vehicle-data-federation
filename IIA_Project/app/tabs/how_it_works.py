@@ -22,6 +22,7 @@ if str(_APP_DIR) not in sys.path:
 import streamlit as st  # noqa: E402
 
 from components import kpi_row, page_head, panel, section, styled_table  # noqa: E402
+from components import how_to  # noqa: E402  (phase-2 simplified GUI)
 from tabs.matching_eval import DOC, sections, table, winner  # noqa: E402
 from theme import TOKENS  # noqa: E402
 
@@ -193,6 +194,8 @@ def _f(value: Optional[str]) -> float:
         return 0.0
 
 
+# PHASE2-HIDDEN (simplified GUI, 19 Oct 2026): the KPI row and the six-step numbered explanation of the
+# combination; previously called from render() (now _render_before_simplification) in the hw_why panel.
 def _combination(f: Dict[str, Optional[str]]) -> None:
     section("The combination we use, and why",
             "What this shows: the methods that run on every plate, in order, with the measured reason for each. "
@@ -221,7 +224,10 @@ def _combination(f: Dict[str, Optional[str]]) -> None:
         "Rules decide whether to correct, flag, quarantine or delete, and only a person applies the change."]))
 
 
-def render() -> None:
+# PHASE2-HIDDEN (simplified GUI, 19 Oct 2026): the whole previous page -- both diagrams with long leads, the
+# combination explanation, the method/slide/code table, the glossary and the 'where to see it' links;
+# previously called from app/app.py as how_it_works.render.
+def _render_before_simplification() -> None:
     page_head("How it works", "The pipeline from a camera image to a decision, the cleansing loop, where the "
               "federation sits, and which course method does what.")
     with panel("hw_match"):
@@ -253,3 +259,33 @@ def render() -> None:
                     "- [Data Cleansing](?page=Data%20Cleansing): the live anomaly list, rule paths, and the data changing.\n"
                     "- [Matching Evaluation](?page=Matching%20Evaluation): every contender measured.\n"
                     "- [Test scenarios](?page=Test%20scenarios): one-click stress tests, each restoring the data it changed.")
+
+
+# ------------------------------------------------------------------ phase-2 simplified page
+
+def _combo_box(f: Dict[str, Optional[str]]) -> None:
+    """The winning combiner, its key numbers and the one-line ablation conclusion, all parsed from the doc."""
+    section("Combination we use")
+    if not f.get("winner"):
+        st.warning("docs/MATCHING_EVALUATION.md could not be parsed; run python scripts/evaluate_matching.py.")
+        return
+    kpi_row([("Combiner", f["winner"]), ("Right car ranked first (top-1)", f["top1"]),
+             ("ACCEPT precision", f["acc_p"]), ("Sent to a person (REVIEW)", f["review"]),
+             (f"Best single measure: {f['single']}", f["single_top1"])])
+    st.markdown(f"**Ablation:** camera context is the biggest gain -- removing it (`{f['gain_variant']}`) "
+                f"costs the combiner {f['gain']} top-1.")
+
+
+def render() -> None:
+    page_head("How it works", "How a camera read becomes a decision, and how a dirty camera record gets fixed.")
+    how_to(["Follow the matching pipeline from the plate image down to the decision.",
+            "Follow the cleansing loop from one camera record to the operator's fix.",
+            "Check the measured numbers in \"Combination we use\"."])
+    with panel("hw_match"):
+        section("Matching pipeline")
+        st.graphviz_chart(MATCH_DOT, width="stretch")  # graphviz_chart takes no key
+    with panel("hw_cleanse"):
+        section("Cleansing loop")
+        st.graphviz_chart(CLEANSE_DOT, width="stretch")  # graphviz_chart takes no key
+    with panel("hw_why"):
+        _combo_box(facts(DOC.read_text(encoding="utf-8")) if DOC.exists() else {"winner": None})
