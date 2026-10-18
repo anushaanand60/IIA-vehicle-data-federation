@@ -444,7 +444,13 @@ def _matches(res: Dict[str, Any]) -> None:
         styled_table([{"#": i, "Plate": c.plate,
                        **{SHORT[n]: f"{c.scores.get(n, 0):.2f}" for n in plate_match.SCORE_NAMES}}
                       for i, c in enumerate(cands, 1)])
+        # PHASE2-REPLACED (review: for a typed or uploaded read the separation views silently compared against the matcher's own winner as if it were the truth (the hidden _separation said so; the new expander did not)):
+        # target = res.get("target")
+        # if target:
+        #     plate_separation.render_distance(res["read"], target, cands, res.get("plates") or [])
         target = res.get("target")
+        if target and not res.get("truth"):
+            st.info(f"No true plate is known for a typed or uploaded read, so these views use the matcher's winner {target}.")
         if target:
             plate_separation.render_distance(res["read"], target, cands, res.get("plates") or [])
         if res.get("grid"):
