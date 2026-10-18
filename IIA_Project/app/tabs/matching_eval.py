@@ -25,6 +25,7 @@ import streamlit as st  # noqa: E402
 
 from components import kpi_row, page_head, panel, section, styled_table  # noqa: E402
 from components import what_this_shows  # noqa: E402  (phase-2 accessibility pass)
+from components import how_to  # noqa: E402  (phase-2 simplified GUI)
 from theme import FONTS, TOKENS  # noqa: E402
 
 DOC = _ROOT / "docs" / "MATCHING_EVALUATION.md"
@@ -89,7 +90,8 @@ def _chart(rows: List[Dict[str, str]], best: Optional[str]) -> None:
     st.plotly_chart(fig, key="me_chart", config={"displayModeBar": False})
 
 
-def render() -> None:
+# PHASE2-HIDDEN (simplified GUI, 19 Oct 2026): the whole previous page: six KPIs, chart, the full 'Why' prose, and the scoring, ablation, blocking, weights, degradation and real-read panels all open; previously called from app/app.py as render_matching_eval.
+def _render_before_simplification() -> None:
     page_head("Matching Evaluation", "Why the matcher is what it is: every contender measured on vehicles it "
               "never saw in training, with retrieval and scoring evaluated separately.")
     if not DOC.exists():
@@ -142,3 +144,50 @@ def render() -> None:
         section("Real camera reads with no ground truth")
         what_this_shows("what the matcher would do with the real camera records whose plate matches no registration.")
         st.markdown(prose(sec.get("6", "")))
+
+
+# ------------------------------------------------------------------ phase-2 simplified page
+
+def decision_text(decision: str) -> str:
+    """Two or three sentences from the Decision section: its first paragraph (the choice and its numbers)
+    and the bullet that names the camera context as the reason a combination wins."""
+    body = prose(decision)
+    first = body.split("\n\n")[0].strip()
+    why = next((l.strip()[2:] for l in body.splitlines() if l.strip().startswith("- ") and "camera's make" in l), "")
+    return " ".join(x for x in (first, why) if x)
+
+
+def render() -> None:
+    page_head("Matching Evaluation", "Every matching method measured on vehicles it never saw in training, "
+              "and the one we chose.")
+    how_to(["Read the decision: the method in use and why.",
+            "Compare the methods in the table and the chart.",
+            "Open Details for the ablation and the other measurements."])
+    if not DOC.exists():
+        st.error("docs/MATCHING_EVALUATION.md is missing: run python scripts/evaluate_matching.py")
+        return
+    sec = sections(DOC.read_text(encoding="utf-8"))
+    scoring = table(sec.get("2", ""))
+    best = winner(sec.get("7", ""), scoring) or {}
+    with panel("me_head"):
+        section("The decision")
+        kpi_row([("Chosen model", best.get("contender", "—")), ("Top-1, test", best.get("top-1", "—")),
+                 ("ACCEPT precision", best.get("ACCEPT P", "—")), ("Sent to review", best.get("REVIEW rate", "—"))])
+        st.markdown(decision_text(sec.get("7", "")) or "The Decision section is missing from the document.")
+    with panel("me_scoring"):
+        section("Every method compared", "Test split: vehicles never seen in training; the star marks the method in use.")
+        styled_table(scoring)
+        if scoring:
+            _chart(scoring, best.get("contender"))
+    with panel("me_more"):
+        with st.expander("Details: ablation, blocking funnel, weights, degradation, real camera reads", expanded=False):
+            section("Ablation: what each part of the combination is worth", "Each row retrains the combiner without the named features.")
+            styled_table(table(sec.get("4", "")))
+            section("Blocking funnel: retrieval recall per filter", "Recall = the true plate survives into the candidate set.")
+            styled_table(table(sec.get("1", "")))
+            section("Logistic-regression weights", "A positive weight pushes towards the same vehicle.")
+            styled_table(table(sec.get("5", "")))
+            section("By degradation and severity", "Top-1 on test, one read per test vehicle per bucket.")
+            styled_table(table(sec.get("3", "")), max_rows=40)
+            section("Real camera reads with no ground truth")
+            st.markdown(prose(sec.get("6", "")))
