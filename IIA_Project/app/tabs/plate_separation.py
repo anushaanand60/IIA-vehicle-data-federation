@@ -153,6 +153,8 @@ def damage_grid(plate: str, registry: Dict[str, Any], max_edits: int) -> Dict[st
 
 # ------------------------------------------------------------------ render
 
+# PHASE2-HIDDEN (simplified GUI, 19 Oct 2026): the two-row diff with legend and substitution-cost table; previously called from
+# plate_match_lab._separation (replaced there by the compact true / OCR / repaired rows).
 def render_diff(truth: str, raw: str, repaired: Optional[str]) -> None:
     section("Separation: the OCR read against the real plate",
             "What this shows: each character of the real plate above the character the camera read. "
@@ -174,10 +176,13 @@ def render_diff(truth: str, raw: str, repaired: Optional[str]) -> None:
 
 
 def render_distance(read: str, truth: str, cands: List[Any], registry_plates: List[str]) -> None:
+    # PHASE2-REPLACED (simplified GUI, 19 Oct 2026: section leads are one short sentence):
+    # section("How far apart: the right plate against the runner-up",
+    #         "What this shows: every measure scores the read against the real plate and against the closest "
+    #         "wrong plate. A positive margin means that measure prefers the right vehicle; the probability gap "
+    #         "is what the decision is based on.")
     section("How far apart: the right plate against the runner-up",
-            "What this shows: every measure scores the read against the real plate and against the closest "
-            "wrong plate. A positive margin means that measure prefers the right vehicle; the probability gap "
-            "is what the decision is based on.")
+            "A positive margin means that measure prefers the right plate.")
     _, _, tfidf = plate_match.registry_artefacts(sorted(registry_plates))
     wrong = next((c for c in cands if c.plate != truth), None)
     true_c = next((c for c in cands if c.plate == truth), None)
@@ -220,10 +225,13 @@ def render_distance(read: str, truth: str, cands: List[Any], registry_plates: Li
 
 def render_grid(grid: Dict[str, Any]) -> None:
     plate, rows = grid["plate"], grid["rows"]
+    # PHASE2-REPLACED (simplified GUI, 19 Oct 2026: section leads are one short sentence):
+    # section(f"The same plate under every damage level: {plate}",
+    #         "What this shows: all 22 benchmark images of this one car, the raw text EasyOCR read from each "
+    #         "(from data/match_benchmark.csv), and the live match of that read against the registry. OCR is "
+    #         "often wrong; the matcher usually still finds the car, and says REVIEW or REJECT when it cannot.")
     section(f"The same plate under every damage level: {plate}",
-            "What this shows: all 22 benchmark images of this one car, the raw text EasyOCR read from each "
-            "(from data/match_benchmark.csv), and the live match of that read against the registry. OCR is "
-            "often wrong; the matcher usually still finds the car, and says REVIEW or REJECT when it cannot.")
+            "All 22 benchmark images of this car, EasyOCR's raw read of each, and its live match.")
     if not rows:
         st.info(f"{plate} is not one of the 100 benchmark vehicles, so there are no rendered images of it.")
         return
