@@ -135,9 +135,12 @@ def _live() -> None:
 
 
 def render() -> None:
+    # PHASE2-REPLACED (simplified GUI, 19 Oct 2026: section leads are one short sentence):
+    # section("Cleansing validation: noise we injected, and what the rules did with it",
+    #         "What this shows: clean camera records are damaged on purpose in known ways; the rules must detect the "
+    #         "damage and propose the original value. Because the original is known, every number here is checkable.")
     section("Cleansing validation: noise we injected, and what the rules did with it",
-            "What this shows: clean camera records are damaged on purpose in known ways; the rules must detect the "
-            "damage and propose the original value. Because the original is known, every number here is checkable.")
+            "Clean records damaged on purpose in known ways, so every number is checkable.")
     if st.button("Re-run validation live (300 records)", key="dc_val_run"):
         _live()
     live = st.session_state.get("dc_val_live")

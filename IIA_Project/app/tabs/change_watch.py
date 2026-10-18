@@ -111,6 +111,7 @@ def _statements(mod: Any) -> None:
         st.code("\n".join(str(s) for s in stmts), language="sql")
 
 
+# PHASE2-HIDDEN (simplified GUI, 19 Oct 2026): the full before/after table of every column, the corrected plate's registration row and the SQL table; previously called from cleansing_tab.render (now _render_before_simplification), dc_watch panel.
 def render(selected: Optional[str]) -> None:
     section("Watch the data change",
             "What this shows: the camera agency's own row, exactly as its database stores it, before and after "
@@ -159,3 +160,54 @@ def render(selected: Optional[str]) -> None:
         else:
             st.markdown("The row could not be read.")
     _statements(mod)
+
+
+# ------------------------------------------------------------------ phase-2 simplified panel
+
+def _sql_lines(mod: Any, limit: int = 3) -> str:
+    try:
+        stmts = list(mod.last_admin_statements(limit))
+    except Exception as exc:
+        return f"-- the SQL log could not be read: {exc}"
+    lines = []
+    for s in stmts:
+        if isinstance(s, dict):
+            at = str(s.get("at") or "")[:19].replace("T", " ")
+            who = s.get("source_id") or s.get("source") or ""
+            lines.append(f"-- {at} {who}".rstrip() + f"\n{s.get('sql', '')}")
+        else:
+            lines.append(str(s))
+    return "\n".join(lines) or "-- no SQL has been sent to a source by this mediator yet"
+
+
+def render_compact(selected: Optional[str]) -> None:
+    """Only the changed columns before/after the last write, and the SQL sent, in an expander that is
+    open by default only on the run right after an Apply / Undo / Resolve / toolbox write."""
+    mod = audit()
+    if mod is None:
+        st.warning("Not available yet: mediator/change_audit.py could not be loaded.")
+        return
+    snaps: Dict[str, Optional[Dict[str, Any]]] = st.session_state.setdefault(SNAP, {})
+    event = st.session_state.pop(EVENT, None)
+    if event:  # compare with the snapshot taken before the click, then read the row as it is now
+        st.session_state[LAST] = {**event, "before": snaps.get(event["rid"]), "after": _row(mod, event["rid"])}
+    watch = {str(x).strip() for x in (selected, st.session_state.get("dc_tb_mod_id"),
+                                     st.session_state.get("dc_tb_del_id")) if str(x or "").strip()}
+    for rid in watch:  # the snapshot every write is compared with: the row as it is before the click
+        snaps[rid] = _row(mod, rid)
+    last = st.session_state.get(LAST)
+    with st.expander("Watch the data change", expanded=event is not None):
+        if not last:
+            st.markdown("No write yet in this session: Apply, Undo, Resolve or a toolbox edit shows its change here.")
+        else:
+            group_label(f"Capture {last['rid']} — {last['message']} (at {last['at']})")
+            changed = [r for r in diff_rows(last["before"], last["after"]) if r["changed"]]
+            if changed:
+                styled_table([{"Column": r["column"],
+                               "Before": fmt(r["before"]) if last["before"] is not None else "(row did not exist)",
+                               "After": fmt(r["after"]) if last["after"] is not None else "(row deleted)"}
+                              for r in changed])
+            else:
+                st.markdown("No column changed.")
+        group_label("SQL the mediator sent to the source (newest first)")
+        st.code(_sql_lines(mod), language="sql")
