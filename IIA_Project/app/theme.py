@@ -384,6 +384,15 @@ def _primitives() -> str:
 .cv-conf {font-family:var(--cv-font-mono); font-size:0.9rem; color:var(--cv-ink);
   background:var(--cv-ground); border:1px solid var(--cv-line); border-radius:999px;
   padding:2px 10px; margin-left:10px;}
+/* Phase-2 simplified GUI: the "How to use" steps under every page head, and the highlighted
+   best row of the Plate Match results table. */
+.cv-howto {background:var(--cv-panel); border:1px solid var(--cv-line); border-left:4px solid var(--cv-action);
+  border-radius:var(--cv-radius); padding:14px 22px; margin:-12px 0 24px; color:var(--cv-ink);}
+.cv-howto .cv-howto-t {font-weight:700; color:var(--cv-brand); margin:0 0 4px; font-size:1.05rem;}
+.cv-howto ol {margin:0 0 0 20px; padding:0;}
+.cv-howto li {font-size:1.0625rem; line-height:1.6; color:var(--cv-ink);}
+.cv-table tbody tr.cv-best td {background:#E6F4EA; font-weight:600;}
+.cv-table tbody tr.cv-best td:first-child {box-shadow:inset 4px 0 0 var(--cv-ok);}
 """
 
 

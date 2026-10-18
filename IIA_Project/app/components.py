@@ -169,7 +169,20 @@ def what_this_shows(text: str) -> None:
     Added in the phase-2 accessibility pass so an examiner who is not a matching expert can read
     every panel; a separate call, not a second lead, so `section()` keeps one heading + one lead.
     """
-    st.markdown(f'<p class="cv-lead"><strong>What this shows:</strong> {html.escape(text)}</p>',
+    # PHASE2-REPLACED (simplified GUI, 19 Oct 2026: no "What this shows" paragraphs on any page; the
+    # call sites are kept so the sentences can be read in the code, and restored by undoing this line):
+    # st.markdown(f'<p class="cv-lead"><strong>What this shows:</strong> {html.escape(text)}</p>',
+    #             unsafe_allow_html=True)
+    return None
+
+
+def how_to(steps: list[str]) -> None:
+    """The numbered "How to use" list under a page head: at most three short steps.
+
+    Added in the phase-2 simplification so every page says what to do before it shows anything.
+    """
+    items = "".join(f"<li>{html.escape(s)}</li>" for s in steps[:3])
+    st.markdown(f'<div class="cv-howto"><p class="cv-howto-t">How to use</p><ol>{items}</ol></div>',
                 unsafe_allow_html=True)
 
 
