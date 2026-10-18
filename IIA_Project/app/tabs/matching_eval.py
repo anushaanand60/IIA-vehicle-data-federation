@@ -171,8 +171,12 @@ def render() -> None:
     best = winner(sec.get("7", ""), scoring) or {}
     with panel("me_head"):
         section("The decision")
+        # PHASE2-REPLACED (review: the same REVIEW rate is labelled 'Sent to a person (REVIEW)' on How it works; one name
+        # for one number across pages):
+        # kpi_row([("Chosen model", best.get("contender", "—")), ("Top-1, test", best.get("top-1", "—")),
+        #          ("ACCEPT precision", best.get("ACCEPT P", "—")), ("Sent to review", best.get("REVIEW rate", "—"))])
         kpi_row([("Chosen model", best.get("contender", "—")), ("Top-1, test", best.get("top-1", "—")),
-                 ("ACCEPT precision", best.get("ACCEPT P", "—")), ("Sent to review", best.get("REVIEW rate", "—"))])
+                 ("ACCEPT precision", best.get("ACCEPT P", "—")), ("Sent to a person (REVIEW)", best.get("REVIEW rate", "—"))])
         st.markdown(decision_text(sec.get("7", "")) or "The Decision section is missing from the document.")
     with panel("me_scoring"):
         section("Every method compared", "Test split: vehicles never seen in training; the star marks the method in use.")
