@@ -352,17 +352,53 @@ def _table_simple(report: Dict[str, Any]) -> None:
         st.info("Nothing in this view.")
         return
     with st.container(height=320, key="dc_table_scroll"):  # a long list must not push the actions off-screen
+    # PHASE2-REPLACED (review: every row was four lines tall: the fix column repeated 'observed_x flag (R4)' per field and 'Left for a person' repeated the anomaly codes already in the row; now 'flag make, model, colour (R4)' and '3 flagged'):
+    #     styled_table([{"Capture": it["record_id"], "Plate": it["record"].get("plate_number"),
+    #                    "Anomalies": ", ".join(a["code"] for a in it["anomalies"]) or "—",
+    #                    "Proposed fix": "; ".join(f"{f['field']} {f['action']} ({f['rule']})"
+    #                                              for f in it["fixes"] if f["action"] != "keep") or "keep",
+    #                    "Left for a person": ", ".join(it["remaining"]) or "none"} for it in items], max_rows=400)
         styled_table([{"Capture": it["record_id"], "Plate": it["record"].get("plate_number"),
                        "Anomalies": ", ".join(a["code"] for a in it["anomalies"]) or "—",
-                       "Proposed fix": "; ".join(f"{f['field']} {f['action']} ({f['rule']})"
-                                                 for f in it["fixes"] if f["action"] != "keep") or "keep",
-                       "Left for a person": ", ".join(it["remaining"]) or "none"} for it in items], max_rows=400)
+                       "Proposed fix": short_fixes(it["fixes"]),
+                       "Left for a person": short_left(it["dispositions"])} for it in items], max_rows=400)
 
 
 def fix_line(f: Any) -> str:
     """'plate_number: 'DL05CD9B76' → 'DL05CD9876', by rule R5 because ...' -- one line per proposed fix."""
     change = f"{f.before!r} → {f.after!r}" if f.action == "set" else f.action
     return f"**{f.field}**: {change}, by rule **{f.rule}** because {f.because}"
+
+
+def fix_lines(fixes: List[Any]) -> List[str]:
+    """One line per set (its own old -> new); fields with the same non-set action, rule and reason share a line."""
+    out: List[str] = []
+    groups: Dict[tuple, List[str]] = {}
+    for f in fixes:
+        if f.action == "set":
+            out.append(fix_line(f))
+        else:
+            groups.setdefault((f.action, f.rule, f.because), []).append(f.field)
+    out += [f"**{', '.join(fields)}**: {action}, by rule **{rule}** because {because}"
+            for (action, rule, because), fields in groups.items()]
+    return out
+
+
+def short_fixes(fixes: List[Dict[str, Any]]) -> str:
+    """'flag make, model, colour (R4)' -- the table cell for a capture's proposals."""
+    groups: Dict[tuple, List[str]] = {}
+    for f in fixes:
+        if f["action"] != "keep":
+            groups.setdefault((f["action"], f["rule"]), []).append(str(f["field"]).replace("observed_", ""))
+    return "; ".join(f"{a} {', '.join(fs)} ({r})" for (a, r), fs in groups.items()) or "keep"
+
+
+def short_left(dispositions: List[str]) -> str:
+    """'3 flagged' -- how many anomalies wait for a person, by disposition."""
+    counts: Dict[str, int] = {}
+    for d in dispositions:
+        counts[d] = counts.get(d, 0) + 1
+    return ", ".join(f"{n} {d}" for d, n in counts.items()) or "none"
 
 
 def _record_simple(report: Dict[str, Any], actor: str) -> Optional[Dict[str, Any]]:
@@ -380,11 +416,17 @@ def _record_simple(report: Dict[str, Any], actor: str) -> Optional[Dict[str, Any
     r = prop.record
     st.markdown(f"Read as **{r.get('plate_number')}** at {r.get('last_seen_location')}, {r.get('last_seen_time')}: "
                 f"{r.get('observed_make')} {r.get('observed_model')} {r.get('observed_colour')}")
-    chip_strip([chip(a.code, TOKENS["bad"]) for a in prop.anomalies]
-               + [chip(f"{c} · {d}", TOKENS[DISPOSITION_TOKEN[d]]) for c, d in zip(item["remaining"], item["dispositions"])])
+    # PHASE2-REPLACED (review: each anomaly was drawn twice, once bare and once with its disposition):
+    # chip_strip([chip(a.code, TOKENS["bad"]) for a in prop.anomalies]
+    #            + [chip(f"{c} · {d}", TOKENS[DISPOSITION_TOKEN[d]]) for c, d in zip(item["remaining"], item["dispositions"])])
+    left = dict(zip(item["remaining"], item["dispositions"]))
+    chip_strip([chip(f"{a.code} · {left[a.code]}", TOKENS[DISPOSITION_TOKEN[left[a.code]]]) if a.code in left
+                else chip(f"{a.code} · fixed by the rules", TOKENS["ok"]) for a in prop.anomalies])
     if res := item.get("resolution"):
         st.markdown(f"**Resolved:** {res['decision']} by {res['actor']} at {res['at'][:19]} — {res['note'] or 'no note'}")
-    st.markdown("\n".join(f"- {fix_line(f)}" for f in prop.changes) or "No fix proposed: the rules keep this record.")
+    # PHASE2-REPLACED (review: three fields flagged by the same rule printed the same 'because' three times; identical non-set conclusions are now one line naming every field):
+    # st.markdown("\n".join(f"- {fix_line(f)}" for f in prop.changes) or "No fix proposed: the rules keep this record.")
+    st.markdown("\n".join(f"- {line}" for line in fix_lines(prop.changes)) or "No fix proposed: the rules keep this record.")
     if prop.changes:
         with st.expander("Rule path", expanded=False):
             for f in prop.changes:
@@ -456,8 +498,12 @@ def render() -> None:
             _actions_simple(sel, actor)
     with panel("dc_watch"):  # before the toolbox, so its snapshot is taken before a toolbox write
         change_watch.render_compact(sel["rid"] if sel else None)
+    # PHASE2-REPLACED (review: the toolbox's insert form stacked seven fields in one third of the panel (~470 px tall)):
+    # with panel("dc_toolbox"):
+    #     cleansing_toolbox.render(_after_write)
+    # with panel("dc_advanced"):
     with panel("dc_toolbox"):
-        cleansing_toolbox.render(_after_write)
+        cleansing_toolbox.render_compact(_after_write)
     with panel("dc_advanced"):
         with st.expander("Advanced: rule tree, teach a rule, bulk apply, validation", expanded=False):
             _tree()

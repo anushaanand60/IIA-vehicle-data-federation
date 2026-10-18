@@ -104,6 +104,8 @@ def _write(after_write: Callable[[str, Any], None], what: str, action: Callable[
     after_write(f"{what} — sent to CAM: {sql}", capture if capture is not None else result)
 
 
+# PHASE2-HIDDEN (simplified GUI, 19 Oct 2026): the three-column toolbox with the insert form stacked in one column;
+# previously called from cleansing_tab.render (review pass: replaced by render_compact).
 def render(after_write: Callable[[str, Any], None]) -> None:
     # PHASE2-REPLACED (simplified GUI, 19 Oct 2026: section leads are one short sentence):
     # section("Examiner toolbox", "Insert, modify or delete a camera capture in CAM's own database, through its "
@@ -137,6 +139,48 @@ def render(after_write: Callable[[str, Any], None]) -> None:
         rid = st.text_input("Capture id", "", key="dc_tb_mod_id")
         field = st.selectbox("Field", EDITABLE, key="dc_tb_mod_field")
         value = st.text_input("New value", "", key="dc_tb_mod_value")
+        if st.button("Modify", key="dc_tb_modify", disabled=not rid.strip()):
+            _write(after_write, f"Modified {field} of capture {rid.strip()}",
+                   lambda: modify_capture(cam, rid, field, value), capture=rid.strip())
+    with dele:
+        group_label("Delete a capture")
+        did = st.text_input("Capture id", "", key="dc_tb_del_id")
+        if st.button("Delete", key="dc_tb_delete", disabled=not did.strip()):
+            _write(after_write, f"Deleted capture {did.strip()}", lambda: delete_capture(cam, did), capture="")
+
+
+def render_compact(after_write: Callable[[str, Any], None]) -> None:
+    """The same three writes and widget keys as render(); the insert form is laid out in rows."""
+    section("Examiner toolbox", "Insert, modify or delete a camera capture in CAM's own database; the page re-scans after each write.")
+    try:
+        cam = cam_spec()
+        cams = cameras(cam)
+    except Exception as exc:  # a dead camera source disables the toolbox, it does not break the page
+        st.error(f"The camera source cannot be reached: {exc}")
+        return
+    group_label("Insert a capture")
+    a, b, c = st.columns(3)
+    plate = a.text_input("Plate as read", "DL01AB1Z34", key="dc_tb_plate")
+    camera = b.selectbox("Camera", [x["id"] for x in cams], key="dc_tb_camera",
+                         format_func=lambda i: f"{i} — {next(x['location'] for x in cams if x['id'] == i)}")
+    when = c.text_input("Captured at", datetime.now().isoformat(timespec="seconds"), key="dc_tb_time")
+    d, e, f, g = st.columns(4)
+    make = d.text_input("Make", "Maruti Suzuki", key="dc_tb_make")
+    model = e.text_input("Model", "Swift", key="dc_tb_model")
+    colour = f.text_input("Colour", "White", key="dc_tb_colour")
+    conf = g.number_input("OCR confidence", 0.0, 1.0, 0.9, 0.01, key="dc_tb_conf")
+    if st.button("Insert", key="dc_tb_insert", type="primary", disabled=not plate.strip()):
+        _write(after_write, "Inserted a capture", lambda: insert_capture(cam, camera, {
+            "plate_number": plate.strip(), "last_seen_time": when.strip(), "observed_make": make.strip() or None,
+            "observed_model": model.strip() or None, "observed_colour": colour.strip() or None,
+            "ocr_confidence": float(conf)}))
+    mod, dele = st.columns([3, 1])
+    with mod:
+        group_label("Modify one field")
+        m1, m2, m3 = st.columns(3)
+        rid = m1.text_input("Capture id", "", key="dc_tb_mod_id")
+        field = m2.selectbox("Field", EDITABLE, key="dc_tb_mod_field")
+        value = m3.text_input("New value", "", key="dc_tb_mod_value")
         if st.button("Modify", key="dc_tb_modify", disabled=not rid.strip()):
             _write(after_write, f"Modified {field} of capture {rid.strip()}",
                    lambda: modify_capture(cam, rid, field, value), capture=rid.strip())
