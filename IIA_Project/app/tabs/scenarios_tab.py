@@ -29,6 +29,7 @@ import streamlit as st  # noqa: E402
 
 from components import chip, chip_strip, group_label, kpi_row, page_head, panel, section, stepper, styled_table  # noqa: E402
 from theme import TOKENS  # noqa: E402
+from components import how_to  # noqa: E402  (phase-2 simplified GUI)
 
 STATE = "sc2_results"
 # The backend tags each scenario "1", "2" or "1+2"; the page groups by rubric in this order.
@@ -143,6 +144,7 @@ def restore_state(res: Dict[str, Any]) -> str:
     return "data NOT restored" if changed else "changed no data"
 
 
+# PHASE2-HIDDEN (simplified GUI, 19 Oct 2026): a result drawn open: chips, expected/actual table, step list, data expander; previously called from _scenario.
 def _result(key: str, res: Dict[str, Any]) -> None:
     state = restore_state(res)
     chip_strip([_chip(res), chip(f"{float(res.get('elapsed_ms') or 0):,.0f} ms", TOKENS["info"]),
@@ -158,6 +160,7 @@ def _result(key: str, res: Dict[str, Any]) -> None:
             _data(key, res.get("data"))
 
 
+# PHASE2-HIDDEN (simplified GUI, 19 Oct 2026): one scenario as heading + chips + 'What it does / Why it matters' prose + open result; previously called from render() (now _render_before_simplification).
 def _scenario(mod: Any, key: str, spec: Dict[str, Any], results: Dict[str, Any]) -> None:
     res = results.get(key)
     head, button = st.columns([5, 1])
@@ -174,7 +177,8 @@ def _scenario(mod: Any, key: str, spec: Dict[str, Any], results: Dict[str, Any])
     st.markdown("<hr style='border:none;border-top:1px solid var(--cv-line);margin:18px 0;'>", unsafe_allow_html=True)
 
 
-def render() -> None:
+# PHASE2-HIDDEN (simplified GUI, 19 Oct 2026): the whole previous page: the summary panel and one panel per rubric with every scenario open; previously called from app/app.py as scenarios_tab.render.
+def _render_before_simplification() -> None:
     page_head("Test scenarios", "Stress tests an examiner would try, one click each: clean and damaged images, "
               "unregistered and look-alike plates, inserted, modified and deleted records, a source going down.")
     mod = backend()
@@ -216,3 +220,96 @@ def render() -> None:
             section(rubric, f"What this shows: {len(keys)} scenario(s) for this rubric; {passed} passed in this session.")
             for key in keys:
                 _scenario(mod, key, catalogue[key], results)
+
+
+# ------------------------------------------------------------------ phase-2 simplified page
+
+# Group names shown on the page (the backend's "1" / "2" / "1+2" tags; the old RUBRICS names stay above).
+GROUPS = {"1": "Plate matching", "2": "Cleansing camera records", "1+2": "Matching and cleansing together"}
+# "title — what it checks": one short sentence per scenario; the backend's own `why` is the fallback.
+CHECKS = {
+    "clean_image": "a clean photo must end in an ACCEPT of the right car.",
+    "ocr_zero_o": "the commonest OCR error (0 read as O) must cost almost nothing.",
+    "ocr_b8": "camera make and colour turn a REVIEW into a safe ACCEPT.",
+    "two_errors_rotated": "a read with two OCR errors must still find the right car.",
+    "unreadable_image": "a bad image gives REVIEW or REJECT, never a confident wrong ACCEPT.",
+    "unregistered_plate": "a plate nobody registered must be REJECTed.",
+    "ambiguous_twins": "two equally good registrations must go to a person (REVIEW).",
+    "context_breaks_tie": "camera make and colour pick the right twin.",
+    "reverse_search": "a registration finds its exact and misread camera captures.",
+    "examiner_insert_dirty": "an inserted dirty capture is detected, fixed and undone live.",
+    "examiner_modify_conflict": "a colour that contradicts the registration is flagged, not overwritten.",
+    "examiner_delete": "a deleted capture disappears from the next check.",
+    "misread_plate_cleansed": "a misread plate is corrected only on the matcher's ACCEPT.",
+    "source_down_refusal": "with the insurance source down the system refuses to decide.",
+    "batch_stress": "ACCEPT precision >= 0.98 and p95 latency < 200 ms on many reads.",
+    "rdr_teach_refusal": "a rule that would break a cornerstone case is refused.",
+}
+
+
+def group_name(tag: Any) -> str:
+    return GROUPS.get(str(tag), str(tag or "Other"))
+
+
+def _scenario_line(mod: Any, key: str, spec: Dict[str, Any], results: Dict[str, Any]) -> None:
+    res = results.get(key)
+    head, button = st.columns([6, 1])
+    with head:
+        st.markdown(f"**{spec.get('title', key)}** — {CHECKS.get(key) or spec.get('why') or spec.get('what', '')}")
+    if button.button("Run", key=f"sc2_run_{key}", width="stretch"):
+        with st.spinner(f"Running {spec.get('title', key)} live…"):
+            results[key] = run_one(mod, key)
+        res = results[key]
+    if res is None:
+        chip_strip([_chip(None)])
+    else:
+        state = restore_state(res)
+        chip_strip([_chip(res), chip(f"{float(res.get('elapsed_ms') or 0):,.0f} ms", TOKENS["info"]),
+                    chip(state, TOKENS["bad"] if state == "data NOT restored" else TOKENS["ok"])])
+        with st.expander("Details: expected vs actual, steps, data", expanded=False):
+            styled_table([{"Expected": res.get("expected"), "Actual": res.get("actual")}])
+            if res.get("steps"):
+                stepper(_steps(res["steps"]))
+            _data(key, res.get("data"))
+    st.markdown("<hr style='border:none;border-top:1px solid var(--cv-line);margin:12px 0;'>", unsafe_allow_html=True)
+
+
+def render() -> None:
+    page_head("Test scenarios", "One-click stress tests of the matcher and the cleanser; each restores any data it changed.")
+    how_to(["Press Run all scenarios (or Run on one line).", "Read the PASS / FAIL chip on each line.",
+            "Open Details to see the steps and the data."])
+    mod = backend()
+    if mod is None or not hasattr(mod, "SCENARIOS") or not hasattr(mod, "run_scenario"):
+        with panel("sc2_missing"):
+            section("Scenarios are not available yet")
+            st.warning(f"Not available yet: {st.session_state.get('sc2_import_error', 'SCENARIOS or run_scenario missing')}.")
+        return
+    results: Dict[str, Any] = st.session_state.setdefault(STATE, {})
+    catalogue: Dict[str, Dict[str, Any]] = dict(mod.SCENARIOS)
+    with panel("sc2_summary"):
+        c1, c2 = st.columns([1, 1])
+        if c1.button("Run all scenarios", key="sc2_run_all", type="primary", width="stretch"):
+            bar = st.progress(0.0, text="Starting…")
+            for i, key in enumerate(catalogue, 1):
+                bar.progress((i - 1) / len(catalogue), text=f"Running {catalogue[key].get('title', key)} ({i} of {len(catalogue)})")
+                results[key] = run_one(mod, key)
+            bar.progress(1.0, text="All scenarios finished.")
+            st.rerun()  # the KPI row below was drawn before the run; redraw it with the results
+        if c2.button("Clear results", key="sc2_clear", width="stretch"):
+            results.clear()
+        done = [results[k] for k in catalogue if k in results]
+        kpi_row([("Scenarios", len(catalogue)), ("Run", len(done)), ("Passed", sum(1 for r in done if r["passed"])),
+                 ("Failed", sum(1 for r in done if r["passed"] is False)),
+                 ("Skipped", sum(1 for r in done if r["passed"] is None)),
+                 ("Total time", f"{sum(r.get('elapsed_ms') or 0 for r in done) / 1000:.1f} s")])
+    groups: Dict[str, List[str]] = {}
+    order = list(GROUPS)
+    for key, spec in sorted(catalogue.items(), key=lambda kv: order.index(str(kv[1].get("rubric")))
+                            if str(kv[1].get("rubric")) in order else len(order)):
+        groups.setdefault(group_name(spec.get("rubric")), []).append(key)
+    for i, (name, keys) in enumerate(groups.items()):
+        with panel(f"sc2_group_{i}"):
+            passed = sum(1 for k in keys if results.get(k, {}).get("passed"))
+            section(name, f"{passed} of {len(keys)} passed in this session.")
+            for key in keys:
+                _scenario_line(mod, key, catalogue[key], results)
