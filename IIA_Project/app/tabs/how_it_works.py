@@ -269,11 +269,25 @@ def _combo_box(f: Dict[str, Optional[str]]) -> None:
     if not f.get("winner"):
         st.warning("docs/MATCHING_EVALUATION.md could not be parsed; run python scripts/evaluate_matching.py.")
         return
+    # PHASE2-REPLACED (review: the single-measure name broke mid-word in its tile ('learned_ocr_similarit y'); the gain printed '+0.046' as a cost and disagreed with the 0.045 the Matching Evaluation page quotes from the same document (the table difference of rounded values vs the document's own figure)):
+    # kpi_row([("Combiner", f["winner"]), ("Right car ranked first (top-1)", f["top1"]),
+    #          ("ACCEPT precision", f["acc_p"]), ("Sent to a person (REVIEW)", f["review"]),
+    #          (f"Best single measure: {f['single']}", f["single_top1"])])
+    # st.markdown(f"**Ablation:** camera context is the biggest gain -- removing it (`{f['gain_variant']}`) "
+    #             f"costs the combiner {f['gain']} top-1.")
     kpi_row([("Combiner", f["winner"]), ("Right car ranked first (top-1)", f["top1"]),
              ("ACCEPT precision", f["acc_p"]), ("Sent to a person (REVIEW)", f["review"]),
-             (f"Best single measure: {f['single']}", f["single_top1"])])
+             (f"Best single measure ({str(f['single']).replace('_', ' ')})", f["single_top1"])])
+    worth = doc_gain(DOC.read_text(encoding="utf-8")) if DOC.exists() else None
     st.markdown(f"**Ablation:** camera context is the biggest gain -- removing it (`{f['gain_variant']}`) "
-                f"costs the combiner {f['gain']} top-1.")
+                f"costs the combiner {worth or str(f['gain']).lstrip('+')} top-1.")
+
+
+def doc_gain(text: str) -> Optional[str]:
+    """The camera-context worth exactly as the document's Decision section states it ('0.045')."""
+    import re
+    m = re.search(r"camera's make, model and colour are worth \+?([0-9.]+)", text)
+    return m.group(1) if m else None
 
 
 def render() -> None:
