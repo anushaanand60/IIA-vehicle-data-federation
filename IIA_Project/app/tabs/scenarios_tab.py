@@ -252,20 +252,37 @@ def group_name(tag: Any) -> str:
 
 
 def _scenario_line(mod: Any, key: str, spec: Dict[str, Any], results: Dict[str, Any]) -> None:
+    # PHASE2-REPLACED (review: after a single Run the summary KPIs and the group's 'n of m passed' line were drawn before the click and showed the old count (2 run, page said 1); the status chips took their own line under every scenario, ~35 px x 16):
+    # res = results.get(key)
+    # head, button = st.columns([6, 1])
+    # with head:
+    #     st.markdown(f"**{spec.get('title', key)}** — {CHECKS.get(key) or spec.get('why') or spec.get('what', '')}")
+    # if button.button("Run", key=f"sc2_run_{key}", width="stretch"):
+    #     with st.spinner(f"Running {spec.get('title', key)} live…"):
+    #         results[key] = run_one(mod, key)
+    #     res = results[key]
+    # if res is None:
+    #     chip_strip([_chip(None)])
+    # else:
+    #     state = restore_state(res)
+    #     chip_strip([_chip(res), chip(f"{float(res.get('elapsed_ms') or 0):,.0f} ms", TOKENS["info"]),
+    #                 chip(state, TOKENS["bad"] if state == "data NOT restored" else TOKENS["ok"])])
+    #     with st.expander("Details: expected vs actual, steps, data", expanded=False):
     res = results.get(key)
     head, button = st.columns([6, 1])
-    with head:
-        st.markdown(f"**{spec.get('title', key)}** — {CHECKS.get(key) or spec.get('why') or spec.get('what', '')}")
     if button.button("Run", key=f"sc2_run_{key}", width="stretch"):
         with st.spinner(f"Running {spec.get('title', key)} live…"):
             results[key] = run_one(mod, key)
-        res = results[key]
-    if res is None:
-        chip_strip([_chip(None)])
-    else:
+        st.rerun()  # the summary KPIs and the group's "passed" line were drawn before this click
+    chips = [_chip(res)]
+    if res is not None:
         state = restore_state(res)
-        chip_strip([_chip(res), chip(f"{float(res.get('elapsed_ms') or 0):,.0f} ms", TOKENS["info"]),
-                    chip(state, TOKENS["bad"] if state == "data NOT restored" else TOKENS["ok"])])
+        chips += [chip(f"{float(res.get('elapsed_ms') or 0):,.0f} ms", TOKENS["info"]),
+                  chip(state, TOKENS["bad"] if state == "data NOT restored" else TOKENS["ok"])]
+    with head:  # status chips on the same line as "title — what it checks"
+        st.markdown(f"{''.join(chips)} &nbsp;**{spec.get('title', key)}** — "
+                    f"{CHECKS.get(key) or spec.get('why') or spec.get('what', '')}", unsafe_allow_html=True)
+    if res is not None:
         with st.expander("Details: expected vs actual, steps, data", expanded=False):
             styled_table([{"Expected": res.get("expected"), "Actual": res.get("actual")}])
             if res.get("steps"):
