@@ -14,8 +14,21 @@ A reference for the viva: where every phase-2 change is, and how to show it. Has
 | one commit in full (message + diff) | `git show <commit>` e.g. `git show 498d6b4` |
 | the whole phase-2 diff of one file | `git diff ee797b2 HEAD -- <file>` |
 | a file as it was before phase 2 | `git show ee797b2:IIA_Project/<file>` |
-| every inline marker of replaced / hidden code | `Select-String -Path app\tabs\*.py,mediator\*.py -Pattern "PHASE2-REPLACED\|PHASE2-HIDDEN"` (bash: `grep -n "PHASE2-REPLACED\|PHASE2-HIDDEN" app/tabs/*.py mediator/*.py`) |
-| markers in the pre-existing files too | add `app\app.py,app\components.py,app\theme.py,sources\*.py,tests\*.py` to `-Path` |
+| every inline marker of replaced / hidden code | the copy-paste block below |
+
+The marker searches are kept out of the table because a `|` inside a table cell needs a backslash,
+which then gets copied into the shell:
+
+```powershell
+# phase-2 modules and pages
+Select-String -Path app\tabs\*.py,mediator\*.py -Pattern "PHASE2-REPLACED|PHASE2-HIDDEN"
+# the pre-existing (phase-1) files as well
+Select-String -Path app\app.py,app\components.py,app\theme.py,sources\*.py,tests\*.py -Pattern "PHASE2-REPLACED|PHASE2-HIDDEN"
+```
+
+```bash
+grep -n "PHASE2-REPLACED\|PHASE2-HIDDEN" app/tabs/*.py mediator/*.py app/*.py sources/*.py tests/*.py
+```
 
 Marker meanings:
 
