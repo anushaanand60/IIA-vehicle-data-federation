@@ -15,7 +15,8 @@ RULE_WORDS: Dict[str, Tuple[str, str]] = {  # rule id -> (if, then)
     "R2": ("that standardised guess contradicts the registration", "do not guess, send it to a person"),
     "R3": ("a make, model or colour no dictionary knows (Maruthi)", "use the registered value"),
     "R4": ("the camera saw a different make, model or colour than registered, or the plate was in two "
-           "places at once", "flag it as clone evidence and never overwrite it"),
+           "places at once (a trip faster than 160 km/h even if the camera clocks are 10 minutes apart)",
+           "flag it as clone evidence and never overwrite it"),
     "R5": ("the plate is not registered and the matcher ACCEPTs one registered plate",
            "correct the plate to that registered plate"),
     "R12": ("the matcher's plate is registered with a different colour or model than the camera saw",

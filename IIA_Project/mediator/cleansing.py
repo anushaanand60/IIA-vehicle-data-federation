@@ -43,6 +43,7 @@ from mediator.transforms import get_transform, norm_plate
 ROOT = Path(__file__).resolve().parents[1]
 RULES_PATH = ROOT / "data" / "rdr_rules.json"
 CONFIDENCE_FLOOR = 0.70  # benchmark: exact-read rate <= 32 % below 0.70, >= 42 % above it
+CLOCK_TOLERANCE_MIN = 10.0  # camera clocks may disagree by this much: travel is impossible only beyond it
 PLATE, TIME, CONF, LOC = "plate_number", "last_seen_time", "ocr_confidence", "last_seen_location"
 TEXT_FIELDS = {"observed_make": ("make", "vehicle_make"), "observed_model": ("model", "vehicle_model"),
                "observed_colour": ("colour", "vehicle_colour")}
@@ -258,7 +259,10 @@ def _travel(record: Dict[str, Any], ctx: Context) -> List[Dict[str, Any]]:
     sightings = [{"location": s.get(LOC), "lat": s.get("camera_lat"), "lon": s.get("camera_lon"),
                   "at": s.get(TIME)} for s in siblings]
     mine = (record.get(LOC), str(record.get(TIME)))
-    return [leg.__dict__ for leg in travel_check.impossible_legs(sightings)
+    # PHASE2-REPLACED (clock-skew tolerance: two camera clocks a few minutes apart could fake an impossible trip):
+    # return [leg.__dict__ for leg in travel_check.impossible_legs(sightings)
+    #         if (leg.from_loc, leg.from_at) == mine or (leg.to_loc, leg.to_at) == mine]
+    return [leg.__dict__ for leg in travel_check.impossible_legs(sightings, clock_tolerance_min=CLOCK_TOLERANCE_MIN)
             if (leg.from_loc, leg.from_at) == mine or (leg.to_loc, leg.to_at) == mine]
 
 

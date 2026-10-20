@@ -63,18 +63,32 @@ def _placed(sighting: Dict[str, Any]) -> bool:
     return sighting.get("lat") is not None and sighting.get("lon") is not None
 
 
-def legs(sightings: List[Dict[str, Any]], plausible_kmh: float = PLAUSIBLE_KMH) -> List[Leg]:
-    """Consecutive pairs of locatable, timestamped sightings, oldest first."""
+# PHASE2-REPLACED (clock-skew tolerance: two cameras whose clocks disagree by a few minutes made a legal trip
+# look impossible; the tolerance is optional and 0 by default, so Challan Guard's phase-1 behaviour is unchanged):
+# def legs(sightings: List[Dict[str, Any]], plausible_kmh: float = PLAUSIBLE_KMH) -> List[Leg]:
+#     """Consecutive pairs of locatable, timestamped sightings, oldest first."""
+#     ...
+#         if minutes <= 0:  # same instant: no elapsed time, so no speed can be implied
+#             continue
+#         km = haversine_km(a["lat"], a["lon"], b["lat"], b["lon"])
+#         kmh = km / (minutes / 60.0)
+def legs(sightings: List[Dict[str, Any]], plausible_kmh: float = PLAUSIBLE_KMH,
+         clock_tolerance_min: float = 0.0) -> List[Leg]:
+    """Consecutive pairs of locatable, timestamped sightings, oldest first.
+
+    `clock_tolerance_min` gives the trip that much extra time, the most two camera clocks are assumed to
+    disagree by: a leg is impossible only if it would be impossible even with every clock off by that much.
+    With a tolerance, a same-instant pair at two distant cameras is judged too (it was skipped before)."""
     usable = [(m, s) for s in (sightings or [])
               if _placed(s) and (m := _moment(s.get("at"))) is not None]
     usable.sort(key=lambda pair: pair[0])
     out: List[Leg] = []
     for (t0, a), (t1, b) in zip(usable, usable[1:]):
         minutes = (t1 - t0).total_seconds() / 60.0
-        if minutes <= 0:  # same instant: no elapsed time, so no speed can be implied
+        if minutes + clock_tolerance_min <= 0:  # same instant, no tolerance: no speed can be implied
             continue
         km = haversine_km(a["lat"], a["lon"], b["lat"], b["lon"])
-        kmh = km / (minutes / 60.0)
+        kmh = km / ((minutes + clock_tolerance_min) / 60.0)
         out.append(Leg(from_loc=str(a.get("location") or "unknown"),
                        to_loc=str(b.get("location") or "unknown"),
                        from_at=str(a.get("at")), to_at=str(b.get("at")),
@@ -84,5 +98,5 @@ def legs(sightings: List[Dict[str, Any]], plausible_kmh: float = PLAUSIBLE_KMH) 
 
 
 def impossible_legs(sightings: List[Dict[str, Any]],
-                    plausible_kmh: float = PLAUSIBLE_KMH) -> List[Leg]:
-    return [leg for leg in legs(sightings, plausible_kmh) if leg.impossible]
+                    plausible_kmh: float = PLAUSIBLE_KMH, clock_tolerance_min: float = 0.0) -> List[Leg]:
+    return [leg for leg in legs(sightings, plausible_kmh, clock_tolerance_min) if leg.impossible]

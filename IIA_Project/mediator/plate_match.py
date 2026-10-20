@@ -41,6 +41,12 @@ PREFILTER = 100        # Jaccard (8 us a pair) cuts a wide candidate set to this
 SHORTLIST = 30         # ... then the confusion-weighted distance (120 us) keeps this many
 DEFAULT_MAX_EDITS = 2  # used only when no model bundle records the validated value
 ACCEPT_MARGIN = 0.10   # the winner must clear the runner-up by this much, else a human looks
+# Two or more of make / model / colour contradicting the winner's registration hold an ACCEPT at REVIEW:
+# the plate is identified, the vehicle is not (a clone, or the wrong car). Measured on the held-out test
+# vehicles (docs/CONTEXT_VETO.md): auto-accepted clones 65 % -> 13 %, ACCEPT recall 0.869 -> 0.785, precision 0.997.
+# One contradiction alone does not veto: cameras misjudge colour (recall would fall to 0.417).
+CONTEXT_VETO = 2
+CONTEXT_KEYS = ("make_agree", "model_agree", "colour_agree")
 FALLBACK_THRESHOLDS = {"accept": 0.90, "reject": 0.50}  # uncalibrated: only without a bundle
 
 STRING_FEATURES: List[str] = list(ALL_MEASURES) + [
@@ -271,7 +277,19 @@ def decide(ranked: List[Candidate], th: Dict[str, float]) -> None:
     """ACCEPT only the top candidate, only above the precision threshold and clear of the rest."""
     second = ranked[1].probability if len(ranked) > 1 else 0.0
     for i, c in enumerate(ranked):
+        # PHASE2-REPLACED (context veto: an exact read of DL01AB0118 seen as a red Honda City was ACCEPTed for a
+        # registered black Maruti Baleno at 0.948, because an exact string outweighs the context features):
+        # if i == 0 and c.probability >= th["accept"] and c.probability - second >= ACCEPT_MARGIN:
+        #     c.decision = "ACCEPT"
+        #     c.reasons.append(f"p={c.probability:.3f} >= accept threshold {th['accept']:.3f}, "
+        #                      f"{c.probability - second:.3f} clear of the runner-up")
+        contradicted = [k.split("_")[0] for k in CONTEXT_KEYS if c.features.get(k) == -1.0]
         if i == 0 and c.probability >= th["accept"] and c.probability - second >= ACCEPT_MARGIN:
+            if len(contradicted) >= CONTEXT_VETO:
+                c.decision = "REVIEW"
+                c.reasons.append(f"p={c.probability:.3f} would ACCEPT the plate, but the camera's "
+                                 f"{', '.join(contradicted)} contradict its registration: possible clone; needs an operator")
+                continue
             c.decision = "ACCEPT"
             c.reasons.append(f"p={c.probability:.3f} >= accept threshold {th['accept']:.3f}, "
                              f"{c.probability - second:.3f} clear of the runner-up")
