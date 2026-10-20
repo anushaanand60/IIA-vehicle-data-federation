@@ -35,13 +35,24 @@ def test_anomaly_codes_read_as_words():
 
 
 def test_suggestion_fits_the_open_issue():
-    cands = [{"plate": "DL05CD9876", "probability": 0.93}]
+    cands = [{"plate": "DL05CD9876", "probability": 0.43, "decision": "REVIEW"}]
+    rejected = [{"plate": "DL01EF0581", "probability": 0.002, "decision": "REJECT"}]
     assert words.suggest(["MAKE_DISAGREES_REGISTRATION"], [])[0] == "confirm_clone"
     assert words.suggest(["PLATE_NOT_REGISTERED"], cands)[0] == "accept_candidate"
-    assert words.suggest(["PLATE_NOT_REGISTERED"], [])[0] == "delete_record"
+    assert words.suggest(["PLATE_NOT_REGISTERED"], rejected)[0] == "dismiss"        # new or out-of-state car
+    assert words.suggest(["PLATE_NOT_REGISTERED", "PLATE_SHAPE_INVALID"], rejected)[0] == "delete_record"
     assert words.suggest(["DUPLICATE_CAPTURE"], [])[0] == "delete_record"
     assert words.suggest(["LOW_OCR_CONFIDENCE"], [])[0] == "dismiss"
     assert words.suggest([], cands) is None
+
+
+def test_out_of_state_and_bharat_plates_pass_the_format_check():
+    from mediator import lexicons
+    lx = lexicons.build([{"plate_number": p} for p in ("DL01AB1234", "DL05CD9876", "UP16AB0405", "HR26EF4455")])
+    assert lx.plate_features("KA03MX5810")["shape_valid"]
+    assert lx.plate_features("22BH1234AA")["shape_valid"]
+    assert not lx.plate_features("ZZ01AB1234")["shape_valid"]
+    assert not lx.plate_features("DL05CD9B76")["shape_valid"]
 
 
 def test_compare_rows_shows_the_registration_next_to_the_camera():
