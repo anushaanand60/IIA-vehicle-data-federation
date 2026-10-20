@@ -179,3 +179,28 @@ could change camera records only, while the examiner's insert / modify / delete 
 
 The rule tree `data/rdr_rules.json` and its `because` texts are unchanged; the page shows the plain
 words keyed by rule id instead.
+
+---
+
+## 6. Examiner feedback round (20 Oct 2026, evening)
+
+| File | Change |
+|---|---|
+| `mediator/plate_match.py` | **context veto** (`CONTEXT_VETO = 2`): an ACCEPT whose make, model or colour contradict the registration on two or more attributes is held at REVIEW as a possible clone. Measured in `docs/CONTEXT_VETO.md` (`scripts/evaluate_context_veto.py`, new): clones auto-accepted 65 % → 13 %, ACCEPT recall 0.869 → 0.785, precision 0.997 unchanged. Old `decide` lines kept as PHASE2-REPLACED |
+| `mediator/travel_check.py` (phase 1) | optional `clock_tolerance_min` (default 0, so Challan Guard is unchanged); with a tolerance, same-instant sightings at two distant cameras are judged too. PHASE2-REPLACED |
+| `mediator/cleansing.py` | `CLOCK_TOLERANCE_MIN = 10`: impossible travel only if impossible even with camera clocks 10 minutes apart. PHASE2-REPLACED |
+| `mediator/lexicons.py` | official state / UT codes and the Bharat (BH) series in the plate format check, so a valid out-of-state plate is no longer "breaks the format". PHASE2-REPLACED |
+| `app/tabs/cleansing_words.py`, `cleansing_tab.py`, `plate_match_lab.py`, `examiner_toolbox.py` | suggestions never offer a REJECTed candidate, name the R12 veto, keep (never delete) a valid unregistered plate or a close read seen as another car; Apply disabled when nothing is written; Resolve hidden when nothing is open; reverse table lists only this car's reads, with the pattern-repaired read and the make/colour check; toolbox insert defaults match DL01AB1234's registration |
+| `tests/test_context_veto_and_clock.py` (new), `tests/test_examiner_toolbox.py` | tests for all of the above |
+| `docs/ai/PROMPTS_PHASE2.md` | regenerated: all 36 phase-2 prompts (student prompts and sub-agent task prompts), emails and passwords redacted |
+
+### Every file changed in phase 2 (`git diff --name-status ee797b2 HEAD`, screenshots omitted)
+
+New (A) or modified (M). Modified phase-1 files keep the replaced lines as PHASE2-REPLACED comments.
+
+- **Matching (rubric 1):** A `mediator/similarity.py`, `blocking.py`, `confusion.py`, `plate_match.py`; A `scripts/make_plate_images.py`, `run_ocr_benchmark.py`, `evaluate_matching.py`, `evaluate_context_veto.py`, `match_plate.py`; A `data/match_benchmark.csv`, `match_model.joblib`, `confusion_costs.json`, `plate_images/manifest.csv`; M `mediator/matcher.py`
+- **Cleansing (rubric 2):** A `mediator/rdr.py`, `lexicons.py`, `cleansing.py`, `cleansing_validation.py`, `change_audit.py`, `scenarios.py`; A `scripts/cleanse.py`, `validate_cleansing.py`, `add_colour_veto_rule.py`; A `data/rdr_rules.json`, `cleansing_validation.json`; M `mediator/travel_check.py`
+- **GUI:** A `app/tabs/how_it_works.py`, `plate_match_lab.py`, `plate_separation.py`, `matching_eval.py`, `cleansing_tab.py`, `cleansing_toolbox.py`, `cleansing_words.py`, `cleansing_validation_panel.py`, `change_watch.py`, `examiner_toolbox.py`, `scenarios_tab.py`, `source_status.py`; M `app/app.py`, `components.py`, `theme.py`
+- **Infrastructure:** M `sources/server_manager.py`, `requirements.txt`, `.gitignore`
+- **Tests:** A `test_similarity`, `test_blocking`, `test_confusion`, `test_plate_images`, `test_plate_match`, `test_match_plate_cli`, `test_rdr`, `test_cleansing`, `test_cleansing_validation`, `test_cleansing_tab`, `test_change_audit`, `test_scenarios`, `test_plate_match_lab`, `test_matching_eval_tab`, `test_gui_refinement`, `test_server_manager_heal`, `test_examiner_toolbox`, `test_context_veto_and_clock`; M `tests/conftest.py`, `test_query_log.py`, `test_self_check.py`, `test_tabs_render.py`
+- **Docs:** A `docs/MATCHING_EVALUATION.md`, `CONTEXT_VETO.md`, `BENCHMARK_NOISE.md`, `CLEANSING_VALIDATION.md`, `AI_CHANGES_PHASE2.md`, `CHANGELOG_PHASE2.md`, `PHASE2_GUIDE.md`, `ai/PROMPTS_PHASE2.md`, `ai/2026-09-17-191510-ai-interactions.txt`

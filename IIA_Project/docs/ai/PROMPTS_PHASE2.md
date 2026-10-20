@@ -381,3 +381,210 @@ Noise type `plate_misread_double`: noisy read `UP16ABO524` (truth `UP16AB0521`) 
 - Do not edit app/ (another agent is working there), mediator/plate_match.py, or mediator/meta.db's SOURCE_CATALOG.
 - No `Co-Authored-By` or any trailer. Do not push.
 Final report (<=200 words): commits, the new rule (id, condition, conclusion, cornerstone), before/after validation table, real-scan proposal counts before/after, tests run.
+
+### Prompt 19 — 2026-10-18 19:06 UTC — student
+
+```text
+OK NOW THE GUI IS EVEN MORE COMPLICATED TEXT AND EXPLANATIONS BOGGING AND HOGGING THE PAGE, WE DONT NEED THE WHOLE HOW IT WORKS THING, IF ANYTHING KEEP IT AS SHORT AS POSSIBLE, KEEP THE TWO IMAGES AND COMBINATIONS BUT DELETEL THE METHOD AND ITS SLIDE AND GLOSSARY THINGS, IN PLATE MATCH TOO, MAKE IT CONCISE, FINE WE UPLOAD AN IMAGE, WE GET AN OCR SCORE, WHAT IS THE RAW READ IS IT EASYOCR? WHAT IS BEST REPARIED GUESS IS IT AFTER THE LOGISTIC REGRESSION HAS BEEN APLLIED,  DROP THE BLOCKING FUNNEL ALL THE PAGES ARE SO FILLED WITH INFORMATION, KEEP IT LIMITED TO THE FUNCTIONALITES THAT ARE SPECIFIED IN THE RUBRICS, SIMPLE CONCISE INSTRCUTIONS ON HOW TO RUN THEM, THEN REVERESE HOW IS THAT SUPPOSED TO WORK, DATA CLEANSING IS AGAIN VERY CROWDED WITH WHAT I REQUIRE IS THE FUNCTIONALITY SIMPLE HOW IT WORKS, HOW TO USE IT THATS IT, AND TELL ME HERE NOT IN THE WEBSITE HOW IT MAPS TO THE RUBRICS, GIVE ME EASY EXPLANATION FOR TEST SCENARIOS PAGE I LIKE IT ITS WHAT I WANT, MAKE SURE ALL CHANGES ARE COMMENTED OR THERES A CHANGLOG FOR ME TO SEE CHANGES IN DIFFERENT CODES AS I NEED TO SHOW CODE CHANGES
+```
+
+### Prompt 20 — 2026-10-18 19:08 UTC — sub-agent task
+
+**Task given to a coding sub-agent** (Simplify GUI and write changelog, model opus):
+
+Repo: C:\Users\siddh_ygv5bws\IIA-vehicle-data-federation\IIA_Project (git, main). Phase-2 evaluation is in class on 21-23 Oct. The student says the GUI is now far too crowded: walls of text and explanation hog the pages. They want each page cut down to the functionality the rubric needs, with short "how to use" steps. Read the current pages first: `app/tabs/how_it_works.py`, `app/tabs/plate_match_lab.py`, `app/tabs/cleansing_tab.py`, `app/tabs/matching_eval.py`, `app/tabs/scenarios_tab.py`, `app/app.py`, `app/components.py`, `app/theme.py`; and look at `docs/screenshots/how-it-works.png`, `plate-match-separation.png`, `cleansing.png`, `cleansing-validation.png`, `scenarios.png` with the Read tool to see the current clutter.
+
+## Hard rule: nothing is deleted
+The student must be able to show every code change. Code you remove from a page must stay in the file: move it into a function that is no longer called (or keep it under an `if False:` only if a function is impossible), headed by
+`# PHASE2-HIDDEN (simplified GUI, 19 Oct 2026): <what it rendered>; previously called from <where>.`
+Lines you replace in place stay as comments above the new line with `# PHASE2-REPLACED (<reason>):`. Pure additions need nothing.
+
+## Per page (no mention of rubrics anywhere on the website)
+Every page starts with its title, ONE sentence of purpose, and a numbered "How to use" list of at most 3 short steps. No other prose blocks; no "What this shows" paragraphs (hide the ones the previous round added, per the rule above). Section leads at most one short sentence.
+
+1. **How it works** — keep ONLY: the two Graphviz diagrams (matching pipeline; cleansing loop) and a compact "Combination we use" box: the winning combiner and its key numbers parsed from docs/MATCHING_EVALUATION.md (top-1, ACCEPT precision, REVIEW rate, best single measure) plus the one-line ablation conclusion (context is the biggest gain). Hide: the method/slide table, the glossary, the "where to see it" list, the long numbered explanation.
+2. **Plate Match** — the flow is: give a plate (upload an image / pick a benchmark image / type a read) -> see what OCR read -> see the matches. Layout:
+   - Input (keep the three options; benchmark picker shows the true plate so the result can be checked).
+   - "What OCR read": the **EasyOCR read** (label it exactly "EasyOCR read (raw)") with its confidence, and the **"Pattern-repaired read"** with a one-line help tooltip: "Letters and digits swapped where the Indian plate pattern requires (O→0, I→1, B→8, S→5, Z→2, G→6). Done before matching; not the learned model." Radio: match on raw or repaired. Keep a compact character-by-character comparison against the true plate when it is known (one row each: true / OCR / repaired), because it shows the noise at a glance.
+   - "Matches": one table — rank, registered plate, probability, decision chip (ACCEPT/REVIEW/REJECT), make agrees, colour agrees, registered as. Highlight the top row; one line under it: "<plate> — <decision> (p=…), next best p=…".
+   - Put the per-measure score table, the probability chart, the separation margins, and the 22-damage-level image grid inside ONE collapsed `st.expander("Details: every measure's score and the same plate under every damage level", expanded=False)`.
+   - **Hide the blocking funnel entirely** (and the max-errors selector) per the rule above.
+   - Reverse search: a short section "Reverse: camera reads for a registration" with the one-line explanation "Finds every camera capture whose read could be this registered plate. Each read is matched forward against all registrations and is listed only if that match points back to this plate." Input + button + result table (capture, read, camera, time, probability, decision). Nothing else.
+3. **Data Cleansing** — the flow is: scan -> pick a record -> see the proposed fix and the rule that made it -> apply / undo / resolve. Layout:
+   - "How to use": 1 Press Scan. 2 Pick a capture. 3 Apply the fix, or Resolve it yourself; Undo reverses either.
+   - Scan button + ONE compact KPI row: records scanned, anomalies found, fixed automatically, sent to a person, flagged as clone evidence, unhandled.
+   - Anomaly table (compact columns).
+   - Selected record: its anomalies, then per field "old -> new, by rule R5 because <because text>" as one line each (the full rule path only inside a small expander). Buttons Apply / Undo / Resolve (resolve options as now).
+   - **Examiner toolbox** (insert / modify / delete a capture, auto re-scan) stays visible — the examiner tests with it.
+   - "Watch the data change" (before/after source row + SQL) stays but compact: show only the changed fields before/after and the SQL in a code block, inside an expander open by default only right after an apply/undo/resolve.
+   - Move into ONE collapsed `st.expander("Advanced: rule tree, teach a rule, bulk apply, validation")`: the rule tree, teach form, b
+
+[… 3496 characters omitted …]
+
+### Prompt 21 — 2026-10-18 21:28 UTC — student
+
+```text
+Explain what the data cleansing page is supposed to do
+```
+
+### Prompt 22 — 2026-10-19 10:40 UTC — student
+
+```text
+how is the reverse in the rubric#1 supposed to work?
+So given a registration number, find all the possible matching car number plates? Then after match them on the basis of other attributes and context that we provide, and finally give me one particular number plate it matches to.
+```
+
+### Prompt 23 — 2026-10-19 10:46 UTC — student
+
+```text
+916	DL05CD9B76	Maruti Swift, Silver	ACCEPT, p=0.999	a misread (8 as B), but the car matches
+for it to show 9b76 as a valid camera read for 9876, i am assuming it is accepting even though the reads are different because the makes and other context is same?
+```
+
+### Prompt 24 — 2026-10-19 11:46 UTC — student
+
+```text
+Help me write a mail conforming to the prof. What uh, does he mean from the rubrics that he's given in terms of anomalies? Are anomalies with respect to the data uh, in the number plates, like say for instance a number plate cannot have two different make or colors or cannot be spotted by two different cameras at the same time. Is that what he means by anomalies? And also confirm in terms of the reverse in the first rubric, the vice versa in the first rubric, can you uh, I want to confirm ki uh, does the vice versa that we have done over here is the same as what the prof intended, or is it something else? First, explain to me the answers for these questions, and write a clarifying mail to the professor.
+```
+
+### Prompt 25 — 2026-10-19 11:54 UTC — student
+
+```text
+so the noisy in the reverse is to be for ocr only yes?
+```
+
+### Prompt 26 — 2026-10-19 11:59 UTC — student
+
+```text
+is this fine 
+
+<pasted_content id="217b">
+Respected Sir,
+I hope this email finds you well.
+My name is Siddhanth, and I am writing to ask to clarify two doubts that I had with respect to the second project evaluation. 
+1. "Vice versa" in rubric 1: In rubric 1, we take a scanned plate image, and find all registered vehicles matching that plate. For the vice versa part of it, we take a registered vehicle and find all noisy entries that match OCR plate reads, with the OCR reads being noisy. Each candidate is confirmed using make, model and color so a similar plate of a different vehicle is not included. Is this the reverse that was intended? Or do we have to work with noisy contexts too? If our interpretation is incorrect, kindly advise on what it is that you desire to see in the project.
+2. Anomalies in rubric 2: In the project we have treated camera entries as noisy data with registered records as reference. So the anomalies we have are misreads, non-existent plates, misspect make/model/color, duplicates, same plate at nearly the same time. Is this what was meant by anomalies? 
+Thank you for your time.
+Warm regards,
+Siddhanth SusheelB.Tech CSE, IIITDRoll No.: 2023519
+</pasted_content id="217b">
+```
+
+### Prompt 27 — 2026-10-20 12:46 UTC — student
+
+```text
+he is fine so long as we define the scope of the project, i want everything in this second part of the project to be clear, explain to me rubric wise, what we have done? the four pages that are there, how to use them, which of thier mechanics correspond to the rubrics? explain logistic regression and the matching and everything we did and how it worked, fully understandable and easy to explain learn and work through guide now
+```
+
+### Prompt 28 — 2026-10-20 14:22 UTC — student
+
+```text
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+<tools-used-before-summary>Agent, Bash, Edit, Glob, PowerShell, Read, SendMessage, TaskStop, ToolSearch, WebSearch, Write</tools-used-before-summary>
+Summary:
+1. Primary Request and Intent:
+   - **Phase 2 evaluation (21–23 Oct 2026, in class, random selection) for IIA Project A** (uninsured vehicle identification, federated mediator). The professor's rubric:
+     1. "Given a scanned image of a car registration, find out all vehicles approximately matching with this noisy car plate and vice-versa… apply the matching algorithm which gives the best accuracy… justify" (5 marks).
+     2. "Cleansed the recorded data w.r.t. the image data and other contextual information so that there are no anomalies (including the noise) in the recorded data" (5 marks).
+     3. "Show me the prompt (for vibe coding), generated code and highlight the changes you have made in the generated code" (5 marks).
+
+     The professor tests by inserting, deleting and modifying records.
+   - The user added lecture slides: Week-6-8_Data_String_Matching PDF and Week 8 RDR pptx.
+   - The user wanted a plan, then said "begin".
+   - Later requests:
+     - Keep the work to what the rubric demands.
+     - Explain the combinations used.
+     - Comment changed code instead of deleting it ("ensure that all the code that you are changing with respect to the working of the project since the last time is commented and not deleted").
+     - Make the GUI accessible: architecture explainer, a separation view, test scenarios, show data modification, fix sources showing DOWN.
+     - Then simplify the GUI drastically: remove the method/slide table and glossary, drop the blocking funnel, concise pages, rubric mapping explained in chat not on the website, a changelog showing code changes.
+     - Explain the data cleansing page and the reverse direction.
+     - Draft and polish a clarification email to the professor.
+   - **Most recent request:** "he is fine so long as we define the scope of the project, i want everything in this second part of the project to be clear, explain to me rubric wise, what we have done? the four pages that are there, how to use them, which of their mechanics correspond to the rubrics? explain logistic regression and the matching and everything we did and how it worked, fully understandable and easy to explain learn and work through guide now".
+
+2. Key Technical Concepts:
+   - **Two-step framework** (slide 44): blocking, then scoring.
+   - **Blocking**: q-gram (q=2) inverted index, size filter, prefix filter and position filter (slides 45–65).
+   - **String measures**: Levenshtein/edit distance (DP), OCR-confusion-weighted edit distance, learned confusion costs, Jaro, Jaro-Winkler, overlap, Jaccard, TF/IDF, Ratcliff-Obershelp, Soundex.
+   - **Feature vector**: string scores + make/model/colour agreement + OCR confidence + state_agree + length_diff + read_is_registered.
+   - **Combiner**: logistic regression (C=0.1, standardised features), Platt calibration, ACCEPT/REVIEW/REJECT thresholds plus ACCEPT_MARGIN 0.10. Gradient-boosted trees compared and tied.
+   - **Evaluation**: split by vehicle 60/20/20, retrieval and scoring evaluated separately, ablation.
+   - **OCR**: EasyOCR raw read, then a pattern repair (Indian plate pattern swaps `O↔0`, `I↔1`, `B↔8`, `S↔5`, `Z↔2`, `G↔6`). The repair is not logistic regression.
+   - **Reverse match**: registration → nearby camera reads → forward-match each read → keep a read only if its match points back.
+   - **Ripple-Down Rules** (Week 8): if/then/because cornerstone case; exceptions; cornerstone protection; lexicons and pattern mining. Cleansing proposals are fix / quarantine / flag; resolve options are confirm_clone, accept_candidate, delete_record, dismiss. Writes go through the CAM wrapper's `/admin/sql`, are logged (CLEANSING_LOG, ADMIN_LOG) and can be undone.
+   - **Streamlit GUI**: civic light theme; sidebar groups Enforcement / Citizens / Mediator / Data quality.
+   - **Rubric-3 workflow**: `generated: <path> (unreviewed AI output)` → `reviewed: <path> — <reasons>` commit pairs; PHASE2-REPLACED and PHASE2-HIDDEN markers.
+
+3. Files and Code Sections (repo `C:\Users\siddh_ygv5bws\IIA-vehicle-data-federation\IIA_Project`):
+
+   **Plans and slides**
+   - `docs/superpowers/plans/2026-10-17-phase2-noisy-matching.md`: the phase-2 plan (workstreams A–G).
+   - `docs/slides/Week-6-8_Data_String_Matching.pdf`, `docs/slides/Week-8-RDR.pptx`: copies of the lecture slides.
+
+   **Matching (rubric 1)**
+   - `mediator/similarity.py`: the measures. `ALL_MEASURES`, `tfidf_measure(corpus)`, `weighted_edit_distance`, `ocr_confusion_cost`, `ocr_edit_similarity`. `matcher.py` imports `jaro_winkler` from here.
+   - `mediator/blocking.py`: `QGramIndex`, `candidate_plates(read, registry, strategy=…, max_edits=…)`, `BlockingStats`, `sql_prefilter`.
+   - `mediator/con
+
+[… 16426 characters omitted …]
+```
+
+### Prompt 29 — 2026-10-20 14:22 UTC — student
+
+```text
+explain to me the proper way to use all the pages, i dont want a separate guide just give me the steps to use the functionalities for this part of the project along with the lines from the rubric here that tell ki accha based on this line we have implemented this functionalites, then also tell me which functionality works and how. give the guide here basically step by step wise
+```
+
+### Prompt 30 — 2026-10-20 14:29 UTC — student
+
+```text
+what were the proper commands to start the page?
+```
+
+### Prompt 31 — 2026-10-20 14:38 UTC — student
+
+```text
+mention what the rules are do not mention slides, what is operator for UP16AB0405 the page pre-loads with the three isssues resolved, and what is this cloned plate and other things explain them to me
+```
+
+### Prompt 32 — 2026-10-20 14:44 UTC — student
+
+```text
+yeah so you see you have written honda city white as what camera  but what the registration for this is its not mentioned, also i have no idea whether to mark it as clone,accept candidate or the others too, you have to make it so that these rules nad choice are there in the ui in a simple manner not too overexplained and also the prof inserting/deleting/modifiying records its not just cam database but for this whole rubrics 1 and 2, in that im assuming if he gives me a new plate he will want to see how does our current pipeline handle it, same with delete and modify, idk if the examiner toolbox thing is going to affect it in the plate match page or  not, all this explanantion youve given to me is great but it must be there on the ui in a simple to see not too overcrowded and dumbed down and easy to follow manner
+```
+
+### Prompt 33 — 2026-10-20 15:29 UTC — student
+
+```text
+so in the plate matching page, can i insert a completely new plate image or any input? essentially all of our current things work on prefed data, right? so if i wanted to insert new data, and run it via the whole pipeline would it work? and how to do that? also give a quick primer on the explanations for the algorithm that solved our thing and why.  why are there two selected caputre blcoks on the data cleansing page? is cleasnsing inherently done via the plate matching or not? should it be? explain the theoretical side of everything too. give instructions on how to setup for a 3 laptop setup properly every step and command included
+```
+
+### Prompt 34 — 2026-10-20 16:51 UTC — student
+
+```text
+1. we need to the different rules and how they work? are all the edge cases covered? what are the edge cases you have covered?
+2. what are the anomalies that have been covered? what could be possible edge cases?
+3. in the examiner toolbox, why is the camera record noisy feature there? is it only for the data cleansing page?
+4.in the image here for the 9876 number plate, you accept 9B76 instead of 9876 bevause the pattern repair thing says so, why show that here without showing the pattern repair? it seems like 9B76 is accepted even if its wrong because of the B and 8 thing, that is, if it is seen in this table, shouldnt the reads be the corrected ones? even if a camera reads a plate that is not following a format, then it shouldnt count it in the table?
+5. what is apply fix in the data cleasning page image here? i get the four actions, but what does the fix do?.give demo examples for different situations to show working too
+6. why is examiner toolbox on every page?
+7. explain what sense is the anomalies tab in data cleasning page operating on? what is the overall logic of anomalies here?
+8. for the different test scenarios thing, the page just shows like really long things? id think you just tell me the different examples and i show them on pages matching and cleaning
+9. how do we deal with a completely new number plate, say for a new car or out of state car that isnt in the registration database and has been captured by the camera? is that logically feasible? is that an anomalty we are detecting? for adding a completely new car that isnt register, first we go to examiner toolbox, reg it, then go to the match and type down the plate with an ocr confidence, because we may not necessarily have the plate image and then do the cam finding?
+```
+
+### Prompt 35 — 2026-10-20 17:42 UTC — student
+
+```text
+1. in rule 8, given a car plate image with specifc make DL01AB0118 with red color and it matched it to the correct number plate with accept for a car which was originally black. so maybe the accept/review/reject should take into consideration the optional info being provided with more weightage
+2.Camera clocks out of sync can cause a false "in two places at once". can we do this? how can we add it to the current working
+3. explain the whole matching algo. which gives the best accuracy. You need to justify why you have taken a particular algorithm or a combination of algorithms. explain methodologies as a reasoning and not just best score being the reasoning
+4. explain cleansing algo 
+5. mention which code files were changed and create a log of every prompt used in this project for this second evaluation
+```
+
+### Prompt 36 — 2026-10-20 17:5x UTC — student (sent while prompt 35 was running)
+
+```text
+push the changes to the code too
+```
