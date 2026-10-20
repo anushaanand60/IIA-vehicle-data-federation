@@ -36,6 +36,7 @@ from mediator import plate_match, plate_ocr  # noqa: E402
 from scripts.match_plate import (funnel, live_captures, live_registry, max_edits, reverse_rows,  # noqa: E402
                                  run_ocr)
 from tabs import plate_separation  # noqa: E402
+from tabs import examiner_toolbox  # noqa: E402  (phase-2 examiner pass)
 from theme import TOKENS  # noqa: E402
 
 BENCHMARK = _ROOT / "data" / "match_benchmark.csv"
@@ -327,7 +328,11 @@ def _input_simple() -> Dict[str, Any]:
     got: Dict[str, Any] = {"image": None, "raw": None, "confidence": None, "truth": None, "source": "typed"}
     if mode == "Type a read":
         c1, c2 = st.columns(2)
-        got["raw"] = c1.text_input("Plate as read", "DL05CD9B76", key="pm_typed")
+        # PHASE2-REPLACED (examiner pass: the toolbox fills this box, and a widget given both a default and a
+        # Session State value draws a warning; the default now lives in Session State only):
+        # got["raw"] = c1.text_input("Plate as read", "DL05CD9B76", key="pm_typed")
+        st.session_state.setdefault("pm_typed", "DL05CD9B76")
+        got["raw"] = c1.text_input("Plate as read", key="pm_typed")
         got["confidence"] = c2.number_input("OCR confidence", 0.0, 1.0, 0.71, 0.01, key="pm_conf")
     elif mode == "Benchmark image":
         _benchmark_input(got)
@@ -462,7 +467,10 @@ def _reverse_simple() -> None:
             "Finds every camera capture whose read could be this registered plate. Each read is matched forward "
             "against all registrations and is listed only if that match points back to this plate.")
     c1, c2 = st.columns([3, 1])
-    plate = c1.text_input("Registration number", "DL05CD9876", key="pm_rev_plate")
+    # PHASE2-REPLACED (examiner pass: same reason as pm_typed):
+    # plate = c1.text_input("Registration number", "DL05CD9876", key="pm_rev_plate")
+    st.session_state.setdefault("pm_rev_plate", "DL05CD9876")
+    plate = c1.text_input("Registration number", key="pm_rev_plate")
     c2.markdown("<div style='height:34px'></div>", unsafe_allow_html=True)
     if c2.button("Find camera reads", key="pm_rev_run", type="primary", width="stretch"):
         try:
@@ -488,9 +496,16 @@ def _reverse_simple() -> None:
 def render() -> None:
     page_head("Plate Match", "Match a noisy plate read against every registered vehicle, and find the camera "
               "reads of one registration.")
+    # PHASE2-REPLACED (examiner pass: the steps did not say how to change the data the matcher reads):
+    # how_to(["Give a plate: upload an image, pick a benchmark image, or type a read.",
+    #         "Check what OCR read, then press Match.",
+    #         "Read the matches: the highlighted top row is the answer."])
     how_to(["Give a plate: upload an image, pick a benchmark image, or type a read.",
             "Check what OCR read, then press Match.",
-            "Read the matches: the highlighted top row is the answer."])
+            "Read the matches: the highlighted top row is the answer.",
+            "To test: insert, modify or delete a registration or camera record in the Examiner toolbox at the "
+            "bottom; the next Match reads the changed data live."])
+    _apply_prefill()
     with panel("pm_input"):
         got = _input_simple()
     with panel("pm_read"):
@@ -503,3 +518,32 @@ def render() -> None:
             _matches(res)
     with panel("pm_reverse"):
         _reverse_simple()
+    with panel("pm_toolbox"):
+        examiner_toolbox.render(_after_examiner_write, "pm_tb")
+
+
+def _after_examiner_write(message: str, capture: Any = None) -> None:
+    """A toolbox write makes the shown results stale: drop them, and put the changed plate in the read and
+    reverse boxes so the next Match / Find runs on the new data. Widget keys can only be set before the
+    widgets exist, so the values wait in `pm_prefill` until the rerun."""
+    change = st.session_state.pop("ex_last", None) or {}
+    st.session_state.pop("pm_result", None)
+    st.session_state.pop("pm_rev", None)
+    st.session_state["pm_prefill"] = {"message": message, "next": change.get("match"), "read": change.get("read"),
+                                      "make": change.get("make"), "colour": change.get("colour"),
+                                      "plate": change.get("plate")}
+    st.rerun()
+
+
+def _apply_prefill() -> None:
+    pre = st.session_state.pop("pm_prefill", None)
+    if not pre:
+        return
+    st.success(pre["message"])
+    if pre.get("next"):
+        st.info(pre["next"])
+    if pre.get("read"):
+        st.session_state.update(pm_mode="Type a read", pm_typed=pre["read"], pm_make=pre.get("make") or "",
+                                pm_colour=pre.get("colour") or "")
+    if pre.get("plate"):
+        st.session_state["pm_rev_plate"] = pre["plate"]

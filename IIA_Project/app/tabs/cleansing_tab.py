@@ -30,6 +30,8 @@ from components import how_to  # noqa: E402  (phase-2 simplified GUI)
 from mediator import cleansing, lexicons  # noqa: E402
 from mediator.rdr import RDRConflict, RDRTree  # noqa: E402
 from tabs import change_watch, cleansing_toolbox, cleansing_validation_panel  # noqa: E402
+from tabs import cleansing_words, examiner_toolbox  # noqa: E402  (phase-2 plain-words pass)
+from tabs.cleansing_words import anomaly_words, rule_line  # noqa: E402
 from theme import TOKENS  # noqa: E402
 
 ACTION_TOKEN = {"keep": "neutral", "set": "ok", "delete": "warn", "quarantine": "warn", "flag": "bad"}
@@ -122,8 +124,12 @@ def _pick(report: Dict[str, Any]) -> Optional[str]:
         st.info("No capture has an anomaly or a proposal.")
         return None
     items = {str(it["record_id"]): it for it in report["items"]}
-    return st.selectbox("Capture", ids, key="dc_capture", format_func=lambda i: f"#{i} · "
-                        f"{items[i]['record'].get('plate_number')} · {', '.join(a['code'] for a in items[i]['anomalies']) or 'proposal only'}")
+    # PHASE2-REPLACED (plain-words pass: anomaly codes such as MAKE_DISAGREES_REGISTRATION read as words):
+    # return st.selectbox("Capture", ids, key="dc_capture", format_func=lambda i: f"#{i} · "
+    #                     f"{items[i]['record'].get('plate_number')} · {', '.join(a['code'] for a in items[i]['anomalies']) or 'proposal only'}")
+    return st.selectbox("Camera record", ids, key="dc_capture", format_func=lambda i: f"#{i} · "
+                        f"{items[i]['record'].get('plate_number')} · "
+                        f"{', '.join(anomaly_words(a['code']) for a in items[i]['anomalies']) or 'proposal only'}")
 
 
 # PHASE2-HIDDEN (simplified GUI, 19 Oct 2026): one fix as heading + chips + full rule stepper + cornerstone line; previously called from _record_panel.
@@ -358,10 +364,16 @@ def _table_simple(report: Dict[str, Any]) -> None:
     #                    "Proposed fix": "; ".join(f"{f['field']} {f['action']} ({f['rule']})"
     #                                              for f in it["fixes"] if f["action"] != "keep") or "keep",
     #                    "Left for a person": ", ".join(it["remaining"]) or "none"} for it in items], max_rows=400)
-        styled_table([{"Capture": it["record_id"], "Plate": it["record"].get("plate_number"),
-                       "Anomalies": ", ".join(a["code"] for a in it["anomalies"]) or "—",
+    # PHASE2-REPLACED (plain-words pass: anomaly codes as words, 'flagged'/'quarantined' as what they mean):
+    #     styled_table([{"Capture": it["record_id"], "Plate": it["record"].get("plate_number"),
+    #                    "Anomalies": ", ".join(a["code"] for a in it["anomalies"]) or "—",
+    #                    "Proposed fix": short_fixes(it["fixes"]),
+    #                    "Left for a person": short_left(it["dispositions"])} for it in items], max_rows=400)
+        styled_table([{"Record": it["record_id"], "Plate": it["record"].get("plate_number"),
+                       "Anomalies": ", ".join(anomaly_words(a["code"]) for a in it["anomalies"]) or "—",
                        "Proposed fix": short_fixes(it["fixes"]),
-                       "Left for a person": short_left(it["dispositions"])} for it in items], max_rows=400)
+                       "Left for a person": short_left([cleansing_words.DISPOSITION_WORDS.get(d, d)
+                                                        for d in it["dispositions"]])} for it in items], max_rows=400)
 
 
 def fix_line(f: Any) -> str:
@@ -414,25 +426,96 @@ def _record_simple(report: Dict[str, Any], actor: str) -> Optional[Dict[str, Any
         return None
     item = next(it for it in report["items"] if str(it["record_id"]) == rid)
     r = prop.record
-    st.markdown(f"Read as **{r.get('plate_number')}** at {r.get('last_seen_location')}, {r.get('last_seen_time')}: "
-                f"{r.get('observed_make')} {r.get('observed_model')} {r.get('observed_colour')}")
+    # PHASE2-REPLACED (plain-words pass: only the camera's side was shown, never the registration it is judged against):
+    # st.markdown(f"Read as **{r.get('plate_number')}** at {r.get('last_seen_location')}, {r.get('last_seen_time')}: "
+    #             f"{r.get('observed_make')} {r.get('observed_model')} {r.get('observed_colour')}")
+    st.markdown(f"Seen at **{r.get('last_seen_location')}**, {r.get('last_seen_time')}, OCR confidence "
+                f"{r.get('ocr_confidence')}.")
+    cands = candidates(prop)
+    closest = cands[0]["plate"] if cands else None
+    styled_table(compare_rows(r, ctx.profile_for(r), closest, ctx.profiles.get(closest or "", {}),
+                              [a.code for a in prop.anomalies]))
     # PHASE2-REPLACED (review: each anomaly was drawn twice, once bare and once with its disposition):
     # chip_strip([chip(a.code, TOKENS["bad"]) for a in prop.anomalies]
     #            + [chip(f"{c} · {d}", TOKENS[DISPOSITION_TOKEN[d]]) for c, d in zip(item["remaining"], item["dispositions"])])
     left = dict(zip(item["remaining"], item["dispositions"]))
-    chip_strip([chip(f"{a.code} · {left[a.code]}", TOKENS[DISPOSITION_TOKEN[left[a.code]]]) if a.code in left
-                else chip(f"{a.code} · fixed by the rules", TOKENS["ok"]) for a in prop.anomalies])
+    # PHASE2-REPLACED (plain-words pass: codes and 'flagged'/'quarantined' read as words):
+    # chip_strip([chip(f"{a.code} · {left[a.code]}", TOKENS[DISPOSITION_TOKEN[left[a.code]]]) if a.code in left
+    #             else chip(f"{a.code} · fixed by the rules", TOKENS["ok"]) for a in prop.anomalies])
+    words = cleansing_words.DISPOSITION_WORDS
+    chip_strip([chip(f"{anomaly_words(a.code)} · {words[left[a.code]]}", TOKENS[DISPOSITION_TOKEN[left[a.code]]])
+                if a.code in left else chip(f"{anomaly_words(a.code)} · fixed by the rules", TOKENS["ok"])
+                for a in prop.anomalies])
     if res := item.get("resolution"):
-        st.markdown(f"**Resolved:** {res['decision']} by {res['actor']} at {res['at'][:19]} — {res['note'] or 'no note'}")
+        # PHASE2-REPLACED (plain-words pass):
+        # st.markdown(f"**Resolved:** {res['decision']} by {res['actor']} at {res['at'][:19]} — {res['note'] or 'no note'}")
+        label = cleansing_words.RESOLUTION_WORDS.get(res["decision"], (res["decision"],))[0]
+        st.markdown(f"**Decided by {res['actor']}** ({res['at'][:16].replace('T', ' ')}): {label}"
+                    + (f" — {res['note']}" if res["note"] else "") + ". Undo it to decide again.")
     # PHASE2-REPLACED (review: three fields flagged by the same rule printed the same 'because' three times; identical non-set conclusions are now one line naming every field):
     # st.markdown("\n".join(f"- {fix_line(f)}" for f in prop.changes) or "No fix proposed: the rules keep this record.")
-    st.markdown("\n".join(f"- {line}" for line in fix_lines(prop.changes)) or "No fix proposed: the rules keep this record.")
-    if prop.changes:
-        with st.expander("Rule path", expanded=False):
-            for f in prop.changes:
-                group_label(f"{f.field} ({f.rule})")
-                stepper(_steps(f.path, f.rule))
-    return {"rid": rid, "prop": prop, "item": item, "ctx": ctx}
+    # PHASE2-REPLACED (plain-words pass: each line now says the rule in words, without its source notes):
+    # st.markdown("\n".join(f"- {line}" for line in fix_lines(prop.changes)) or "No fix proposed: the rules keep this record.")
+    group_label("What the rules propose")
+    st.markdown("\n".join(f"- {line}" for line in plain_fix_lines(prop.changes))
+                or "Nothing: the rules keep this record as it is.")
+    # PHASE2-REPLACED (plain-words pass: the path's steps quoted each rule's source notes):
+    # if prop.changes:
+    #     with st.expander("Rule path", expanded=False):
+    #         for f in prop.changes:
+    #             group_label(f"{f.field} ({f.rule})")
+    #             stepper(_steps(f.path, f.rule))
+    with st.expander("The rules in plain words", expanded=False):
+        styled_table(cleansing_words.rules_table())
+        for f in prop.changes:
+            group_label(f"Rules checked for {f.field.replace('observed_', '')} ({f.rule} decided)")
+            stepper([{"title": f"{p['rule']} {'applies' if p['fired'] else 'does not apply'}",
+                      "detail": rule_line(p["rule"]), "done": p["fired"]} for p in f.path])
+    return {"rid": rid, "prop": prop, "item": item, "ctx": ctx, "cands": cands, "left": left}
+
+
+def candidates(prop: Any) -> List[Dict[str, Any]]:
+    """The matcher's candidate plates for this record's read, best first (empty for a registered read)."""
+    plate_fix = next((f for f in prop.fixes if f.field == "plate_number"), None)
+    return (plate_fix.evidence.get("match_candidates") if plate_fix else None) or []
+
+
+def compare_rows(record: Dict[str, Any], profile: Dict[str, Any], closest: Optional[str],
+                 closest_profile: Dict[str, Any], codes: List[str]) -> List[Dict[str, str]]:
+    """Camera side by side with the registration it is judged against; for an unregistered read,
+    with the registration of the matcher's closest plate."""
+    reg = profile or closest_profile
+    plate_reg = (profile.get("plate_number") if profile
+                 else f"not registered (closest: {closest})" if closest else "not registered")
+    rows = [{"Field": "Plate", "Camera saw": str(record.get("plate_number") or "—"), "Registered as": plate_reg,
+             "Check": "registered" if profile else "not registered"}]
+    for label, obs, regk in (("Make", "observed_make", "vehicle_make"), ("Model", "observed_model", "vehicle_model"),
+                             ("Colour", "observed_colour", "vehicle_colour")):
+        seen, registered = record.get(obs), reg.get(regk)
+        code = label.upper()
+        if f"{code}_DISAGREES_REGISTRATION" in codes:
+            check = "differs"
+        elif f"{code}_NOT_IN_LEXICON" in codes:
+            check = "misspelt"
+        elif seen and registered:
+            check = "same" if str(seen).strip().lower() == str(registered).strip().lower() else "differs"
+        else:
+            check = "—"
+        rows.append({"Field": label, "Camera saw": str(seen or "—"), "Registered as": str(registered or "—"), "Check": check})
+    return rows
+
+
+def plain_fix_lines(fixes: List[Any]) -> List[str]:
+    """fix_lines() with each rule said in words: '**make, model, colour**: flag (R4: if ..., then ...)'."""
+    out: List[str] = []
+    groups: Dict[tuple, List[str]] = {}
+    for f in fixes:
+        if f.action == "set":
+            out.append(f"**{f.field.replace('observed_', '')}**: {f.before!r} → {f.after!r} — {f.rule}: {rule_line(f.rule)}")
+        else:
+            groups.setdefault((f.action, f.rule), []).append(f.field.replace("observed_", ""))
+    out += [f"**{', '.join(fields)}**: {action} — {rule}: {rule_line(rule)}" for (action, rule), fields in groups.items()]
+    return out
 
 
 def _actions_simple(sel: Dict[str, Any], actor: str) -> None:
@@ -449,15 +532,37 @@ def _actions_simple(sel: Dict[str, Any], actor: str) -> None:
         if not entries:
             st.markdown("Nothing to undo.")
         for e in entries:
-            what = e.get("decision") or f"{e['field']} {e['action']}"
+            # PHASE2-REPLACED (plain-words pass: 'confirm_clone' on the button read as code):
+            # what = e.get("decision") or f"{e['field']} {e['action']}"
+            what = (cleansing_words.RESOLUTION_WORDS.get(e.get("decision") or "", (None,))[0] or e.get("decision")
+                    or f"{e['field']} {e['action']}")
             if st.button(f"Undo #{e['log_id']}: {what}", key=f"dc_undo_{e['log_id']}"):
                 if _attempt(cleansing.undo, e["log_id"], actor=actor) is not None:
                     _after_write(f"Undid log entry {e['log_id']}", rid)
     with c3:
         group_label("Resolve it yourself")
-        decision = st.radio("Decision", cleansing.RESOLUTIONS, key="dc_res_decision", horizontal=True)
-        plate_fix = next((f for f in prop.fixes if f.field == "plate_number"), None)
-        cands = (plate_fix.evidence.get("match_candidates") if plate_fix else None) or []
+        # PHASE2-REPLACED (plain-words pass: four bare codes, the first preselected on every record, so a stray
+        # Resolve recorded 'confirm_clone'; now each choice is named in words, says when to pick it, and the
+        # choice that fits this record's open issues is preselected and explained):
+        # decision = st.radio("Decision", cleansing.RESOLUTIONS, key="dc_res_decision", horizontal=True)
+        # plate_fix = next((f for f in prop.fixes if f.field == "plate_number"), None)
+        # cands = (plate_fix.evidence.get("match_candidates") if plate_fix else None) or []
+        cands = sel["cands"]
+        open_codes = [c for c, d in sel["left"].items() if d != "resolved"]
+        tip = cleansing_words.suggest(open_codes, cands)
+        if st.session_state.get("dc_res_for") != rid:  # a new record: preselect what fits it, before the radio exists
+            st.session_state["dc_res_for"] = rid
+            st.session_state["dc_res_decision"] = tip[0] if tip else "dismiss"
+            st.session_state["dc_res_note"] = ""
+        if tip:
+            st.markdown(f"**Suggested: {cleansing_words.RESOLUTION_WORDS[tip[0]][0]}**, because {tip[1]}")
+        elif sel["item"].get("resolution"):
+            st.markdown("Already decided by a person.")
+        else:
+            st.markdown("Nothing is left for a person: the rules handle this record (Apply the fix).")
+        decision = st.radio("Decision", cleansing.RESOLUTIONS, key="dc_res_decision", horizontal=True,
+                            format_func=lambda d: cleansing_words.RESOLUTION_WORDS[d][0])
+        st.markdown(f"Pick this when {cleansing_words.RESOLUTION_WORDS[decision][1]}")
         candidate = None
         if decision == "accept_candidate":
             if not cands:
@@ -475,10 +580,17 @@ def _actions_simple(sel: Dict[str, Any], actor: str) -> None:
 def render() -> None:
     page_head("Data Cleansing", "Find bad camera records by checking them live against the registrations, and "
               "fix them with Ripple-Down Rules.")
-    how_to(["Press Scan (it also runs when the page opens).", "Pick a capture.",
-            "Apply the fix, or Resolve it yourself; Undo reverses either."])
+    # PHASE2-REPLACED (plain-words pass: the steps did not mention the toolbox or the registration side):
+    # how_to(["Press Scan (it also runs when the page opens).", "Pick a capture.",
+    #         "Apply the fix, or Resolve it yourself; Undo reverses either."])
+    how_to(["Press Scan (it also runs when the page opens).",
+            "Pick a camera record: it is shown next to its registration, with what the rules propose.",
+            "Apply the fix, or Resolve it yourself (the fitting choice is preselected); Undo reverses either.",
+            "To test: change a camera record or a registration in the Examiner toolbox; the page re-scans."])
     if msg := st.session_state.pop("dc_flash", None):
         st.success(msg)
+        if nxt := (st.session_state.pop("ex_last", None) or {}).get("clean"):
+            st.info(nxt)
     with panel("dc_kpis"):
         c1, c2 = st.columns([3, 1])
         actor = c1.text_input("Operator name (recorded with every write)", "operator", key="dc_actor").strip() or "operator"
@@ -502,8 +614,12 @@ def render() -> None:
     # with panel("dc_toolbox"):
     #     cleansing_toolbox.render(_after_write)
     # with panel("dc_advanced"):
+    # PHASE2-REPLACED (plain-words pass: the toolbox changed camera records only; it now also inserts, modifies
+    # and deletes registrations, and lists every change with its own Undo; same dc_tb_ keys for the camera forms):
+    # with panel("dc_toolbox"):
+    #     cleansing_toolbox.render_compact(_after_write)
     with panel("dc_toolbox"):
-        cleansing_toolbox.render_compact(_after_write)
+        examiner_toolbox.render(_after_write, "dc_tb")
     with panel("dc_advanced"):
         with st.expander("Advanced: rule tree, teach a rule, bulk apply, validation", expanded=False):
             _tree()
