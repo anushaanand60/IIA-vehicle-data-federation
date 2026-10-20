@@ -33,6 +33,11 @@ from mediator.similarity import levenshtein
 PAGE_SIZE = 200          # the wrapper contract's own row cap (CLAUDE.md §5.1)
 MIN_SUPPORT = 3          # a spelling used by fewer registrations than this is a variant candidate
 MIN_SHAPE_SUPPORT = 2    # a plate shape seen fewer times than this is not a real shape
+# Official state / union-territory codes (Motor Vehicles Act registration marks). A registry mined from
+# one region knows only its own codes; this list lets a valid out-of-state plate pass the format check.
+INDIAN_STATE_CODES = frozenset("AN AP AR AS BR CG CH DD DL DN GA GJ HP HR JH JK KA KL LA LD MH ML MN MP MZ NL OD "
+                               "OR PB PY RJ SK TN TR TS UK UP WB".split())
+BH_SERIES = re.compile(r"\d{2}BH\d{4}[A-Z]{1,2}")  # Bharat series: 22BH1234AA, not tied to a state
 
 # Curated aliases (slide 16): only what mining, prefix, abbreviation and edit lookup cannot find --
 # "Gry", "Slvr", "Gray" and "Maruti" are all derived, so listing them here would hide that.
@@ -270,10 +275,16 @@ class Lexicons:
                 "colours": self.colour.words(), "state_codes": sorted(self.state_codes)}
 
     def plate_features(self, plate: str) -> Dict[str, Any]:
-        s, p = shape(plate), pattern(plate, self.state_codes)
+        # PHASE2-REPLACED (examiner pass: state codes were only the ones mined from this registry (DL, UP,
+        # HR, MH), so a genuine out-of-state plate such as KA03MX5810 was reported as breaking the format;
+        # the mined codes are now joined with the official list of state / UT codes, and the Bharat (BH)
+        # series is accepted):
+        # s, p = shape(plate), pattern(plate, self.state_codes)
+        s, p = shape(plate), pattern(plate, set(self.state_codes) | INDIAN_STATE_CODES)
         # Both must be attested: ZZ01AB1234 has a real shape but an unknown state, so its slide-21
         # pattern (+^+^) is what exposes it; the shape alone would have passed it.
         valid = self.shapes.get(s, 0) >= MIN_SHAPE_SUPPORT and self.patterns.get(p, 0) >= MIN_SHAPE_SUPPORT
+        valid = valid or bool(BH_SERIES.fullmatch(plate or ""))
         return {"shape": s, "shape_support": self.shapes.get(s, 0), "pattern": p,
                 "pattern_support": self.patterns.get(p, 0), "shape_valid": valid}
 

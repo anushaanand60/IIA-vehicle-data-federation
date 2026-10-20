@@ -478,6 +478,7 @@ def _reverse_simple() -> None:
             captures, meta = live_captures()
             st.session_state["pm_rev"] = {"plate": plate_ocr.canonical(plate), "meta": meta,
                                           "registered": plate_ocr.canonical(plate) in registry,
+                                          "profile": registry.get(plate_ocr.canonical(plate), {}),
                                           "rows": reverse_rows(plate, captures, registry),
                                           "at": datetime.now().strftime("%H:%M:%S")}
         except Exception as exc:
@@ -486,11 +487,44 @@ def _reverse_simple() -> None:
     rev = st.session_state.get("pm_rev")
     if not rev:
         return
-    if not rev["rows"]:
-        st.info(f"No camera capture could be {rev['plate']}" + ("" if rev["registered"] else " (it is not registered)") + ".")
-        return
-    styled_table([{"Capture": r["capture_id"], "Read": r["read"], "Camera": r["camera"], "Time": r["time"],
-                   "Probability": f"{r['probability']:.3f}", "Decision": r["decision"]} for r in rev["rows"]])
+    # PHASE2-REPLACED (examiner pass: REJECT rows were listed as this car's reads although they are another car's
+    # (DL05CD0276 is itself registered); the read column gave no hint why a misread such as DL05CD9B76 is accepted):
+    # if not rev["rows"]:
+    #     st.info(f"No camera capture could be {rev['plate']}" + ("" if rev["registered"] else " (it is not registered)") + ".")
+    #     return
+    # styled_table([{"Capture": r["capture_id"], "Read": r["read"], "Camera": r["camera"], "Time": r["time"],
+    #                "Probability": f"{r['probability']:.3f}", "Decision": r["decision"]} for r in rev["rows"]])
+    rows = [r for r in rev["rows"] if r["decision"] != "REJECT"]
+    rejected = len(rev["rows"]) - len(rows)
+    if not rows:
+        st.info(f"No camera capture is {rev['plate']}" + ("" if rev["registered"] else " (it is not registered)") + ".")
+    else:
+        styled_table([{"Capture": r["capture_id"], "Read (as stored)": r["read"], "Pattern-repaired": repaired(r["read"]),
+                       "Make & colour vs registration": context_check(r, rev.get("profile") or {}),
+                       "Camera": r["camera"], "Time": r["time"], "Probability": f"{r['probability']:.3f}",
+                       "Decision": r["decision"]} for r in rows])
+        st.markdown("The read is what the camera database holds; nothing is rewritten here. ACCEPT means the "
+                    "matcher, from the read's characters plus the camera's make and colour, is sure this capture is "
+                    f"{rev['plate']}. Correcting the stored read is Data Cleansing's job (rule R5).")
+    if rejected:
+        st.markdown(f"{rejected} other nearby read(s) were checked and are not this car: their own best match is "
+                    "another registered plate, or nothing.")
+
+
+def repaired(read: Any) -> str:
+    """The pattern-repaired read, or 'same' when the read already fits the plate pattern."""
+    raw = plate_ocr.canonical(read or "")
+    fixed = (plate_ocr.normalise_candidates(raw) or [raw])[0]
+    return "same" if fixed == raw else fixed
+
+
+def context_check(capture: Dict[str, Any], profile: Dict[str, Any]) -> str:
+    """'agree', 'differ' or 'unknown' for the camera's make and colour against the registration."""
+    pairs = [(capture.get("observed_make"), profile.get("make")), (capture.get("observed_colour"), profile.get("colour"))]
+    known = [(a, b) for a, b in pairs if a and b]
+    if not known:
+        return "unknown"
+    return "agree" if all(str(a).strip().lower() == str(b).strip().lower() for a, b in known) else "differ"
 
 
 def render() -> None:

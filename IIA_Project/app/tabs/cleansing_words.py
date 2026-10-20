@@ -83,10 +83,16 @@ def suggest(open_codes: List[str], candidates: List[Dict[str, Any]]) -> Optional
     if any(c.endswith("_DISAGREES_REGISTRATION") for c in codes):
         return "confirm_clone", "the camera saw a different car than the one registered to this plate."
     if codes & {"PLATE_NOT_REGISTERED", "PLATE_SHAPE_INVALID"}:
-        if candidates:
-            best = candidates[0]
-            return "accept_candidate", f"the closest registered plate is {best['plate']} (p={best['probability']})."
-        return "delete_record", "no registered plate is close to this read, so it cannot be corrected."
+        # only a candidate the matcher did not REJECT is a plausible correction
+        plausible = [c for c in candidates if c.get("decision") in ("ACCEPT", "REVIEW")]
+        if plausible:
+            best = plausible[0]
+            return "accept_candidate", (f"the matcher thinks it may be {best['plate']} (p={best['probability']}) "
+                                        f"but is not sure enough to correct it alone.")
+        if "PLATE_SHAPE_INVALID" not in codes:
+            return "dismiss", ("the plate is a valid Indian plate that is simply not in this registry (a new or "
+                               "out-of-state car). Keep the record: the federated check reports it as unregistered.")
+        return "delete_record", "the read is not a valid plate and no registered plate is close to it."
     if "DUPLICATE_CAPTURE" in codes:
         return "delete_record", "this record is a copy of another one."
     if codes & {"TIMESTAMP_UNPARSEABLE", "TIMESTAMP_FUTURE"}:

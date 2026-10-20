@@ -526,9 +526,14 @@ def _actions_simple(sel: Dict[str, Any], actor: str) -> None:
     c1, c2, c3 = st.columns([1, 1, 2])
     with c1:
         group_label("Apply")
-        if st.button("Apply the fix", key="dc_apply", type="primary", disabled=not prop.changes):
+        # PHASE2-REPLACED (examiner pass: the button was enabled for a flag-only proposal, where nothing is written):
+        # if st.button("Apply the fix", key="dc_apply", type="primary", disabled=not prop.changes):
+        writes = [f for f in prop.changes if f.action in ("set", "delete")]
+        if st.button("Apply the fix", key="dc_apply", type="primary", disabled=not writes):
             if (done := _attempt(cleansing.apply, prop, actor=actor, ctx=sel["ctx"])) is not None:
                 _after_write(f"Applied {len(done)} change(s) to capture {rid}", rid)
+        st.markdown(f"Writes {len(writes)} change(s) shown under 'What the rules propose' into the camera database."
+                    if writes else "Nothing to write: a flag or 'send to a person' leaves the data as it is.")
     with c2:
         group_label("Undo")
         entries = [e for e in cleansing.log_entries(1000) if str(e["record_id"]) == rid and not e["undone_at"]]
@@ -560,9 +565,11 @@ def _actions_simple(sel: Dict[str, Any], actor: str) -> None:
         if tip:
             st.markdown(f"**Suggested: {cleansing_words.RESOLUTION_WORDS[tip[0]][0]}**, because {tip[1]}")
         elif sel["item"].get("resolution"):
-            st.markdown("Already decided by a person.")
+            st.markdown("Already decided by a person. Undo that decision to decide again.")
+            return
         else:
             st.markdown("Nothing is left for a person: the rules handle this record (Apply the fix).")
+            return
         decision = st.radio("Decision", cleansing.RESOLUTIONS, key="dc_res_decision", horizontal=True,
                             format_func=lambda d: cleansing_words.RESOLUTION_WORDS[d][0])
         st.markdown(f"Pick this when {cleansing_words.RESOLUTION_WORDS[decision][1]}")
