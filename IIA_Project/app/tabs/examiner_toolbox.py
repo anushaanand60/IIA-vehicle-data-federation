@@ -206,8 +206,10 @@ def _camera_tab(after_write: Callable[..., None], k: str) -> None:
                          format_func=lambda i: f"{i} — {next(x['location'] for x in cams if x['id'] == i)}")
     when = c.text_input("Captured at", datetime.now().isoformat(timespec="seconds"), key=f"{k}_time")
     d, e, f, g = st.columns(4)
-    make = d.text_input("Make", "Maruti Suzuki", key=f"{k}_make")
-    model = e.text_input("Model", "Swift", key=f"{k}_model")
+    # defaults are a misread of DL01AB1234 seen as its registered car (Hyundai Creta, White), so the default insert
+    # shows R5 correcting the plate; the earlier Maruti Suzuki Swift contradicted the registration and R12 held it
+    make = d.text_input("Make", "Hyundai", key=f"{k}_make")
+    model = e.text_input("Model", "Creta", key=f"{k}_model")
     colour = f.text_input("Colour", "White", key=f"{k}_colour")
     conf = g.number_input("OCR confidence", 0.0, 1.0, 0.9, 0.01, key=f"{k}_conf")
     if st.button("Insert", key=f"{k}_insert", type="primary", disabled=not plate.strip()):

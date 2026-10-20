@@ -87,11 +87,18 @@ def suggest(open_codes: List[str], candidates: List[Dict[str, Any]]) -> Optional
         plausible = [c for c in candidates if c.get("decision") in ("ACCEPT", "REVIEW")]
         if plausible:
             best = plausible[0]
+            if best.get("decision") == "ACCEPT":  # the matcher was sure; R12 held it back on a contradiction
+                return "accept_candidate", (f"the matcher's best match is {best['plate']} (p={best['probability']}), "
+                                            "but the camera's colour or model contradicts that car's registration. "
+                                            f"Correct it only if the photo shows {best['plate']}.")
             return "accept_candidate", (f"the matcher thinks it may be {best['plate']} (p={best['probability']}) "
                                         f"but is not sure enough to correct it alone.")
         if "PLATE_SHAPE_INVALID" not in codes:
             return "dismiss", ("the plate is a valid Indian plate that is simply not in this registry (a new or "
                                "out-of-state car). Keep the record: the federated check reports it as unregistered.")
+        if candidates:  # close in characters, but the matcher rejected it: a different car, possibly a doctored plate
+            return "dismiss", (f"the read looks like {candidates[0]['plate']}, but the camera saw a different car. "
+                               "Keep it as evidence and check the photo.")
         return "delete_record", "the read is not a valid plate and no registered plate is close to it."
     if "DUPLICATE_CAPTURE" in codes:
         return "delete_record", "this record is a copy of another one."

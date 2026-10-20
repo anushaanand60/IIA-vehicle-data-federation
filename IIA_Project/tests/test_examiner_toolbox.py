@@ -40,7 +40,10 @@ def test_suggestion_fits_the_open_issue():
     assert words.suggest(["MAKE_DISAGREES_REGISTRATION"], [])[0] == "confirm_clone"
     assert words.suggest(["PLATE_NOT_REGISTERED"], cands)[0] == "accept_candidate"
     assert words.suggest(["PLATE_NOT_REGISTERED"], rejected)[0] == "dismiss"        # new or out-of-state car
-    assert words.suggest(["PLATE_NOT_REGISTERED", "PLATE_SHAPE_INVALID"], rejected)[0] == "delete_record"
+    assert words.suggest(["PLATE_NOT_REGISTERED", "PLATE_SHAPE_INVALID"], rejected)[0] == "dismiss"  # keep evidence
+    assert words.suggest(["PLATE_NOT_REGISTERED", "PLATE_SHAPE_INVALID"], [])[0] == "delete_record"  # garbage
+    vetoed = [{"plate": "DL05CD9876", "probability": 0.9038, "decision": "ACCEPT"}]                 # R12 held it
+    assert "contradicts" in words.suggest(["PLATE_NOT_REGISTERED"], vetoed)[1]
     assert words.suggest(["DUPLICATE_CAPTURE"], [])[0] == "delete_record"
     assert words.suggest(["LOW_OCR_CONFIDENCE"], [])[0] == "dismiss"
     assert words.suggest([], cands) is None
