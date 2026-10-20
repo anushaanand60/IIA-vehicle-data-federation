@@ -127,7 +127,8 @@ def _pick(report: Dict[str, Any]) -> Optional[str]:
     # PHASE2-REPLACED (plain-words pass: anomaly codes such as MAKE_DISAGREES_REGISTRATION read as words):
     # return st.selectbox("Capture", ids, key="dc_capture", format_func=lambda i: f"#{i} · "
     #                     f"{items[i]['record'].get('plate_number')} · {', '.join(a['code'] for a in items[i]['anomalies']) or 'proposal only'}")
-    return st.selectbox("Camera record", ids, key="dc_capture", format_func=lambda i: f"#{i} · "
+    # the section heading above already names it: a second visible label read as a second block
+    return st.selectbox("Camera record", ids, key="dc_capture", label_visibility="collapsed", format_func=lambda i: f"#{i} · "
                         f"{items[i]['record'].get('plate_number')} · "
                         f"{', '.join(anomaly_words(a['code']) for a in items[i]['anomalies']) or 'proposal only'}")
 
@@ -414,7 +415,9 @@ def short_left(dispositions: List[str]) -> str:
 
 
 def _record_simple(report: Dict[str, Any], actor: str) -> Optional[Dict[str, Any]]:
-    section("Selected capture")
+    # PHASE2-REPLACED (examiner pass: 'Selected capture' heading plus a 'Capture' picker label read as two blocks):
+    # section("Selected capture")
+    section("Pick a camera record", "The list holds every record with an anomaly or a proposed fix.")
     rid = _pick(report)
     if rid is None:
         return None
