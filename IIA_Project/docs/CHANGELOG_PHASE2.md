@@ -158,3 +158,24 @@ PHASE2-HIDDEN marker; the new `render()` is at the end of the file.
 Commits of this round: `2792719`/`7ea2773` (components + theme), `55cea90`/`498d6b4` (How it works),
 `83ef041`/`b92d7dd` (Plate Match), `7eecaa9`/`d4926c7` (Data Cleansing), `c152ed3`/`913f78e` (Matching
 Evaluation), `2a76bfe`/`a68dcb8` (Test scenarios), `f4aa468` (tests), `f4a51a7` (screenshots).
+
+---
+
+## 5. The examiner pass (20 Oct 2026)
+
+Why: the Data Cleansing page showed what the camera saw but not the registration it was judged against;
+the rules and the four resolve choices appeared as codes (`R4`, `confirm_clone`) with source notes; the
+first choice was preselected on every record, so a stray Resolve recorded a clone; and the toolbox
+could change camera records only, while the examiner's insert / modify / delete applies to rubric 1
+(the registrations the matcher reads) as much as to rubric 2.
+
+| File | Change |
+|---|---|
+| `app/tabs/examiner_toolbox.py` (new) | toolbox shared by Plate Match and Data Cleansing: camera record and registration tabs, each insert / modify / delete written live through the owning wrapper, every change listed with its own Undo (the row is read first, so Undo restores it exactly) |
+| `app/tabs/cleansing_words.py` (new) | plain words for the 13 rules, the anomaly codes, the outcomes and the four resolve choices; `suggest()` picks the resolve choice that fits a record's open issues |
+| `app/tabs/cleansing_tab.py` | camera-vs-registration table on the selected record; chips, fix lines and the rule path in words; "The rules in plain words" expander; resolve choices named in words, the fitting one preselected and explained; toolbox swapped for the shared one. Old lines kept as PHASE2-REPLACED |
+| `app/tabs/plate_match_lab.py` | the shared toolbox at the bottom; after a write the stale results are dropped and the changed plate is put in the read and reverse boxes. Old lines kept as PHASE2-REPLACED |
+| `tests/test_examiner_toolbox.py` (new), `tests/test_cleansing_tab.py` | tests for the above; one success-message assertion updated (PHASE2-REPLACED) |
+
+The rule tree `data/rdr_rules.json` and its `because` texts are unchanged; the page shows the plain
+words keyed by rule id instead.
