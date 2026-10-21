@@ -31,6 +31,7 @@ if str(ROOT) not in sys.path:
 import httpx  # noqa: E402
 
 from mediator import catalog, lexicons, plate_match, plate_ocr  # noqa: E402
+from mediator import open_world  # noqa: E402  (PHASE3-ADDED: C2 picks the plate line by its state code)
 from mediator.blocking import candidate_plates  # noqa: E402
 from mediator.cleansing import _global  # noqa: E402  (the registry-driven column -> global attr map)
 from mediator.registry_loader import load_registry  # noqa: E402
@@ -126,14 +127,65 @@ def run_ocr(image: bytes, reader: Any = None) -> Dict[str, Any]:
     """
     rec = _Recorder(reader if reader is not None else plate_ocr._get_reader())
     guesses = plate_ocr.read_plate(image, reader=rec)
+    # PHASE3-REPLACED (C2: a photo of a whole car also has badge, sticker or shop-sign text; joining every box
+    # would put it into the read, so only the boxes on the plate's own line(s) are joined now. A plate-only
+    # photo keeps every box, so the benchmark rows reproduce as before):
+    # parts = sorted((min(p[0] for p in e[0]) if e[0] else 0, plate_ocr.canonical(e[1]), float(e[2]))
+    #                for e in rec.raw)
+    plate_boxes = plate_line(rec.raw)
     parts = sorted((min(p[0] for p in e[0]) if e[0] else 0, plate_ocr.canonical(e[1]), float(e[2]))
-                   for e in rec.raw)
+                   for e in plate_boxes)
     parts = [p for p in parts if p[1]]
     raw = "".join(p[1] for p in parts)
     weight = sum(len(p[1]) for p in parts)
     conf = sum(len(p[1]) * p[2] for p in parts) / weight if weight else 0.0
+    # PHASE3-REPLACED (C2: the plate's box is returned too, for the close-up gate in mediator/vehicle_vision):
+    # return {"raw": raw, "confidence": round(conf, 3), "repaired": plate_ocr.normalise_candidates(raw),
+    #         "guesses": [(g.text, round(g.confidence, 3)) for g in guesses]}
     return {"raw": raw, "confidence": round(conf, 3), "repaired": plate_ocr.normalise_candidates(raw),
-            "guesses": [(g.text, round(g.confidence, 3)) for g in guesses]}
+            "guesses": [(g.text, round(g.confidence, 3)) for g in guesses], "box": union_box(plate_boxes)}
+
+
+# PHASE3-ADDED (C2: the plate's own text line in a photo that shows the whole car)
+def _bbox(entry: Any) -> Tuple[float, float, float, float]:
+    xs, ys = [float(p[0]) for p in entry[0]], [float(p[1]) for p in entry[0]]
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def plate_line(entries: List[Any]) -> List[Any]:
+    """EasyOCR boxes that belong to the plate: the anchor box (a plate-shaped read, else the longest text) and
+    the boxes beside it on its line or directly above / below it (two-line plates)."""
+    # "IND" is the emblem printed beside the number on every high-security plate, never part of the number
+    boxed = [e for e in entries if e[0] and plate_ocr.canonical(e[1]) not in ("", "IND")]
+    if len(boxed) <= 1:
+        return list(entries)
+
+    def rank(e: Any) -> Tuple[int, int, int, float]:
+        # a real plate (official state code) first, then plate-shaped text, then the longest, most confident
+        text = plate_ocr.canonical(e[1])
+        fixed = (plate_ocr.normalise_candidates(text) or [text])[0]
+        return int(open_world.is_valid(fixed)), int(bool(plate_ocr.PLATE_RE.match(fixed))), len(text), float(e[2])
+    anchor = max(boxed, key=rank)
+    ax0, ay0, ax1, ay1 = _bbox(anchor)
+    h, w = max(1.0, ay1 - ay0), max(1.0, ax1 - ax0)
+    keep = []
+    for e in boxed:
+        x0, y0, x1, y1 = _bbox(e)
+        same_line = y1 >= ay0 - 0.5 * h and y0 <= ay1 + 0.5 * h and x1 >= ax0 - 2 * w and x0 <= ax1 + 2 * w
+        stacked = y1 >= ay0 - 1.5 * h and y0 <= ay1 + 1.5 * h and x1 >= ax0 and x0 <= ax1
+        if same_line or stacked:
+            keep.append(e)
+    return keep
+
+
+def union_box(entries: List[Any]) -> List[List[float]]:
+    boxes = [_bbox(e) for e in entries if e[0]]
+    if not boxes:
+        return []
+    x0, y0 = min(b[0] for b in boxes), min(b[1] for b in boxes)
+    x1, y1 = max(b[2] for b in boxes), max(b[3] for b in boxes)
+    return [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
+# PHASE3-END
 
 
 def max_edits() -> int:

@@ -32,6 +32,7 @@ from mediator import watchlist  # noqa: E402
 from mediator.core import run_global_query  # noqa: E402
 from mediator.report import file_ministry_report, generate_report_pdf  # noqa: E402
 from tabs.ocr_upload import render_ocr_slot  # noqa: E402
+from tabs.ocr_upload import render_photo_check  # noqa: E402  (PHASE3-ADDED: C2)
 from tabs.onboarding import is_unknown, render_unknown_plate  # noqa: E402
 
 DEFAULT_PLATE = "DL01AB1234"
@@ -155,6 +156,7 @@ def render() -> None:
         section("Decision", "The verdict, its confidence, and every reason it rests on.")
         decision_banner(profile)
         alert_banner(profile.get("alerts"))  # watchlist / hotlist hits raised by this query
+        render_photo_check(profile)  # PHASE3-ADDED (C2): the uploaded photo's car against the record
         group_label("Who answered")
         st.caption("A source that returned zero rows still answered: that is data, not a "
                    "failure. A source that is down leaves the answer partial.")

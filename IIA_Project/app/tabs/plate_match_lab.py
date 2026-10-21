@@ -33,6 +33,7 @@ from components import how_to  # noqa: E402  (phase-2 simplified GUI)
 import html  # noqa: E402  (phase-2 simplified GUI: the results table and the character rows)
 from mediator import confusion  # noqa: E402  (phase-2 simplified GUI: colours the character rows)
 from mediator import plate_match, plate_ocr  # noqa: E402
+from mediator import federated_match, vehicle_vision  # noqa: E402  (PHASE3-ADDED: C1 every database, C2 photo)
 from scripts.match_plate import (funnel, live_captures, live_registry, max_edits, reverse_rows,  # noqa: E402
                                  run_ocr)
 from tabs import plate_separation  # noqa: E402
@@ -159,7 +160,9 @@ def _forward(read: str, got: Dict[str, Any]) -> None:
         st.warning("There is no read to match: type one, or pick an image EasyOCR could read.")
         return
     try:
-        registry, meta = live_registry()
+        # PHASE3-REPLACED (C1: every catalogued source's plates are candidates, not only REG's):
+        # registry, meta = live_registry()
+        registry, meta = federated_match.live_universe()
     except Exception as exc:  # refuse, never guess: the phase-1 rule for a dead source
         st.session_state.pop("pm_result", None)
         st.error(f"Refused: the registration authority could not be read live ({exc}).")
@@ -169,8 +172,12 @@ def _forward(read: str, got: Dict[str, Any]) -> None:
     # cands, stats = plate_match.match(read, confidence=got["confidence"], observed_make=got["make"],
     #                                  observed_colour=got["colour"], registry=registry)
     me = int(st.session_state.get("pm_edits") or max_edits())
+    # PHASE3-REPLACED (C2: the observed model, from the photo or typed, is passed on too):
+    # cands, stats = plate_match.match(read, confidence=got["confidence"], observed_make=got["make"],
+    #                                  observed_colour=got["colour"], registry=registry, max_edits=me)
     cands, stats = plate_match.match(read, confidence=got["confidence"], observed_make=got["make"],
-                                     observed_colour=got["colour"], registry=registry, max_edits=me)
+                                     observed_colour=got["colour"], observed_model=got.get("model"),
+                                     registry=registry, max_edits=me)
     truth = plate_ocr.canonical(got["truth"]) if got.get("truth") else None
     target = truth or (cands[0].plate if cands else None)
     st.session_state["pm_result"] = {
@@ -337,15 +344,57 @@ def _input_simple() -> Dict[str, Any]:
     elif mode == "Benchmark image":
         _benchmark_input(got)
     else:
-        up = st.file_uploader("Plate image (png or jpg)", type=["png", "jpg", "jpeg"], key="pm_upload")
+        # PHASE3-REPLACED (C2: a photo of the whole car is welcome now, not only a plate close-up):
+        # up = st.file_uploader("Plate image (png or jpg)", type=["png", "jpg", "jpeg"], key="pm_upload")
+        up = st.file_uploader("Plate close-up, or a photo of the car showing its plate (png or jpg)",
+                              type=["png", "jpg", "jpeg"], key="pm_upload")
         if up is not None:
             got["image"] = up.getvalue()
             ocr = _ocr(got["image"])
             got.update(raw=ocr["raw"], confidence=ocr["confidence"], guesses=ocr["guesses"], source="EasyOCR, live")
-    c1, c2 = st.columns(2)
-    got["make"] = c1.text_input("Observed make (optional)", "", key="pm_make").strip() or None
-    got["colour"] = c2.text_input("Observed colour (optional)", "", key="pm_colour").strip() or None
+            _photo_vehicle(got["image"], ocr.get("box") or [])  # PHASE3-ADDED (C2)
+    # PHASE3-REPLACED (C2: the photo can fill these, so they are Session State keys without a widget default, as
+    # pm_typed already is; and the observed model is asked for too, which the matcher has always accepted):
+    # c1, c2 = st.columns(2)
+    # got["make"] = c1.text_input("Observed make (optional)", "", key="pm_make").strip() or None
+    # got["colour"] = c2.text_input("Observed colour (optional)", "", key="pm_colour").strip() or None
+    c1, c2, c3 = st.columns(3)
+    for key in ("pm_make", "pm_model", "pm_colour"):
+        st.session_state.setdefault(key, "")
+    got["make"] = c1.text_input("Observed make (optional)", key="pm_make").strip() or None
+    got["model"] = c2.text_input("Observed model (optional)", key="pm_model").strip() or None
+    got["colour"] = c3.text_input("Observed colour (optional)", key="pm_colour").strip() or None
     return got
+
+
+# PHASE3-ADDED (C2: make, model and colour from the photo)
+def _photo_vehicle(image: bytes, box: List[Any]) -> None:
+    """Infer make / model / colour once per image and pre-fill the observed fields (still editable)."""
+    key = hashlib.sha1(image).hexdigest()
+    cache = st.session_state.setdefault("pm_vision", {})
+    if key not in cache:
+        try:
+            with st.spinner("Looking at the car…"):
+                cache[key] = vehicle_vision.analyse(image, box)
+        except vehicle_vision.VisionUnavailable as exc:
+            cache[key] = exc
+    view = cache[key]
+    if isinstance(view, Exception):
+        st.caption(f"Make and colour are not inferred on this machine ({view}). "
+                   f"Install with `{vehicle_vision.INSTALL_HINT}`, or type them below.")
+        return
+    if st.session_state.get("pm_vision_for") != key:  # a new photo: fill once, then the examiner's edits stand
+        st.session_state["pm_vision_for"] = key
+        st.session_state.update(pm_make=view.make or "", pm_model=view.model or "", pm_colour=view.colour or "")
+    if view.kind == "vehicle":
+        sure = ", ".join(f"{k} {view.p[k]:.0%}" for k in ("make", "model", "colour") if getattr(view, k))
+        st.info(f"The photo shows a **{view.words()}**" + (f" (CLIP: {sure})" if sure else "") +
+                ". Filled in below; correct it if wrong. The matcher checks it against each candidate's record.")
+    else:
+        st.caption(view.words().capitalize() + ".")
+    for note in view.notes:
+        st.caption(note)
+# PHASE3-END
 
 
 def char_rows(truth: str, raw: str, repaired: Optional[str]) -> List[Dict[str, str]]:
@@ -416,7 +465,10 @@ def _read_simple(got: Dict[str, Any]) -> str:
 
 def matches_html(rows: List[Dict[str, Any]]) -> str:
     """The results table with a decision chip per row and the top row highlighted."""
-    cols = ["#", "Registered plate", "Probability", "Decision", "Make agrees", "Colour agrees", "Registered as"]
+    # PHASE3-REPLACED (C1 + C3: two columns added, shown only when the rows carry them):
+    # cols = ["#", "Registered plate", "Probability", "Decision", "Make agrees", "Colour agrees", "Registered as"]
+    cols = [c for c in ["#", "Registered plate", "Probability", "Decision", "Corrections", "Held by", "Make agrees",
+                        "Colour agrees", "Registered as"] if not rows or c in rows[0]]
     head = "".join(f"<th>{c}</th>" for c in cols)
     body = []
     for i, r in enumerate(rows):
@@ -436,7 +488,16 @@ def _matches(res: Dict[str, Any]) -> None:
     rows = []
     for i, c in enumerate(cands, 1):
         reg = res["registry"].get(c.plate, {})
+        # PHASE3-REPLACED (C1 + C3: a candidate may be held by any agency, so the table says which; and the
+        # characters the match had to change are shown next to the probability):
+        # rows.append({"#": i, "Registered plate": c.plate, "Probability": f"{c.probability:.3f}", "Decision": c.decision,
+        #              "Make agrees": AGREE.get(c.features.get("make_agree"), "—"),
+        #              "Colour agrees": AGREE.get(c.features.get("colour_agree"), "—"),
+        #              "Registered as": f"{reg.get('make') or ''} {reg.get('model') or ''} "
+        #                               f"{reg.get('colour') or ''}".strip() or "—"})
         rows.append({"#": i, "Registered plate": c.plate, "Probability": f"{c.probability:.3f}", "Decision": c.decision,
+                     "Corrections": "; ".join(c.evidence.get("corrections") or []) or "none",
+                     "Held by": reg.get("held_by") or "REG",
                      "Make agrees": AGREE.get(c.features.get("make_agree"), "—"),
                      "Colour agrees": AGREE.get(c.features.get("colour_agree"), "—"),
                      "Registered as": f"{reg.get('make') or ''} {reg.get('model') or ''} "
@@ -444,6 +505,7 @@ def _matches(res: Dict[str, Any]) -> None:
     st.markdown(matches_html(rows), unsafe_allow_html=True)
     nxt = f"next best p={cands[1].probability:.3f}" if len(cands) > 1 else "no other candidate"
     st.markdown(f"**{cands[0].plate} — {cands[0].decision} (p={cands[0].probability:.3f}), {nxt}.**")
+    _other_databases(res)  # PHASE3-ADDED (C1)
     with st.expander("Details: every measure's score and the same plate under every damage level", expanded=False):
         group_label("Every measure's score for the same candidates")
         styled_table([{"#": i, "Plate": c.plate,
@@ -460,6 +522,39 @@ def _matches(res: Dict[str, Any]) -> None:
             plate_separation.render_distance(res["read"], target, cands, res.get("plates") or [])
         if res.get("grid"):
             plate_separation.render_grid(res["grid"])
+
+
+# PHASE3-ADDED (C1: when the registration alone is not enough, what every other agency says about the candidates)
+def _other_databases(res: Dict[str, Any]) -> None:
+    cands, universe = res["cands"], res["registry"]
+    top = cands[0]
+    p_unknown = top.evidence.get("p_unknown")
+    if p_unknown is not None:
+        st.markdown(f"Chance the car is **one no agency holds** (out-of-state, unregistered): **{p_unknown:.3f}**. "
+                    f"The learned model alone said p={top.evidence.get('model_p', top.probability):.3f} for "
+                    f"{top.plate}; it only ever compared registered plates with each other, so it is multiplied by the chance "
+                    "the car is one an agency holds, and that figure is the one shown and decided on.")
+    meta = res.get("meta") or {}
+    if meta.get("unavailable"):
+        st.warning("Not consulted (down): " + ", ".join(meta["unavailable"]) + ".")
+    with st.expander("What the other databases say about the top candidates", expanded=top.decision != "ACCEPT"):
+        table = []
+        for c in cands[:3]:
+            row = universe.get(c.plate, {})
+            seen = row.get("last_seen") or {}
+            table.append({"Plate": c.plate, "Held by": row.get("held_by") or "REG",
+                          "On record": f"{row.get('make') or ''} {row.get('model') or ''} {row.get('colour') or ''}".strip()
+                                       or "—",
+                          "Filled from cameras": row.get("fingerprint") or "—",
+                          "Camera sightings": row.get("sightings", 0),
+                          "Last seen": f"{seen.get('where') or ''} {seen.get('at') or ''}".strip() or "—",
+                          "Model p": f"{c.evidence.get('model_p', c.probability):.3f}",
+                          "Shown p": f"{c.probability:.3f}"})
+        styled_table(table)
+        st.caption("A plate counts as corroborated when at least two agencies other than the cameras hold it and the "
+                   "observed make and colour both match its record. Only then can a correction inside the state code "
+                   "(the first two letters) be accepted without a person.")
+# PHASE3-END
 
 
 def _reverse_simple() -> None:
