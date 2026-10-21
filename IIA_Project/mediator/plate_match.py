@@ -30,6 +30,7 @@ from mediator import plate_resolve
 from mediator import confusion
 from mediator.blocking import BlockingStats, QGramIndex, candidate_plates
 from mediator.confusion import learned_ocr_similarity
+from mediator import open_world  # PHASE3-ADDED (C3: the open-world check bounds every probability)
 from mediator.similarity import ALL_MEASURES, _tokens, jaccard, ocr_edit_similarity
 from mediator.transforms import norm_plate
 
@@ -48,6 +49,12 @@ ACCEPT_MARGIN = 0.10   # the winner must clear the runner-up by this much, else 
 CONTEXT_VETO = 2
 CONTEXT_KEYS = ("make_agree", "model_agree", "colour_agree")
 FALLBACK_THRESHOLDS = {"accept": 0.90, "reject": 0.50}  # uncalibrated: only without a bundle
+# PHASE3-ADDED (C3: matching re-evaluated; the examiner's 0L01AB1234 was ACCEPTed as DL01AB1234 at p=1.000)
+# A correction inside the state code changes which authority's plate this is, so it is never auto-accepted on
+# the characters alone. It is ACCEPTed only when the other evidence agrees (C1): at least CORROBORATING_SOURCES
+# authoritative sources hold the corrected plate AND the observed make and colour both match it.
+CORROBORATING_SOURCES = 2
+# PHASE3-END
 
 STRING_FEATURES: List[str] = list(ALL_MEASURES) + [
     "tfidf", "learned_ocr_similarity", "length_diff", "state_agree"]
@@ -72,6 +79,9 @@ class Candidate:
     probability: float = 0.0
     decision: str = "REJECT"
     reasons: List[str] = field(default_factory=list)
+    # PHASE3-ADDED (C1 + C3): model_p, p_unknown, corrections, state_code_fix, sources, held_by
+    evidence: Dict[str, Any] = field(default_factory=dict)
+    # PHASE3-END
 
 
 def load_registry(path: Optional[Path] = None) -> Dict[str, Dict[str, Any]]:
@@ -290,17 +300,73 @@ def decide(ranked: List[Candidate], th: Dict[str, float]) -> None:
                 c.reasons.append(f"p={c.probability:.3f} would ACCEPT the plate, but the camera's "
                                  f"{', '.join(contradicted)} contradict its registration: possible clone; needs an operator")
                 continue
+            # PHASE3-ADDED (C3: a state-code correction is never accepted on the characters alone; C1: unless
+            # the other databases and the observed car confirm it)
+            if c.evidence.get("state_code_fix"):
+                if not _corroborated(c):
+                    c.decision = "REVIEW"
+                    c.reasons.append(f"p={c.probability:.3f} would ACCEPT, but the match changes the state code "
+                                     f"({c.evidence['state_code_fix']}): another state's plate is possible; needs an "
+                                     "operator, or the make and colour plus a second agency to confirm it")
+                    continue
+                c.reasons.append(f"state-code correction ({c.evidence['state_code_fix']}) corroborated: held by "
+                                 f"{', '.join(c.evidence.get('sources') or [])}, make and colour agree")
+            # PHASE3-END
             c.decision = "ACCEPT"
             c.reasons.append(f"p={c.probability:.3f} >= accept threshold {th['accept']:.3f}, "
                              f"{c.probability - second:.3f} clear of the runner-up")
-        elif c.probability >= th["reject"]:
+        # PHASE3-REPLACED (C3: REJECT means "no plate the sources hold is plausible", a closed-world question, so
+        # it is asked of the learned model's own p; the open-world p decides ACCEPT only. Otherwise a very noisy
+        # read whose right plate the model ranks first at 0.999 was REJECTed, not shown to a person):
+        # elif c.probability >= th["reject"]:
+        elif c.probability >= th["reject"] or c.evidence.get("model_p", 0.0) >= th["reject"]:
             c.decision = "REVIEW"
             why = "a rival is too close" if i == 0 and c.probability >= th["accept"] else \
                 "between thresholds"
+            # PHASE3-ADDED (C3)
+            if c.probability < th["reject"]:
+                why = (f"a held plate is plausible (model p={c.evidence['model_p']:.3f}), but a car no agency holds "
+                       "explains the read better")
+            # PHASE3-END
             c.reasons.append(f"p={c.probability:.3f}: {why}; needs an operator")
         else:
             c.decision = "REJECT"
             c.reasons.append(f"p={c.probability:.3f} < reject threshold {th['reject']:.3f}")
+
+
+# PHASE3-ADDED (C1 + C3: the open-world bound, and the other databases as corroboration)
+def _corroborated(c: Candidate) -> bool:
+    authoritative = [s for s in c.evidence.get("sources") or [] if s != "CAM"]
+    return (len(authoritative) >= CORROBORATING_SOURCES and c.features.get("make_agree") == 1.0
+            and c.features.get("colour_agree") == 1.0)
+
+
+def apply_open_world(read: str, ranked: List[Candidate], reg: Mapping[str, Mapping[str, Any]],
+                     confidence: Optional[float]) -> None:
+    """Turn the learned, closed-world probability into an open-world one, and record why.
+
+    The learned model was calibrated on reads of registered plates only, so its p is p(c | read, the car is
+    one the sources hold); it uses the camera's make, model and colour, so it is the right judge of WHICH
+    held plate. The open-world posterior (open_world.py) answers the question it never saw: is the car one
+    the sources hold at all? Hence p(c | read) = p(c | read, held) x p(held | read). The model stays the
+    ranker it was validated as, and can no longer be surer than the read allows.
+    """
+    priors = {c.plate: float((reg.get(c.plate) or {}).get("prior", 1.0)) for c in ranked}
+    ow = open_world.posterior(read, [c.plate for c in ranked], priors, confidence=confidence)
+    p_held = 1.0 - ow.unknown
+    ch = open_world.channel(confidence)
+    for c in ranked:
+        row = reg.get(c.plate) or {}
+        fixes = open_world.corrections(read, c.plate, ch)
+        c.evidence.update(model_p=c.probability, p_unknown=ow.unknown,
+                          corrections=[f.words() for f in fixes],
+                          state_code_fix="; ".join(f.words() for f in fixes if f.in_state_code),
+                          sources=list(row.get("sources") or []), held_by=row.get("held_by"))
+        if ow.unknown >= 0.005:
+            c.reasons.append(f"model p={c.probability:.3f} x p(a held car)={p_held:.3f}: a plate no source holds "
+                             f"explains this read with p={ow.unknown:.3f}")
+        c.probability *= p_held
+# PHASE3-END
 
 
 # ------------------------------------------------------------------ retrieval
@@ -360,7 +426,9 @@ def match(read: str, *, confidence: Optional[float] = None,
           observed_make: Optional[str] = None, observed_colour: Optional[str] = None,
           registry: Registry = None, strategy: str = "position", model: str = "logreg",
           top_k: int = 10, observed_model: Optional[str] = None,
-          max_edits: Optional[int] = None) -> Tuple[List[Candidate], BlockingStats]:
+          max_edits: Optional[int] = None,
+          open_world_check: bool = True,  # PHASE3-ADDED (C3): False reproduces the phase-2 matcher
+          ) -> Tuple[List[Candidate], BlockingStats]:
     """Rank the registered plates a noisy read could be, with a calibrated decision each."""
     read = norm_plate(read) or ""
     reg = _as_mapping(registry)
@@ -394,7 +462,14 @@ def match(read: str, *, confidence: Optional[float] = None,
                   raw_scores(model, vectors, bundle))
     ranked = [Candidate(p, {m: v[m] for m in SCORE_NAMES}, v, pr, "REJECT", list(notes))
               for p, v, pr in zip(cands, vectors, probs)]
-    ranked.sort(key=lambda c: (-c.probability, c.plate))
+    # PHASE3-ADDED (C3: bound the learned probability by the open-world posterior before deciding)
+    if open_world_check:
+        apply_open_world(read, ranked, reg, confidence)
+    # PHASE3-END
+    # PHASE3-REPLACED (C3: the learned model stays the ranker it was validated as -- re-ranking by the bounded
+    # probability put the right plate first less often, 0.931 -> 0.886; the bound only decides and is shown):
+    # ranked.sort(key=lambda c: (-c.probability, c.plate))
+    ranked.sort(key=lambda c: (-c.evidence.get("model_p", c.probability), c.plate))
     decide(ranked, thresholds_for(model, bundle))
     return ranked[:top_k], stats
 
@@ -433,7 +508,10 @@ def reverse_match(plate: str, captures: Sequence[Union[str, Mapping[str, Any]]],
                           strategy=strategy, model=model)
         hit = next((c for c in ranked if c.plate == target), None)
         if hit is not None:
+            # PHASE3-REPLACED (C3: the open-world evidence travels with the reverse match too):
+            # out.append(Candidate(r, hit.scores, hit.features, hit.probability, hit.decision,
+            #                      hit.reasons + [f"forward match of {r} ranks {target}"]))
             out.append(Candidate(r, hit.scores, hit.features, hit.probability, hit.decision,
-                                 hit.reasons + [f"forward match of {r} ranks {target}"]))
+                                 hit.reasons + [f"forward match of {r} ranks {target}"], dict(hit.evidence)))
     out.sort(key=lambda c: (-c.probability, c.plate))
     return out

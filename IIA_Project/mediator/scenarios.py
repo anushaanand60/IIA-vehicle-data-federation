@@ -242,7 +242,14 @@ def s_clean_image(run: _Run) -> Tuple[str, str, bool]:
 
 
 def s_two_errors_rotated(run: _Run) -> Tuple[str, str, bool]:
-    exp, act, ok = _image_accepts(run, "data/plate_images/HR26EF4455__rotate_s2.png", "HR26EF4455")
+    # PHASE3-REPLACED (C3: at OCR confidence 0.38 the benchmark misreads 30 % of characters, so many plates no
+    # agency holds explain HR2GEF44551 too; recovering it means ranking HR26EF4455 first and handing it to a
+    # person, not accepting it unattended):
+    # exp, act, ok = _image_accepts(run, "data/plate_images/HR26EF4455__rotate_s2.png", "HR26EF4455")
+    _, act, _ = _image_accepts(run, "data/plate_images/HR26EF4455__rotate_s2.png", "HR26EF4455")
+    m = run.data["match"]
+    exp, ok = "REVIEW or ACCEPT HR26EF4455", m["best"] == "HR26EF4455" and m["decision"] in ("ACCEPT", "REVIEW")
+    run.step("Recovered", f"HR26EF4455 ranked first and {m['decision']}: a person confirms a read this noisy", ok)
     run.step("Errors in the read", ", ".join(f"{d['op']} at {d['position']}: {d['read']!r}->{d['plate']!r}"
                                              for d in run.data["diff"]) or "none")
     return exp, act, ok

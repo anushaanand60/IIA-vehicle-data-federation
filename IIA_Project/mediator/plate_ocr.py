@@ -30,8 +30,12 @@ INSTALL_HINT = "pip install easyocr"
 # Glyph pairs OCR actually confuses on plates. Applied one way only per position: at a position
 # where the plate pattern wants a digit we only ever letter->digit, and vice versa. Substituting
 # blindly would explode the candidate list and invent plates the pattern forbids.
-_LETTER_TO_DIGIT = {"O": "0", "I": "1", "B": "8", "S": "5", "Z": "2", "G": "6"}
-_DIGIT_TO_LETTER = {digit: letter for letter, digit in _LETTER_TO_DIGIT.items()}
+# PHASE3-REPLACED (C3: EasyOCR read the 4 of a real Kerala plate, KL 48 S 5665, as L -- the open-top 4 of the
+# HSRP font -- and A/4 is the other classic; both are letter->digit only, so the reverse map is now explicit):
+# _LETTER_TO_DIGIT = {"O": "0", "I": "1", "B": "8", "S": "5", "Z": "2", "G": "6"}
+# _DIGIT_TO_LETTER = {digit: letter for letter, digit in _LETTER_TO_DIGIT.items()}
+_LETTER_TO_DIGIT = {"O": "0", "I": "1", "B": "8", "S": "5", "Z": "2", "G": "6", "L": "4", "A": "4"}
+_DIGIT_TO_LETTER = {"0": "O", "1": "I", "8": "B", "5": "S", "2": "Z", "6": "G"}
 
 MAX_CANDIDATES = 16
 MIN_TEXT_LEN = 6
