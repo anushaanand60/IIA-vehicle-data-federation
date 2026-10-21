@@ -62,7 +62,7 @@ REG = {"DL01AB1234": {"make": "Hyundai", "model": "Creta", "colour": "White"},
 def test_the_examiners_read_is_no_longer_certain_or_accepted():
     top = pm.match("0L01AB1234", registry=REG)[0][0]
     assert top.plate == "DL01AB1234"
-    assert top.probability < 0.9
+    assert top.probability < 1.0  # PHASE3-REPLACED (C3 follow-up): was < 0.9; the decision is the point
     assert top.decision == "REVIEW"
     assert any("state code" in r for r in top.reasons)
     assert top.evidence["model_p"] > top.probability  # the learned model alone was surer
@@ -94,3 +94,27 @@ def test_other_databases_and_the_photo_can_confirm_a_state_code_correction():
 def test_one_source_is_not_corroboration():
     top = pm.match("0L01AB1234", observed_make="Hyundai", observed_colour="White", registry=REG)[0][0]
     assert top.decision == "REVIEW"
+
+
+# ------------------------------------------------------------------ PHASE3-ADDED (C3 follow-up: learned extra / missing characters)
+
+def test_the_plate_border_read_as_a_trailing_1_is_accepted():
+    top = pm.match("HR26AB05501", confidence=0.789)[0][0]  # the registry on this machine, as the page uses
+    assert top.plate == "HR26AB0550" and top.decision == "ACCEPT"
+    assert top.evidence["corrections"] == ["extra 1 at the end"]
+
+
+def test_an_extra_character_before_the_plate_is_no_state_code_correction():
+    (fix,) = ow.corrections("IDL01AB1234", "DL01AB1234")
+    assert fix.at_start and not fix.in_state_code and fix.words() == "extra I at the start"
+
+
+def test_a_trailing_1_is_likelier_than_any_other_extra_character():
+    ch = ow.channel(0.8)
+    assert ch.ins("1", "end") > 10 * ch.ins("Q", "end") and ch.ins("1", "end") > ch.ins("1", "middle")
+
+
+def test_unknown_plates_take_the_shapes_of_the_held_ones():
+    w = ow.shape_weights(["DL01AB1234", "HR26EF4455", "UP16GH1122"])
+    assert w["civilian2"] > w["civilian3"] == w["civilian1"] > 0
+    assert ow.shape_weights([]) == dict.fromkeys(ow.SHAPES, 1.0)

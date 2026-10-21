@@ -140,3 +140,31 @@ correctly finds no registered car.
 | `tests/test_photo_plate_line.py` | new | C2 plate line, L->4 repair, photo-vs-record |
 | `docs/OPEN_WORLD.md` | new | generated evaluation |
 | `docs/CHANGELOG_PHASE3.md` | new | this file |
+
+## 6. C3 follow-up: learned extra / missing characters, and plate shapes
+
+**What was wrong.** `HR26AB05501` (the right plate HR26AB0550, with the plate's right border read as a trailing
+1) scored 0.010. An extra character was modelled as rare and equally likely to be any of 36 characters at any
+place. "An unknown HR26ABO5501 (three-letter series, O read as 0)" therefore won 70 to 1, although none of the
+605 plates the sources hold has a three-letter series.
+
+**The fix** (`mediator/open_world.py`, marked `PHASE3-REPLACED (C3 follow-up ...)`):
+
+- **Where and which characters OCR adds or drops**, learned from the training split only. 96 of 1,298 rendered
+  reads gain a character at the end (71 of them a 1: the right border) and 18 at the start (17 an I: the left
+  border); 85 gain one and 34 lose one in the middle; none loses one at either end. Rates are per opportunity
+  and scaled by OCR confidence.
+- **Unknown plates take the shapes of the held plates** (`shape_weights`, read live from the registry the matcher
+  is given, Laplace-smoothed): a three-letter series is possible but rare when no held plate has one.
+- A character added **before** the plate (the left border as I) is no longer counted as a state-code correction.
+- Corrections now say "extra 1 at the end" / "extra I at the start".
+
+| read | before | after |
+|---|---|---|
+| `HR26AB05501` | 0.010 REVIEW | **0.931 ACCEPT**, "extra 1 at the end" |
+| `IDL01AB1234` | REVIEW (counted as a state-code fix) | 0.955 ACCEPT, "extra I at the start" |
+| `0L01AB1234` | 0.857 REVIEW | 0.864 REVIEW (a state-code fix still needs confirming) |
+
+**Measured** (`docs/OPEN_WORLD.md`): honest reads auto-accepted 55.3 % -> **69.1 %** at precision 1.000 (phase 2:
+78.8 % at 0.997, in a closed world). Unknown neighbours, state-code-0, XX and truncated reads all stay at 0 %.
+Test suite 1008 passed; ground truth 621/621.

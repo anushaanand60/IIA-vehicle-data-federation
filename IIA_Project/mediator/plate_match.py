@@ -341,6 +341,19 @@ def _corroborated(c: Candidate) -> bool:
             and c.features.get("colour_agree") == 1.0)
 
 
+_shape_memo: Dict[str, Dict[str, float]] = {}
+
+
+def _shapes(reg: Mapping[str, Mapping[str, Any]]) -> Dict[str, float]:
+    """open_world.shape_weights of this exact registry, memoised on its plate list like registry_artefacts."""
+    key = hashlib.sha1("\n".join(sorted(reg)).encode("utf-8")).hexdigest()
+    if key not in _shape_memo:
+        if len(_shape_memo) >= 4:
+            _shape_memo.clear()
+        _shape_memo[key] = open_world.shape_weights(reg)
+    return _shape_memo[key]
+
+
 def apply_open_world(read: str, ranked: List[Candidate], reg: Mapping[str, Mapping[str, Any]],
                      confidence: Optional[float]) -> None:
     """Turn the learned, closed-world probability into an open-world one, and record why.
@@ -352,7 +365,10 @@ def apply_open_world(read: str, ranked: List[Candidate], reg: Mapping[str, Mappi
     ranker it was validated as, and can no longer be surer than the read allows.
     """
     priors = {c.plate: float((reg.get(c.plate) or {}).get("prior", 1.0)) for c in ranked}
-    ow = open_world.posterior(read, [c.plate for c in ranked], priors, confidence=confidence)
+    # PHASE3-REPLACED (C3 follow-up: unknown plates weighted by the shapes of the plates the sources hold, live):
+    # ow = open_world.posterior(read, [c.plate for c in ranked], priors, confidence=confidence)
+    ow = open_world.posterior(read, [c.plate for c in ranked], priors, confidence=confidence,
+                              shapes=_shapes(reg))
     p_held = 1.0 - ow.unknown
     ch = open_world.channel(confidence)
     for c in ranked:
