@@ -168,3 +168,46 @@ place. "An unknown HR26ABO5501 (three-letter series, O read as 0)" therefore won
 **Measured** (`docs/OPEN_WORLD.md`): honest reads auto-accepted 55.3 % -> **69.1 %** at precision 1.000 (phase 2:
 78.8 % at 0.997, in a closed world). Unknown neighbours, state-code-0, XX and truncated reads all stay at 0 %.
 Test suite 1008 passed; ground truth 621/621.
+
+## 7. Photo dataset (C2) and the matching algorithm justified (C3)
+
+**Photo dataset** (`data/vehicle_photos`, built by `scripts/make_vehicle_photos.py`, attribution in its
+`ATTRIBUTION.md`): 13 freely licensed Wikimedia Commons photos of REG's models in REG's colours. Each one's own plate
+is covered by a rendered REG plate of exactly that car. There are 39 images: whole car 13, part of the car 13,
+night/blur 7, plate close-up 3, and clone (another registered car's plate) 3. Make and model come from the Commons
+title; colour was labelled by eye.
+
+`scripts/evaluate_vision.py` splits by photo (8 cars tune, 5 cars test) and chooses only CLIP's abstention
+thresholds on the training cars (make 0.7, model 0.7, colour 0.6). With 10 models among 13 cars, nothing more can
+honestly be trained. What the photos showed, and what changed in `mediator/vehicle_vision.py` (`PHASE3-REPLACED`):
+
+- CLIP's "close-up of a plate" gate fired on every bumper crop; the plate-box geometry gate decides alone now (39/39).
+- "a photo of a Tata car" said Mahindra where "a photo of a Tata Nexon" said Nexon; make and model are one softmax,
+  and the make is the sum over its models.
+- A->4 repair removed (in the HSRP font a 1 is read as A); L->4 stays.
+
+Test cars (`docs/VISION_EVALUATION.md`): close-up gate 15/15; colour 7 answered, 7 right; make 12 answered, 10 right;
+right plate ranked first 13/15; no clone auto-accepted with the photo.
+
+**Algorithm comparison** (`scripts/compare_matchers.py`, `docs/MATCHER_COMPARISON.md`): 23 contenders under
+phase 2's own protocol (split by plate, Platt and thresholds on validation, winner on validation, test once), plus
+~75 unknown-neighbour reads per split and calibration error. McNemar's test and bootstrap intervals check which gaps
+are real. Findings:
+
+- Stacking the noisy channel's evidence and plate-segment agreement into the learned model ranks best (top-1 0.916
+  vs 0.902), but only training it **also on reads of cars no source holds** stops it accepting them (0.70 -> 0.00).
+- The pre-set rule picked stacked trees on validation; on test they missed the 0.98 precision target (0.951). The
+  recommendation, stated with the caveat that it looked at test, is the stacked logistic regression: target met on
+  validation and test, readable weights. The ranking gaps among the stacked models are not significant.
+- **Live** (`mediator/plate_match.py`, model `stacked` in `data/match_model.joblib`; phase 2's models kept): that
+  model x p(held). A min() cap was tried and hid the context (two captures of one plate, one with contradicting make
+  and colour, scored the same). On test: top-1 0.916, right reads auto-accepted 81.1 % at precision 1.000, unknown
+  cars 0 % (phase 2: 84.2 % at 0.997 but 70 % of unknown cars accepted; first phase-3 version: 75.8 %).
+- Retrieval: a SymSpell deletion index is far cheaper but keeps the true plate for only 0.809 of reads (k=2) against
+  0.909 for the q-gram blocking, so the blocking stays.
+
+**Website:**
+- Plate Match: a *Photo dataset* input, with the truth shown; *Agencies asked* toggles (INS, THEFT, PUC, CAM);
+  *Why this match*, the stacked model's log-odds by evidence group (`plate_match.explain`).
+- Matching Evaluation: the matcher in use and why, the leaderboard, the significance tests and the photo results,
+  ahead of the phase-2 closed-world evaluation.

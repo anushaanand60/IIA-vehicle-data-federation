@@ -166,11 +166,15 @@ def render() -> None:
     if not DOC.exists():
         st.error("docs/MATCHING_EVALUATION.md is missing: run python scripts/evaluate_matching.py")
         return
+    _phase3()  # PHASE3-ADDED (C3: the algorithm comparison and the photo results come first)
     sec = sections(DOC.read_text(encoding="utf-8"))
     scoring = table(sec.get("2", ""))
     best = winner(sec.get("7", ""), scoring) or {}
     with panel("me_head"):
-        section("The decision")
+        # PHASE3-REPLACED (C3: the phase-2 decision is now the earlier, closed-world evaluation):
+        # section("The decision")
+        section("Phase 2: the decision in a closed world", "Before phase 3: registered cars only, no unknown "
+                "neighbours, no channel features. Kept for comparison.")
         # PHASE2-REPLACED (review: the same REVIEW rate is labelled 'Sent to a person (REVIEW)' on How it works; one name
         # for one number across pages):
         # kpi_row([("Chosen model", best.get("contender", "—")), ("Top-1, test", best.get("top-1", "—")),
@@ -195,3 +199,64 @@ def render() -> None:
             styled_table(table(sec.get("3", "")), max_rows=40)
             section("Real camera reads with no ground truth")
             st.markdown(prose(sec.get("6", "")))
+
+
+# PHASE3-ADDED (C3 + C2: which matcher, and why; and what the photo adds) ----------------------------------------
+COMPARISON = _ROOT / "data" / "matcher_comparison.json"
+COMPARISON_DOC = _ROOT / "docs" / "MATCHER_COMPARISON.md"
+VISION_DOC = _ROOT / "docs" / "VISION_EVALUATION.md"
+SHOWN = 10  # leaderboard rows on screen; the document has all of them
+
+
+def _md_block(path: Path, heading: str) -> str:
+    """The text under one '## ' or '### ' heading of a generated document, up to the next heading of that level."""
+    if not path.exists():
+        return ""
+    text = path.read_text(encoding="utf-8")
+    depth = len(heading.split(" ")[0])  # stop at the next heading of this level or a higher one
+    m = re.search(rf"^{re.escape(heading)}\s*$(.*?)(?=^#{{1,{depth}}} |\Z)", text, re.M | re.S)
+    return m.group(1).strip() if m else ""
+
+
+def _phase3() -> None:
+    if not COMPARISON.exists():
+        st.info("Run python scripts/compare_matchers.py to compare every matching algorithm under one protocol.")
+        return
+    import json  # noqa: PLC0415
+
+    d = json.loads(COMPARISON.read_text(encoding="utf-8"))
+    fam = d.get("family", {})
+    live = next((n for n in d["ranked"] if "(live)" in fam.get(n, "")), d["best"])
+    t = d["test"][live]
+    with panel("me_p3_head"):
+        section("The matcher in use, and why", "From docs/MATCHER_COMPARISON.md, written by scripts/compare_matchers.py: "
+                "every contender under one protocol, chosen on validation, reported on test.")
+        kpi_row([("In use", fam.get(live, live)), ("Top-1, test", f"{t['top1']:.3f}"),
+                 ("Right reads accepted unattended", f"{t['acc_r']:.3f}"), ("ACCEPT precision", f"{t['acc_p']:.3f}"),
+                 ("Unknown cars accepted", f"{t['unknown_accept']:.3f}")])
+        st.markdown(_md_block(COMPARISON_DOC, "### Recommendation, and how it was reached")
+                    or _md_block(COMPARISON_DOC, "## Leaderboard (test)").split("\n\n")[-1])
+    with panel("me_p3_board"):
+        section("Every algorithm and combination, same protocol",
+                "Test split. Unknown cars = a valid plate one digit from a registered one that no agency holds: every "
+                "ACCEPT is the wrong car. ECE = gap between the probability shown and how often it is right.")
+        rows = [{"algorithm": fam.get(n, n), "top-1": f"{d['test'][n]['top1']:.3f}",
+                 "accepted unattended": f"{d['test'][n]['acc_r']:.3f}", "precision": f"{d['test'][n]['acc_p']:.3f}",
+                 "unknown cars accepted": f"{d['test'][n]['unknown_accept']:.3f}", "ECE": f"{d['test'][n]['ece']:.3f}",
+                 "eligible": "yes" if n in d["eligible"] else "no"} for n in d["ranked"][:SHOWN]]
+        styled_table(rows)
+        section("Is a gap real? McNemar's test on the same reads")
+        styled_table([{"winner vs": fam.get(s["vs"], s["vs"]), "only winner right": s["best_only"],
+                       "only other right": s["other_only"], "p": f"{s['p']:.3g}",
+                       "verdict": "real (p < 0.05)" if s["p"] < 0.05 else "a tie"} for s in d["significance"]])
+        with st.expander("Why each stage of the pipeline is there; weights; cheaper retrieval", expanded=False):
+            st.markdown(_md_block(COMPARISON_DOC, "## Why each part of the pipeline is there"))
+            st.markdown(_md_block(COMPARISON_DOC, "## Logistic regression: what each piece of evidence weighs"))
+            st.markdown(_md_block(COMPARISON_DOC, "## Retrieval: could candidate search be cheaper?"))
+    if VISION_DOC.exists():
+        with panel("me_p3_vision"):
+            section("What a photo of the car adds", "39 labelled photos (data/vehicle_photos), thresholds tuned on 8 "
+                    "cars, tested on 5 others. A clone carries another registered car's plate.")
+            st.markdown(_md_block(VISION_DOC, "## Test cars (5 cars, never seen while tuning)"))
+            st.markdown(_md_block(VISION_DOC, "## Clones: another registered car's plate on the photo"))
+# PHASE3-END

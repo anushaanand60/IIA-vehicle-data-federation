@@ -118,3 +118,17 @@ def test_unknown_plates_take_the_shapes_of_the_held_ones():
     w = ow.shape_weights(["DL01AB1234", "HR26EF4455", "UP16GH1122"])
     assert w["civilian2"] > w["civilian3"] == w["civilian1"] > 0
     assert ow.shape_weights([]) == dict.fromkeys(ow.SHAPES, 1.0)
+
+
+# ------------------------------------------------------------------ PHASE3-ADDED (C3: the stacked matcher in use)
+
+def test_the_stacked_matcher_is_used_and_bounded_on_the_examiners_read():
+    top = pm.match("0L01AB1234")[0][0]  # the registry on this machine, as the page uses
+    assert top.decision == "REVIEW" and top.probability < 0.95
+    assert top.evidence["model_p"] >= top.probability
+
+
+def test_every_evidence_group_is_explained():
+    top = pm.match("DL01AB1234", confidence=0.95, observed_make="Hyundai", observed_colour="White")[0][0]
+    parts = dict(pm.explain(top))
+    assert set(parts) == set(pm.EVIDENCE_GROUPS) and parts["make"] > 0 and parts["colour"] > 0

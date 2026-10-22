@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import hashlib
 import math
+
+import numpy as np  # PHASE3-ADDED (C3: explain() reads the stacked model's weights)
 import sqlite3
 from collections import Counter
 from dataclasses import dataclass, field
@@ -263,8 +265,11 @@ def raw_scores(model: str, vectors: List[Dict[str, float]],
     if model == "weighted":
         return [sum(w * ((v[f] + 1) / 2 if f in CONTEXT_FEATURES else v[f])
                     for f, w in WEIGHTS.items()) for v in vectors]
-    if model in ("logreg", "gbt"):
-        names = bundle["features"]
+    # PHASE3-REPLACED (C3: the stacked model has its own, longer feature list):
+    # if model in ("logreg", "gbt"):
+    #     names = bundle["features"]
+    if model in ("logreg", "gbt", "stacked"):
+        names = bundle["stacked_features"] if model == "stacked" else bundle["features"]
         X = [[v[n] for n in names] for v in vectors]
         return [float(p) for p in bundle["models"][model].predict_proba(X)[:, 1]]
     raise ValueError(f"unknown model {model!r}")
@@ -354,8 +359,44 @@ def _shapes(reg: Mapping[str, Mapping[str, Any]]) -> Dict[str, float]:
     return _shape_memo[key]
 
 
+# The stacked matcher (C3, chosen in scripts/compare_matchers.py -> docs/MATCHER_COMPARISON.md): the 18 phase-2
+# features plus the noisy channel's evidence and per-segment agreement, trained also on reads of cars no source
+# holds, so it learns to refuse an unknown neighbour instead of being bounded afterwards.
+CHANNEL_FEATURES = ["log_channel", "p_open", "p_held"]
+SEGMENT_FEATURES = ["seg_state", "seg_district", "seg_series", "seg_number"]
+
+
+def channel_features(cand: str, ow: "open_world.OpenWorld") -> Dict[str, float]:
+    return {"log_channel": math.log10(ow.likelihoods.get(cand, 0.0) + 1e-30),
+            "p_open": ow.probabilities.get(cand, 0.0), "p_held": 1.0 - ow.unknown}
+
+
+def segment_features(read: str, cand: str) -> Dict[str, float]:
+    """Per segment of the candidate (state, district, series, number), the share of its characters the read
+    has at the same place; the read is cut by the candidate's segment lengths."""
+    m = open_world._SHAPE_RE.match(cand)
+    if not m:
+        return dict.fromkeys(SEGMENT_FEATURES, 0.0)
+    out, i = {}, 0
+    for name, part in zip(SEGMENT_FEATURES, (cand[:2], cand[2:4], m.group(1), cand[-4:])):
+        piece = read[i:i + len(part)]
+        out[name] = sum(a == b for a, b in zip(piece, part)) / len(part)
+        i += len(part)
+    return out
+
+
+def open_world_posterior(read: str, cands: Sequence[str], reg: Mapping[str, Mapping[str, Any]],
+                         confidence: Optional[float]) -> "open_world.OpenWorld":
+    priors = {c: float((reg.get(c) or {}).get("prior", 1.0)) for c in cands}
+    return open_world.posterior(read, list(cands), priors, confidence=confidence, shapes=_shapes(reg))
+
+
+# PHASE3-REPLACED (C3: the posterior is computed once in match(), and a stacked model is not bounded again):
+# def apply_open_world(read: str, ranked: List[Candidate], reg: Mapping[str, Mapping[str, Any]],
+#                      confidence: Optional[float]) -> None:
 def apply_open_world(read: str, ranked: List[Candidate], reg: Mapping[str, Mapping[str, Any]],
-                     confidence: Optional[float]) -> None:
+                     confidence: Optional[float], ow: Optional["open_world.OpenWorld"] = None,
+                     bound: bool = True) -> None:
     """Turn the learned, closed-world probability into an open-world one, and record why.
 
     The learned model was calibrated on reads of registered plates only, so its p is p(c | read, the car is
@@ -364,11 +405,11 @@ def apply_open_world(read: str, ranked: List[Candidate], reg: Mapping[str, Mappi
     the sources hold at all? Hence p(c | read) = p(c | read, held) x p(held | read). The model stays the
     ranker it was validated as, and can no longer be surer than the read allows.
     """
-    priors = {c.plate: float((reg.get(c.plate) or {}).get("prior", 1.0)) for c in ranked}
-    # PHASE3-REPLACED (C3 follow-up: unknown plates weighted by the shapes of the plates the sources hold, live):
+    # PHASE3-REPLACED (C3 follow-up: unknown plates weighted by the shapes of the plates the sources hold, live;
+    # then computed once in match()):
+    # priors = {c.plate: float((reg.get(c.plate) or {}).get("prior", 1.0)) for c in ranked}
     # ow = open_world.posterior(read, [c.plate for c in ranked], priors, confidence=confidence)
-    ow = open_world.posterior(read, [c.plate for c in ranked], priors, confidence=confidence,
-                              shapes=_shapes(reg))
+    ow = ow or open_world_posterior(read, [c.plate for c in ranked], reg, confidence)
     p_held = 1.0 - ow.unknown
     ch = open_world.channel(confidence)
     for c in ranked:
@@ -378,6 +419,13 @@ def apply_open_world(read: str, ranked: List[Candidate], reg: Mapping[str, Mappi
                           corrections=[f.words() for f in fixes],
                           state_code_fix="; ".join(f.words() for f in fixes if f.in_state_code),
                           sources=list(row.get("sources") or []), held_by=row.get("held_by"))
+        # PHASE3-REPLACED (C3: a min() cap hid the context -- two captures of one plate, one with contradicting make
+        # and colour, showed the same probability; the stacked model's p is multiplied below like any other):
+        # if not bound:
+        #     if c.probability > p_held:
+        #         c.reasons.append(...)
+        #     c.probability = min(c.probability, p_held)
+        #     continue
         if ow.unknown >= 0.005:
             c.reasons.append(f"model p={c.probability:.3f} x p(a held car)={p_held:.3f}: a plate no source holds "
                              f"explains this read with p={ow.unknown:.3f}")
@@ -474,13 +522,24 @@ def match(read: str, *, confidence: Optional[float] = None,
                read_registered=read in plate_set)
     vectors = [{**pair_features(key, read, p, tfidf),
                 **context_features(registry_row=reg.get(p), **ctx)} for p in cands]
+    # PHASE3-ADDED (C3: the comparison's recommended matcher is the default whenever the bundle holds it)
+    ow = open_world_posterior(read, cands, reg, confidence) if open_world_check and cands else None
+    stacked = bool(ow) and model == "logreg" and "stacked" in ((bundle or {}).get("models") or {})
+    if stacked:
+        model = "stacked"
+        for p, v in zip(cands, vectors):
+            v.update(channel_features(p, ow), **segment_features(read, p))
+    # PHASE3-END
     probs = platt((bundle or {}).get("calibration", {}).get(model),
                   raw_scores(model, vectors, bundle))
     ranked = [Candidate(p, {m: v[m] for m in SCORE_NAMES}, v, pr, "REJECT", list(notes))
               for p, v, pr in zip(cands, vectors, probs)]
     # PHASE3-ADDED (C3: bound the learned probability by the open-world posterior before deciding)
-    if open_world_check:
-        apply_open_world(read, ranked, reg, confidence)
+    # PHASE3-REPLACED (C3: the posterior from above; the stacked model is not bounded a second time):
+    # if open_world_check:
+    #     apply_open_world(read, ranked, reg, confidence)
+    if open_world_check and ranked:
+        apply_open_world(read, ranked, reg, confidence, ow=ow, bound=not stacked)
     # PHASE3-END
     # PHASE3-REPLACED (C3: the learned model stays the ranker it was validated as -- re-ranking by the bounded
     # probability put the right plate first less often, 0.931 -> 0.886; the bound only decides and is shown):
@@ -531,3 +590,30 @@ def reverse_match(plate: str, captures: Sequence[Union[str, Mapping[str, Any]]],
                                  hit.reasons + [f"forward match of {r} ranks {target}"], dict(hit.evidence)))
     out.sort(key=lambda c: (-c.probability, c.plate))
     return out
+
+
+# PHASE3-ADDED (C1 + C2 + C3: why the stacked model chose a candidate, evidence by evidence) --------------------
+EVIDENCE_GROUPS: Dict[str, List[str]] = {
+    "plate characters": [n for n in STRING_FEATURES] + ["log_channel", "p_open"] + SEGMENT_FEATURES,
+    "a car the agencies hold (open world)": ["p_held", "read_is_registered"],
+    "OCR confidence": ["ocr_confidence"],
+    "make": ["make_agree"], "model": ["model_agree"], "colour": ["colour_agree"],
+}
+
+
+def explain(c: Candidate) -> List[Tuple[str, float]]:
+    """(evidence group, log-odds contribution) for a candidate scored by the stacked logistic regression.
+
+    Each feature contributes weight x (value - training mean) / training spread, exactly what the model adds
+    up, so the bars sum to the model's log-odds minus the intercept. Positive = towards "this is the car".
+    Empty when the candidate was not scored by the stacked model."""
+    bundle, _ = load_bundle()
+    pipe = ((bundle or {}).get("models") or {}).get("stacked")
+    names = (bundle or {}).get("stacked_features") or []
+    if pipe is None or not all(n in c.features for n in names):
+        return []
+    scaler, lr = pipe[0], pipe[-1]
+    z = (np.array([c.features[n] for n in names]) - scaler.mean_) / scaler.scale_
+    contrib = dict(zip(names, lr.coef_[0] * z))
+    return [(g, float(sum(contrib.get(n, 0.0) for n in fs))) for g, fs in EVIDENCE_GROUPS.items()]
+# PHASE3-END

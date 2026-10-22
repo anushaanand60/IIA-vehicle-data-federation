@@ -30,7 +30,10 @@ def test_page_renders_chart_tables_and_decision():
     at = AppTest.from_function(_page, default_timeout=60).run()
     assert not at.exception, [e.value for e in at.exception]
     text = " ".join(str(m.value) for m in at.markdown)
-    for heading in ("The decision", "Ablation", "Blocking funnel", "Logistic-regression weights"):
+    # PHASE3-REPLACED (C3: the phase-3 comparison comes first; the phase-2 decision is labelled as the closed-world one):
+    # for heading in ("The decision", "Ablation", "Blocking funnel", "Logistic-regression weights"):
+    for heading in ("The matcher in use, and why", "Phase 2: the decision in a closed world", "Ablation",
+                    "Blocking funnel", "Logistic-regression weights"):
         assert heading in text, heading
     kpis = " ".join(str(m.value) for m in at.markdown if "cv-kpi" in str(m.value))
     sec = matching_eval.sections(DOC.read_text(encoding="utf-8"))

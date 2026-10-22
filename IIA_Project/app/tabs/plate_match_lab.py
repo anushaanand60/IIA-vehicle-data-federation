@@ -42,7 +42,11 @@ from theme import TOKENS  # noqa: E402
 
 BENCHMARK = _ROOT / "data" / "match_benchmark.csv"
 DECISION_TOKEN = {"ACCEPT": "ok", "REVIEW": "warn", "REJECT": "bad"}
-MODES = ("Type a read", "Benchmark image", "Upload an image")
+# PHASE3-REPLACED (C2: the labelled photo set is a fourth way to give a plate):
+# MODES = ("Type a read", "Benchmark image", "Upload an image")
+MODES = ("Type a read", "Benchmark image", "Upload an image", "Photo dataset")
+PHOTOS = _ROOT / "data" / "vehicle_photos" / "manifest.csv"  # PHASE3-ADDED (C2)
+AGENCIES = ("INS", "THEFT", "PUC", "CAM")  # PHASE3-ADDED (C1): the agencies the examiner can switch off
 SHORT = {"edit_similarity": "edit", "ocr_edit_similarity": "ocr-edit", "jaro": "jaro", "jaro_winkler": "j-w",
          "overlap": "overlap", "jaccard": "jaccard", "ratcliff_obershelp": "r-o", "soundex_similarity": "soundex",
          "tfidf": "tf-idf", "learned_ocr_similarity": "learned"}
@@ -163,6 +167,7 @@ def _forward(read: str, got: Dict[str, Any]) -> None:
         # PHASE3-REPLACED (C1: every catalogued source's plates are candidates, not only REG's):
         # registry, meta = live_registry()
         registry, meta = federated_match.live_universe()
+        registry = _only_agencies(registry, st.session_state.get("pm_agencies", list(AGENCIES)))  # PHASE3-ADDED (C1)
     except Exception as exc:  # refuse, never guess: the phase-1 rule for a dead source
         st.session_state.pop("pm_result", None)
         st.error(f"Refused: the registration authority could not be read live ({exc}).")
@@ -343,6 +348,8 @@ def _input_simple() -> Dict[str, Any]:
         got["confidence"] = c2.number_input("OCR confidence", 0.0, 1.0, 0.71, 0.01, key="pm_conf")
     elif mode == "Benchmark image":
         _benchmark_input(got)
+    elif mode == "Photo dataset":  # PHASE3-ADDED (C2)
+        _photo_dataset_input(got)
     else:
         # PHASE3-REPLACED (C2: a photo of the whole car is welcome now, not only a plate close-up):
         # up = st.file_uploader("Plate image (png or jpg)", type=["png", "jpg", "jpeg"], key="pm_upload")
@@ -505,6 +512,7 @@ def _matches(res: Dict[str, Any]) -> None:
     st.markdown(matches_html(rows), unsafe_allow_html=True)
     nxt = f"next best p={cands[1].probability:.3f}" if len(cands) > 1 else "no other candidate"
     st.markdown(f"**{cands[0].plate} — {cands[0].decision} (p={cands[0].probability:.3f}), {nxt}.**")
+    _why(cands[0])  # PHASE3-ADDED (C3: the evidence, group by group)
     _other_databases(res)  # PHASE3-ADDED (C1)
     with st.expander("Details: every measure's score and the same plate under every damage level", expanded=False):
         group_label("Every measure's score for the same candidates")
@@ -524,6 +532,76 @@ def _matches(res: Dict[str, Any]) -> None:
             plate_separation.render_grid(res["grid"])
 
 
+# PHASE3-ADDED (C2: the labelled photo set as an input; C1: agency toggles; C3: the evidence behind a match)
+@st.cache_data(show_spinner=False)
+def photo_rows() -> List[Dict[str, str]]:
+    """The labelled photo set: a file in the repository, not source data, so caching it is safe."""
+    if not PHOTOS.exists():
+        return []
+    with PHOTOS.open(encoding="utf-8") as fh:
+        return list(csv.DictReader(fh))
+
+
+def _photo_dataset_input(got: Dict[str, Any]) -> None:
+    rows = photo_rows()
+    if not rows:
+        st.warning("No photo set: run python scripts/make_vehicle_photos.py")
+        return
+    kinds = {"full": "whole car", "partial": "part of the car", "hard": "night / blur", "plate_only": "plate close-up",
+             "clone": "clone: another car's plate"}
+    c1, c2 = st.columns([1, 2])
+    kind = c1.selectbox("Kind", list(kinds), format_func=kinds.get, key="pm_ph_kind")
+    pool = {r["image"]: r for r in rows if r["variant"] == kind}
+    path = c2.selectbox("Photo", list(pool), key="pm_ph_img", format_func=lambda x: Path(x).name)
+    row = pool[path]
+    got["image"] = (_ROOT / path).read_bytes()
+    ocr = _ocr(got["image"])
+    got.update(raw=ocr["raw"], confidence=ocr["confidence"], guesses=ocr["guesses"], truth=row["true_plate"],
+               source="photo dataset, EasyOCR live")
+    car = f"{row['colour'].lower()} {row['make']} {row['model']}"
+    if row["is_clone"] == "1":
+        st.info(f"Truth: the photo shows a **{car}**, but the plate **{row['true_plate']}** is registered to another "
+                "car. The plate should match; the car should not.")
+    else:
+        st.info(f"Truth: a **{car}** with plate **{row['true_plate']}** (registered as exactly that car).")
+    st.caption(f"Photo: {row['author']}, {row['license']} ({row['source_url']}); its own plate is covered by a "
+               "rendered one.")
+    _photo_vehicle(got["image"], ocr.get("box") or [])
+
+
+def _only_agencies(universe: Dict[str, Dict[str, Any]], keep: List[str]) -> Dict[str, Dict[str, Any]]:
+    """The candidate set as if only REG and the kept agencies were asked: a plate no kept agency holds drops out."""
+    out = {}
+    for plate, row in universe.items():
+        sources = [s for s in row.get("sources") or [] if s == "REG" or s in keep]
+        if sources:
+            out[plate] = {**row, "sources": sources, "held_by": federated_match.held_by({**row, "sources": sources})}
+    return out
+
+
+def _why(top: Any) -> None:
+    parts = plate_match.explain(top)
+    if not parts:
+        return
+    section(f"Why {top.plate}: the evidence, group by group",
+            "What each kind of evidence adds to the stacked model's log-odds (positive = 'this is the car'). Change the "
+            "observed make or colour, or switch an agency off below, and press Match again.")
+    biggest = max(abs(v) for _, v in parts) or 1.0
+    lines = []
+    for name, v in parts:
+        width = int(100 * abs(v) / biggest)
+        colour = TOKENS["ok"] if v >= 0 else TOKENS["bad"]
+        lines.append(f'<div style="display:flex;align-items:center;gap:8px;margin:2px 0;">'
+                     f'<span style="width:260px;">{html.escape(name)}</span>'
+                     f'<span style="display:inline-block;height:14px;width:{width * 3}px;background:{colour};'
+                     f'border-radius:3px;"></span><span>{v:+.2f}</span></div>')
+    st.markdown("".join(lines), unsafe_allow_html=True)
+    model_p, shown = top.evidence.get("model_p"), top.probability
+    if model_p is not None and shown < model_p - 1e-6:
+        st.caption(f"The model alone said p={model_p:.3f}; the probability shown ({shown:.3f}) is that times the chance "
+                   f"the car is one an agency holds ({1 - top.evidence.get('p_unknown', 0):.3f}).")
+
+
 # PHASE3-ADDED (C1: when the registration alone is not enough, what every other agency says about the candidates)
 def _other_databases(res: Dict[str, Any]) -> None:
     cands, universe = res["cands"], res["registry"]
@@ -532,8 +610,8 @@ def _other_databases(res: Dict[str, Any]) -> None:
     if p_unknown is not None:
         st.markdown(f"Chance the car is **one no agency holds** (out-of-state, unregistered): **{p_unknown:.3f}**. "
                     f"The learned model alone said p={top.evidence.get('model_p', top.probability):.3f} for "
-                    f"{top.plate}; it only ever compared registered plates with each other, so it is multiplied by the chance "
-                    "the car is one an agency holds, and that figure is the one shown and decided on.")
+                    f"{top.plate}; it only ever compared registered plates with each other, so the probability shown and "
+                    "decided on is limited by the chance the car is one an agency holds.")
     meta = res.get("meta") or {}
     if meta.get("unavailable"):
         st.warning("Not consulted (down): " + ", ".join(meta["unavailable"]) + ".")
@@ -639,6 +717,11 @@ def render() -> None:
         got = _input_simple()
     with panel("pm_read"):
         read = _read_simple(got)
+        # PHASE3-ADDED (C1: switch agencies off to see what each one contributes to the match)
+        st.multiselect("Agencies asked besides the registration authority (REG)", AGENCIES, default=list(AGENCIES),
+                       key="pm_agencies", help="A plate held only by agencies you switch off stops being a candidate; "
+                       "a camera-only plate needs CAM. Press Match again after a change.")
+        # PHASE3-END
         if st.button("Match against the live registry", key="pm_run", type="primary"):
             _forward(read, got)
     res = st.session_state.get("pm_result")
