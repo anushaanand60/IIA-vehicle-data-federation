@@ -261,3 +261,12 @@ themselves are committed and can be uploaded directly.
 `docs/MATCHER_COMPARISON.md` was not regenerated after C4 (`scripts/compare_matchers.py` would also retrain and
 rewrite `data/match_model.joblib`); its *live* row (0.811 auto-accepted at precision 1.000) is the C3 matcher. C4's
 effect on the same honest reads is in `docs/OPEN_WORLD.md`.
+
+## 9. C5: Data Cleansing counts what operators did
+
+The six tiles describe the data as it is now, so a record fixed by Apply simply leaves the list, and an
+insert-then-fix leaves every count where it started. A second row now shows **Records fixed (applied)** and
+**Records decided by a person**, counted from the cleansing log (`app/tabs/cleansing_tab.py`, `operator_tally`,
+marked `PHASE3-REPLACED/ADDED (C5 ...)`). An entry counts only while its effect is still in the data: not undone,
+the record still there and, for a value set, still holding the value written; reloading a source resets the
+tiles. Tests: `tests/test_operator_tally.py`.
