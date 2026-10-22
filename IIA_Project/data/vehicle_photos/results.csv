@@ -1,0 +1,40 @@
+image,split,variant,true_plate,read,confidence,photo_kind,photo_make,photo_model,photo_colour,top_plate,decision_plate_only,decision_with_photo
+data/vehicle_photos/images/baleno_4__full.jpg,train,full,DL01AB0318,DLO1AB0318,0.585,vehicle,Maruti Suzuki,Baleno,Red,DL01AB0318,ACCEPT,ACCEPT
+data/vehicle_photos/images/baleno_4__partial.jpg,train,partial,DL01AB0318,DLO1AB0318,0.981,vehicle,Maruti Suzuki,Baleno,Red,DL01AB0318,ACCEPT,ACCEPT
+data/vehicle_photos/images/baleno_4__plate_only.jpg,train,plate_only,DL01AB0318,DLO1AB0318,0.958,plate_closeup,,,,DL01AB0318,ACCEPT,ACCEPT
+data/vehicle_photos/images/baleno_1__full.jpg,train,full,DL01EF0050,DLO1EF0050,0.963,vehicle,Maruti Suzuki,Baleno,,DL01EF0050,ACCEPT,ACCEPT
+data/vehicle_photos/images/baleno_1__partial.jpg,train,partial,DL01EF0050,DLO1EF0050,0.97,vehicle,Maruti Suzuki,Baleno,Blue,DL01EF0050,ACCEPT,ACCEPT
+data/vehicle_photos/images/baleno_1__hard.jpg,train,hard,DL01EF0050,DLOLEF00501,0.109,vehicle,Maruti Suzuki,Baleno,,DL01EF0050,REVIEW,REVIEW
+data/vehicle_photos/images/creta_1__full.jpg,train,full,DL05AB0012,IDLO5AB00427,0.467,vehicle,Hyundai,Creta,Red,DL05AB0012,REVIEW,REVIEW
+data/vehicle_photos/images/creta_1__partial.jpg,train,partial,DL05AB0012,IDLO5AB00427,0.627,vehicle,Hyundai,Creta,,DL05AB0012,REVIEW,REVIEW
+data/vehicle_photos/images/creta_1__clone.jpg,train,clone,DL01CD0094,IDLOACD0094,0.505,vehicle,Hyundai,Creta,Red,DL01CD0094,REVIEW,REVIEW
+data/vehicle_photos/images/creta_3__full.jpg,test,full,DL05GH0208,DLOSCH0208,0.459,vehicle,Mahindra,XUV700,,DL05AB0108,REVIEW,REJECT
+data/vehicle_photos/images/creta_3__partial.jpg,test,partial,DL05GH0208,DLOSGH0208,0.614,vehicle,Hyundai,Creta,,DL05GH0208,ACCEPT,ACCEPT
+data/vehicle_photos/images/creta_3__hard.jpg,test,hard,DL05GH0208,E,0.349,vehicle,Mahindra,XUV700,,DL01AB0001,REJECT,REJECT
+data/vehicle_photos/images/i20_3__full.jpg,train,full,DL01EF0297,DLOAEF0297,0.846,vehicle,Hyundai,i20,,DL01EF0297,ACCEPT,ACCEPT
+data/vehicle_photos/images/i20_3__partial.jpg,train,partial,DL01EF0297,DLOAEF0297,0.483,vehicle,Hyundai,i20,Red,DL01EF0297,REVIEW,REVIEW
+data/vehicle_photos/images/i20_3__plate_only.jpg,train,plate_only,DL01EF0297,DLOAEF0297,0.646,plate_closeup,,,,DL01EF0297,ACCEPT,ACCEPT
+data/vehicle_photos/images/nexon_0__full.jpg,test,full,DL01CD0533,DLO1CD0533,0.558,vehicle,Tata,Nexon,Red,DL01CD0533,ACCEPT,ACCEPT
+data/vehicle_photos/images/nexon_0__partial.jpg,test,partial,DL01CD0533,IDLO1CD0533,0.352,vehicle,Tata,Nexon,,DL01CD0533,REVIEW,REVIEW
+data/vehicle_photos/images/nexon_0__hard.jpg,test,hard,DL01CD0533,DC,0.373,vehicle,Tata,Nexon,Red,DL01CD0533,REJECT,REJECT
+data/vehicle_photos/images/punch_0__full.jpg,train,full,DL01AB0189,DLO1AB0189,0.735,vehicle,Tata,Punch,Blue,DL01AB0189,ACCEPT,ACCEPT
+data/vehicle_photos/images/punch_0__partial.jpg,train,partial,DL01AB0189,DLO1AB0189,0.932,vehicle,Tata,,Blue,DL01AB0189,ACCEPT,ACCEPT
+data/vehicle_photos/images/punch_0__hard.jpg,train,hard,DL01AB0189,IDL0TAB01891,0.167,vehicle,Tata,Punch,Blue,DL01AB0189,REVIEW,REVIEW
+data/vehicle_photos/images/xuv700_1__full.jpg,test,full,DL01GH0264,DLOAGH0264,0.9,vehicle,Mahindra,XUV700,Blue,DL01GH0264,ACCEPT,ACCEPT
+data/vehicle_photos/images/xuv700_1__partial.jpg,test,partial,DL01GH0264,DLOAGH0264,0.911,vehicle,Mahindra,XUV700,Blue,DL01GH0264,ACCEPT,ACCEPT
+data/vehicle_photos/images/xuv700_1__plate_only.jpg,test,plate_only,DL01GH0264,DLOAGH0264,0.916,plate_closeup,,,,DL01GH0264,ACCEPT,ACCEPT
+data/vehicle_photos/images/seltos_1__full.jpg,test,full,DL01GH0089,DLO1GH0089,0.623,vehicle,Kia,Seltos,Blue,DL01GH0089,ACCEPT,ACCEPT
+data/vehicle_photos/images/seltos_1__partial.jpg,test,partial,DL01GH0089,DLO1GH0089,0.622,vehicle,,,,DL01GH0089,ACCEPT,ACCEPT
+data/vehicle_photos/images/seltos_1__hard.jpg,test,hard,DL01GH0089,DLOIGH0089,0.373,vehicle,Kia,Seltos,Blue,DL01GH0089,REVIEW,REVIEW
+data/vehicle_photos/images/seltos_1__clone.jpg,test,clone,DL01GH0599,DLO1GH0599,0.567,vehicle,Kia,Seltos,Blue,DL01GH0599,ACCEPT,REVIEW
+data/vehicle_photos/images/innova_1__full.jpg,train,full,DL01AB0285,DLO1AB0285,0.855,vehicle,Toyota,Innova,Black,DL01AB0285,ACCEPT,ACCEPT
+data/vehicle_photos/images/innova_1__partial.jpg,train,partial,DL01AB0285,DLO1AB0285,0.822,vehicle,Toyota,Innova,Black,DL01AB0285,ACCEPT,ACCEPT
+data/vehicle_photos/images/innova_1__hard.jpg,train,hard,DL01AB0285,DLOIAB0285,0.408,vehicle,Toyota,Innova,Black,DL01AB0285,ACCEPT,ACCEPT
+data/vehicle_photos/images/innova_3__full.jpg,train,full,DL05AB0167,DLOSAB01674,0.307,vehicle,Toyota,Innova,White,DL05AB0167,REVIEW,REVIEW
+data/vehicle_photos/images/innova_3__partial.jpg,train,partial,DL05AB0167,IDLOSAB01674,0.455,vehicle,Toyota,Innova,White,DL05AB0167,REVIEW,REVIEW
+data/vehicle_photos/images/innova_3__clone.jpg,train,clone,DL01EF0303,IDLOAEF08081,0.083,vehicle,Toyota,Innova,White,DL05EF0004,REVIEW,REVIEW
+data/vehicle_photos/images/city_4__full.jpg,train,full,DL01AB0124,IDLO1AB01247,0.375,vehicle,Honda,City,White,DL01AB0124,REVIEW,REVIEW
+data/vehicle_photos/images/city_4__partial.jpg,train,partial,DL01AB0124,DLOAAB01241,0.711,vehicle,Honda,City,White,DL01AB0124,REVIEW,REVIEW
+data/vehicle_photos/images/city_4__hard.jpg,train,hard,DL01AB0124,IDLOIAB0124,0.281,vehicle,Honda,City,White,DL01AB0124,REVIEW,REVIEW
+data/vehicle_photos/images/swift_3__full.jpg,test,full,DL01AB0551,DLOAAB05517,0.496,vehicle,Maruti Suzuki,Swift,,DL01AB0551,REVIEW,REVIEW
+data/vehicle_photos/images/swift_3__partial.jpg,test,partial,DL01AB0551,IDLO1AB05511,0.444,vehicle,,,,DL01AB0551,ACCEPT,ACCEPT
