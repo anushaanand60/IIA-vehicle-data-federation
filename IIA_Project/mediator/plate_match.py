@@ -305,6 +305,15 @@ def decide(ranked: List[Candidate], th: Dict[str, float]) -> None:
                 c.reasons.append(f"p={c.probability:.3f} would ACCEPT the plate, but the camera's "
                                  f"{', '.join(contradicted)} contradict its registration: possible clone; needs an operator")
                 continue
+            # PHASE3-ADDED (C4: the observed car can confirm a plausible read but not rescue an implausible one --
+            # with make and colour agreeing, XX05CD9876 reached p=0.916 and was ACCEPTed as DL05CD9876)
+            if c.evidence.get("p_unknown", 0.0) >= UNKNOWN_VETO:
+                c.decision = "REVIEW"
+                c.reasons.append(f"p={c.probability:.3f} would ACCEPT, but the characters alone make a car no agency "
+                                 f"holds more likely (p={c.evidence['p_unknown']:.3f}); the car's look cannot prove "
+                                 "the plate: needs an operator")
+                continue
+            # PHASE3-END
             # PHASE3-ADDED (C3: a state-code correction is never accepted on the characters alone; C1: unless
             # the other databases and the observed car confirm it)
             if c.evidence.get("state_code_fix"):
@@ -411,6 +420,7 @@ def apply_open_world(read: str, ranked: List[Candidate], reg: Mapping[str, Mappi
     # ow = open_world.posterior(read, [c.plate for c in ranked], priors, confidence=confidence)
     ow = ow or open_world_posterior(read, [c.plate for c in ranked], reg, confidence)
     p_held = 1.0 - ow.unknown
+    shares = value_shares(reg)  # PHASE3-ADDED (C4: how common each make / model / colour is among held cars) PHASE3-END
     ch = open_world.channel(confidence)
     for c in ranked:
         row = reg.get(c.plate) or {}
@@ -426,10 +436,59 @@ def apply_open_world(read: str, ranked: List[Candidate], reg: Mapping[str, Mappi
         #         c.reasons.append(...)
         #     c.probability = min(c.probability, p_held)
         #     continue
-        if ow.unknown >= 0.005:
-            c.reasons.append(f"model p={c.probability:.3f} x p(a held car)={p_held:.3f}: a plate no source holds "
-                             f"explains this read with p={ow.unknown:.3f}")
-        c.probability *= p_held
+        # PHASE3-REPLACED (C4: the stacked model's p saturates near 1, so the camera's make, model and colour no
+        # longer moved the probability shown -- DL05CD9B76 showed 0.774 whether the car agreed or contradicted):
+        # if ow.unknown >= 0.005:
+        #     c.reasons.append(f"model p={c.probability:.3f} x p(a held car)={p_held:.3f}: a plate no source holds "
+        #                      f"explains this read with p={ow.unknown:.3f}")
+        # c.probability *= p_held
+        # PHASE3-ADDED (C4: the observed car decides between "this held car" and "an unknown car with a similar
+        # plate": each make / model / colour is a likelihood ratio on the odds of p(held))
+        lr, why = context_ratio(c, row, shares)
+        if ow.unknown >= UNKNOWN_VETO and lr > 1.0:  # an implausible read: the car may lower p, never raise it
+            lr, why = 1.0, why + " (not applied upwards: the characters alone favour an unknown car)"
+        odds =(p_held / max(ow.unknown, 1e-6)) * lr
+        p_held_c = odds / (1.0 + odds)
+        c.evidence.update(context_lr=lr, p_held=p_held_c)
+        if ow.unknown >= 0.005 or lr != 1.0:
+            c.reasons.append(f"model p={c.probability:.3f} x p(a held car)={p_held_c:.3f}: a plate no source holds "
+                             f"explains this read with p={ow.unknown:.3f}" + (f"; observed car {why}" if why else ""))
+        c.probability *= p_held_c
+        # PHASE3-END
+# PHASE3-END
+
+
+# PHASE3-ADDED (C4: context as likelihood ratios. The real car shows its registered value with the rate the
+# benchmark simulates for road cameras (make 85 %, model 70 %, colour 75 %; real CAM captures agree 95.5 %, so
+# these are deliberately conservative). An unknown car matches the candidate's value only by chance: the share
+# of held cars with that value. Agreeing: rate / share; contradicting: (1 - rate) / (1 - share); unknown: 1.)
+CONTEXT_RATES = {"make": 0.85, "model": 0.70, "colour": 0.75}
+UNKNOWN_VETO = 0.5  # read alone favours an unknown car: context may raise p, never to an automatic ACCEPT
+CONTEXT_FEATURE = {"make": "make_agree", "model": "model_agree", "colour": "colour_agree"}
+
+
+def value_shares(reg: Mapping[str, Mapping[str, Any]]) -> Dict[str, Dict[str, float]]:
+    """attribute -> value -> share of held plates with it (lower-cased)."""
+    out: Dict[str, Dict[str, float]] = {}
+    for attr in CONTEXT_RATES:
+        vals = [str(r.get(attr)).strip().lower() for r in reg.values() if r.get(attr)]
+        out[attr] = {v: n / len(vals) for v, n in Counter(vals).items()} if vals else {}
+    return out
+
+
+def context_ratio(c: Candidate, row: Mapping[str, Any], shares: Dict[str, Dict[str, float]]) -> Tuple[float, str]:
+    """(likelihood ratio, 'make agrees x4.0, colour differs x0.29') for candidate `c`."""
+    lr, words = 1.0, []
+    for attr, rate in CONTEXT_RATES.items():
+        agree = c.features.get(CONTEXT_FEATURE[attr], 0.0)
+        share = shares.get(attr, {}).get(str(row.get(attr) or "").strip().lower())
+        if not agree or not share:
+            continue
+        share = min(max(share, 0.01), 0.99)
+        r = rate / share if agree > 0 else (1.0 - rate) / (1.0 - share)
+        lr *= r
+        words.append(f"{attr} {'agrees' if agree > 0 else 'differs'} x{r:.2f}")
+    return lr, ", ".join(words)
 # PHASE3-END
 
 
