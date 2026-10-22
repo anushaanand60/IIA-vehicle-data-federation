@@ -94,7 +94,9 @@ def test_toolbox_insert_shows_the_anomaly_and_delete_removes_it(local_cluster):
         assert item and "COLOUR_NOT_IN_LEXICON" in [a["code"] for a in item["anomalies"]]
         # PHASE2-REPLACED (examiner pass: the shared toolbox names the record it inserted):
         # assert any(s.value.startswith("Inserted a capture") for s in at.success)
-        assert any(s.value.startswith(f"Inserted camera record #{new_id}") for s in at.success)
+        # PHASE3-REPLACED (C6: the confirmation is now the Last change box under the tiles):
+        # assert any(s.value.startswith(f"Inserted camera record #{new_id}") for s in at.success)
+        assert any(f"Inserted camera record #{new_id}" in s.value for s in at.success)
     finally:
         at.text_input(key="dc_tb_del_id").set_value(str(new_id)).run()
         _ok(at.button(key="dc_tb_delete").click().run())

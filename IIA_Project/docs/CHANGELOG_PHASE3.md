@@ -270,3 +270,18 @@ insert-then-fix leaves every count where it started. A second row now shows **Re
 marked `PHASE3-REPLACED/ADDED (C5 ...)`). An entry counts only while its effect is still in the data: not undone,
 the record still there and, for a value set, still holding the value written; reloading a source resets the
 tiles. Tests: `tests/test_operator_tally.py`.
+
+## 10. C6: every Apply and Resolve shows up in the numbers
+
+After a write, a green line at the very top was the only sign; a fixed record silently left the list and the page
+jumped to another record, and while the page re-ran (about 10 s) Streamlit kept the previous run's elements on
+screen beside the new ones (two *Pick a camera record* boxes, a stale Apply button).
+
+- Every tile that moved with the last write shows its change, e.g. `Records fixed (applied) 4 (+1)`.
+- A **Last change** box under the tiles says what was done, which numbers moved, and that a fixed record left
+  the list; it stays until the next write.
+- Apply and Resolve show a spinner while writing and re-scanning; the decision is named in words.
+- This page hides the previous run's (stale) elements while it re-runs.
+
+`app/tabs/cleansing_tab.py` (`counts`, `last_change_lines`, `_after_write`, `_kpis_simple`, marked C6);
+`tests/test_cleansing_numbers.py` replays insert -> Apply -> Resolve -> Undo and checks every number.
