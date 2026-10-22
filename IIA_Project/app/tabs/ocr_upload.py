@@ -84,7 +84,9 @@ def render_ocr_slot() -> None:
         return
     # PHASE3-REPLACED (C3: plate_ocr repairs L->4 and A->4 too):
     # group_label("Did you mean — OCR confusions O↔0, I↔1, B↔8, S↔5, Z↔2, G↔6")
-    group_label("Did you mean — OCR confusions O↔0, I↔1, B↔8, S↔5, Z↔2, G↔6, L→4, A→4")
+    # PHASE3-REPLACED (C2 dataset: A->4 removed):
+    # group_label("Did you mean — OCR confusions O↔0, I↔1, B↔8, S↔5, Z↔2, G↔6, L→4, A→4")
+    group_label("Did you mean — OCR confusions O↔0, I↔1, B↔8, S↔5, Z↔2, G↔6, L→4")
     with st.container(horizontal=True, key="ocr_variants"):
         for offset, variant in enumerate(variants, start=MAX_SHOWN):
             if st.button(variant, key=f"ocr_pick_{offset}"):

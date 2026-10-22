@@ -38,9 +38,13 @@ def test_run_ocr_on_a_car_photo_reads_only_the_plate_and_returns_its_box():
     assert ocr["box"] == [[176, 302], [304, 302], [304, 326], [176, 326]]
 
 
-def test_an_l_or_a_where_a_digit_belongs_is_repaired_to_4():
+# PHASE3-REPLACED (C2 dataset: A->4 removed -- in the HSRP font a 1 is read as A, and the repair made it 4):
+# def test_an_l_or_a_where_a_digit_belongs_is_repaired_to_4():
+#     assert plate_ocr.normalise_candidates("KLL8S5665")[0] == "KL48S5665"
+#     assert plate_ocr.normalise_candidates("MHA2AB1234")[0] == "MH42AB1234"
+def test_an_l_where_a_digit_belongs_is_repaired_to_4_but_an_a_is_left_to_the_matcher():
     assert plate_ocr.normalise_candidates("KLL8S5665")[0] == "KL48S5665"
-    assert plate_ocr.normalise_candidates("MHA2AB1234")[0] == "MH42AB1234"
+    assert "DL04EF0297" not in plate_ocr.normalise_candidates("DLOAEF0297")  # the A is a misread 1, not a 4
 
 
 def test_the_photo_is_compared_with_the_record():

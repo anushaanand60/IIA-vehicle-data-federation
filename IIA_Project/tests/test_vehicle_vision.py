@@ -45,9 +45,13 @@ def test_a_whole_car_gives_make_model_and_colour():
     assert view.words() == "white Hyundai i20"
 
 
-def test_clip_can_still_call_it_a_close_up():
-    view = vv.analyse(_png(), (), scorer=fake(["close-up"]))
-    assert view.kind == "plate_closeup"
+# PHASE3-REPLACED (C2 dataset: CLIP called bumper crops "close-ups"; geometry decides alone now):
+# def test_clip_can_still_call_it_a_close_up():
+#     view = vv.analyse(_png(), (), scorer=fake(["close-up"]))
+#     assert view.kind == "plate_closeup"
+def test_a_prominent_plate_without_close_up_geometry_is_still_a_car():
+    view = vv.analyse(_png(), _box(150, 250, 250, 290), scorer=fake(["Honda City", "white"]))
+    assert (view.kind, view.make, view.model, view.colour) == ("vehicle", "Honda", "City", "White")
 
 
 def test_an_unsure_model_abstains():
@@ -56,9 +60,17 @@ def test_an_unsure_model_abstains():
     assert len(view.notes) == 2 and "not clear enough" in view.words()
 
 
-def test_a_model_under_another_make_is_left_out():
-    view = vv.analyse(_png(), (), scorer=fake(["car on a road", "Kia Seltos", "Hyundai car", "red"]))
-    assert view.make == "Hyundai" and view.model is None and any("disagrees" in n for n in view.notes)
+# PHASE3-REPLACED (C2 dataset: make and model are one softmax now, so they cannot contradict):
+# def test_a_model_under_another_make_is_left_out():
+#     view = vv.analyse(_png(), (), scorer=fake(["car on a road", "Kia Seltos", "Hyundai car", "red"]))
+#     assert view.make == "Hyundai" and view.model is None and any("disagrees" in n for n in view.notes)
+def test_the_make_is_the_sum_over_its_models():
+    def split(_image, prompts):  # 0.4 Creta, 0.4 i20: no model is sure, the make is
+        if any("Creta" in p for p in prompts):
+            return [0.4 if ("Creta" in p or "i20" in p) else 0.2 / (len(prompts) - 2) for p in prompts]
+        return [0.9 if "red" in p else 0.1 / (len(prompts) - 1) for p in prompts]
+    view = vv.analyse(_png(), (), scorer=split)
+    assert (view.make, view.model, view.colour) == ("Hyundai", None, "Red") and view.p["make"] > 0.79
 
 
 @pytest.mark.parametrize("box, closeup", [(_box(176, 302, 304, 326), False), (_box(0, 0, 300, 100), True)])

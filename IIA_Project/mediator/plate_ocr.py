@@ -34,7 +34,10 @@ INSTALL_HINT = "pip install easyocr"
 # HSRP font -- and A/4 is the other classic; both are letter->digit only, so the reverse map is now explicit):
 # _LETTER_TO_DIGIT = {"O": "0", "I": "1", "B": "8", "S": "5", "Z": "2", "G": "6"}
 # _DIGIT_TO_LETTER = {digit: letter for letter, digit in _LETTER_TO_DIGIT.items()}
-_LETTER_TO_DIGIT = {"O": "0", "I": "1", "B": "8", "S": "5", "Z": "2", "G": "6", "L": "4", "A": "4"}
+# PHASE3-REPLACED (C2 dataset: in the HSRP font "1" is read as "A" (DLOAEF0297 for DL01EF0297), so A->4 repaired
+# it to the wrong DL04...; L->4 stays):
+# _LETTER_TO_DIGIT = {"O": "0", "I": "1", "B": "8", "S": "5", "Z": "2", "G": "6", "L": "4", "A": "4"}
+_LETTER_TO_DIGIT = {"O": "0", "I": "1", "B": "8", "S": "5", "Z": "2", "G": "6", "L": "4"}
 _DIGIT_TO_LETTER = {"0": "O", "1": "I", "8": "B", "5": "S", "2": "Z", "6": "G"}
 
 MAX_CANDIDATES = 16

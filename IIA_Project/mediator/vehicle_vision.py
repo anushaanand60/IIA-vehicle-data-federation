@@ -33,7 +33,10 @@ CLIP_ARCH, CLIP_WEIGHTS = "ViT-B-32", "laion2b_s34b_b79k"
 # A plate on a whole car (a front shot) fills ~1-5 % of the frame and ~20-35 % of its width.
 CLOSEUP_AREA = 0.12
 CLOSEUP_WIDTH = 0.6
-MIN_P = {"make": 0.5, "model": 0.5, "colour": 0.5, "vehicle": 0.5}
+# PHASE3-REPLACED (C2 dataset: thresholds chosen on the 8 training cars by scripts/evaluate_vision.py; the
+# CLIP close-up gate and its "vehicle" threshold are gone, see guesses()):
+# MIN_P = {"make": 0.5, "model": 0.5, "colour": 0.5, "vehicle": 0.5}
+MIN_P = {"make": 0.7, "model": 0.7, "colour": 0.6}
 
 # REG's makes and models (VEHICLE_REGISTRATION), plus makes common on Indian roads that REG does not hold.
 MODELS: Dict[str, Tuple[str, ...]] = {
@@ -43,8 +46,9 @@ MODELS: Dict[str, Tuple[str, ...]] = {
 }
 # REG's six colours first; the rest exist so that a brown car is not called grey.
 COLOURS = ("White", "Black", "Silver", "Grey", "Red", "Blue", "Brown", "Green", "Yellow", "Orange", "Beige")
-KIND_PROMPTS = ("a photo of a car on a road or in a driveway",
-                "a close-up photo of a vehicle number plate")
+# PHASE3-REPLACED (C2 dataset: no CLIP close-up gate any more):
+# KIND_PROMPTS = ("a photo of a car on a road or in a driveway",
+#                 "a close-up photo of a vehicle number plate")
 
 
 class VisionUnavailable(RuntimeError):
@@ -126,48 +130,82 @@ def _top(probs: Sequence[float], labels: Sequence[str]) -> Tuple[str, float]:
     return labels[i], float(probs[i])
 
 
-def analyse(image_bytes: bytes, plate_box: Sequence[Sequence[float]] = (), *,
-            scorer: Optional[Scorer] = None) -> VehicleView:
-    """What the photo shows of the vehicle. Raises VisionUnavailable only when a car is visible and CLIP
-    is needed but missing; a close-up never needs it."""
+# The scoring and the decision are separate (PHASE3-ADDED, C2 dataset: scripts/evaluate_vision.py tunes the
+# abstention thresholds on the training photos from the raw guesses, without running CLIP again per threshold).
+Guesses = Dict[str, Any]
+
+
+def _vehicle_labels() -> List[Tuple[str, Optional[str]]]:
+    """One label per REG model, plus one per make REG has no model of ("a Renault car")."""
+    return [(m, md) for m, mds in MODELS.items() for md in mds] + [(m, None) for m, mds in MODELS.items() if not mds]
+
+
+def guesses(image_bytes: bytes, plate_box: Sequence[Sequence[float]] = (), *,
+            scorer: Optional[Scorer] = None) -> Guesses:
+    """CLIP's top label and probability per attribute, before any threshold. A close-up by geometry returns
+    {"closeup": (area, width)} without running CLIP at all."""
     from PIL import Image  # noqa: PLC0415 - Pillow comes with streamlit / easyocr
 
     image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     if plate_box and is_closeup(image.size, plate_box):
-        area, width = plate_fraction(image.size, plate_box)
+        return {"closeup": plate_fraction(image.size, plate_box)}
+    score = scorer or _clip_scorer()
+    # PHASE3-REPLACED (C2 dataset: on the 39 labelled photos CLIP called 13 of 13 bumper crops and 5 of 13 whole
+    # cars "a close-up of a number plate" whenever the plate was prominent, then read nothing from them -- yet on
+    # those crops it named make and colour right with p >= 0.9. The plate-box geometry gate was right on 3 of 3
+    # close-ups, so it decides alone; and "a photo of a Tata car" said Mahindra (0.83) where "a photo of a Tata
+    # Nexon" said Nexon (0.97), so make and model are one softmax and the make is the sum over its models):
+    # out: Guesses = {"kind": _top(score(image, KIND_PROMPTS), ("vehicle", "plate_closeup"))}
+    # makes = list(MODELS)
+    # out["make"] = _top(score(image, [f"a photo of a {m} car" for m in makes]), makes)
+    # pairs = [(m, md) for m, mds in MODELS.items() for md in mds]
+    # labels = [f"{m} {md}" for m, md in pairs]
+    # best, p_model = _top(score(image, [f"a photo of a {label}" for label in labels]), labels)
+    # out["model"] = (pairs[labels.index(best)], p_model)
+    labels = _vehicle_labels()
+    probs = score(image, [f"a photo of a {m} {md}" if md else f"a photo of a {m} car" for m, md in labels])
+    by_make: Dict[str, float] = {}
+    for (m, _), p in zip(labels, probs):
+        by_make[m] = by_make.get(m, 0.0) + p
+    out: Guesses = {"make": max(by_make.items(), key=lambda kv: kv[1])}
+    i = max(range(len(labels)), key=lambda k: probs[k])
+    out["model"] = (labels[i], float(probs[i])) if labels[i][1] else ((labels[i][0], None), 0.0)
+    out["colour"] = _top(score(image, [f"a photo of a {c.lower()} car" for c in COLOURS]), COLOURS)
+    return out
+
+
+def decide(g: Guesses, min_p: Optional[Dict[str, float]] = None) -> VehicleView:
+    """Apply the abstention thresholds: report a guess only when CLIP is sure enough."""
+    min_p = {**MIN_P, **(min_p or {})}
+    if "closeup" in g:
+        area, width = g["closeup"]
         return VehicleView("plate_closeup", notes=[f"the plate fills {area:.0%} of the photo ({width:.0%} of its "
                                                    "width): a close-up, so only the plate is read"])
-    score = scorer or _clip_scorer()
     view = VehicleView("vehicle")
-    kind, p_kind = _top(score(image, KIND_PROMPTS), ("vehicle", "plate_closeup"))
-    if kind == "plate_closeup" and p_kind >= MIN_P["vehicle"]:
-        return VehicleView("plate_closeup", p={"vehicle": 1 - p_kind},
-                           notes=[f"CLIP sees a plate close-up rather than a car (p={p_kind:.2f})"])
-    view.p["vehicle"] = p_kind if kind == "vehicle" else 1 - p_kind
-
-    makes = list(MODELS)
-    make, p_make = _top(score(image, [f"a photo of a {m} car" for m in makes]), makes)
+    make, p_make = g["make"]
     view.p["make"] = p_make
-    if p_make >= MIN_P["make"]:
+    if p_make >= min_p["make"]:
         view.make = make
     else:
         view.notes.append(f"make not clear (best guess {make}, p={p_make:.2f})")
-
-    pairs = [(m, md) for m, mds in MODELS.items() for md in mds]
-    labels = [f"{m} {md}" for m, md in pairs]
-    best, p_model = _top(score(image, [f"a photo of a {label}" for label in labels]), labels)
+    (best_make, best_model), p_model = g["model"]
     view.p["model"] = p_model
-    best_make, best_model = pairs[labels.index(best)]
     # a model is reported only under a make it agrees with: "Kia Creta" is a contradiction, not a guess
-    if p_model >= MIN_P["model"] and view.make in (None, best_make):
+    if best_model and p_model >= min_p["model"] and view.make in (None, best_make):
         view.make, view.model = best_make, best_model
-    elif p_model >= MIN_P["model"]:
-        view.notes.append(f"model guess {best} disagrees with the make guess; model left out")
-
-    colour, p_colour = _top(score(image, [f"a photo of a {c.lower()} car" for c in COLOURS]), COLOURS)
+    elif best_model and p_model >= min_p["model"]:
+        view.notes.append(f"model guess {best_make} {best_model} disagrees with the make guess; model left out")
+    colour, p_colour = g["colour"]
     view.p["colour"] = p_colour
-    if p_colour >= MIN_P["colour"]:
+    if p_colour >= min_p["colour"]:
         view.colour = colour
     else:
         view.notes.append(f"colour not clear (best guess {colour}, p={p_colour:.2f})")
     return view
+
+
+def analyse(image_bytes: bytes, plate_box: Sequence[Sequence[float]] = (), *,
+            scorer: Optional[Scorer] = None) -> VehicleView:
+    """What the photo shows of the vehicle. Raises VisionUnavailable only when a car is visible and CLIP
+    is needed but missing; a close-up never needs it."""
+    return decide(guesses(image_bytes, plate_box, scorer=scorer))
