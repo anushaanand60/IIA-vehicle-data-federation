@@ -43,10 +43,50 @@ FILTERS = ("Still open after proposals", "Every capture with an anomaly", "Resol
 OPERATOR_ERRORS = (cleansing.CleansingError, lexicons.SourceUnavailable, RDRConflict, ValueError, KeyError)
 
 
+# PHASE3-REPLACED (C5: the tiles never showed what operators had done -- a fixed record leaves the list and an
+# insert-then-fix leaves every count where it started; the scan now also tallies the cleansing log):
+# def _scan() -> None:
+#     with st.spinner("Scanning every camera capture live against the registration authority…"):
+#         report = cleansing.scan()
+#     st.session_state["dc_scan"] = {"report": report, "at": datetime.now().strftime("%H:%M:%S")}
 def _scan() -> None:
     with st.spinner("Scanning every camera capture live against the registration authority…"):
-        report = cleansing.scan()
-    st.session_state["dc_scan"] = {"report": report, "at": datetime.now().strftime("%H:%M:%S")}
+        try:
+            ctx = cleansing.Context.build()
+        except OPERATOR_ERRORS + (lexicons.SourceUnavailable,):
+            ctx = None  # scan() then reports the source as unavailable, as before
+        report = cleansing.scan(ctx=ctx) if ctx else cleansing.scan()
+        tally = operator_tally(cleansing.log_entries(100_000), ctx.records) if ctx else {"fixed": 0, "decided": 0}
+    st.session_state["dc_scan"] = {"report": report, "tally": tally, "at": datetime.now().strftime("%H:%M:%S")}
+
+
+def _norm(value: Any) -> str:
+    return str(value if value is not None else "").strip().upper()
+
+
+def operator_tally(entries: List[Dict[str, Any]], records: List[Dict[str, Any]]) -> Dict[str, int]:
+    """Records an operator has fixed (an applied set/delete still in effect) or decided (a resolution), counted
+    from the cleansing log. An entry counts only while its effect is still in the data: not undone, the record
+    still there and, for a value set, still holding the value written -- so reloading a source resets it."""
+    current = {str(r["record_id"]): r for r in records}
+    fixed, decided = set(), set()
+    for e in entries:
+        rid = str(e.get("record_id"))
+        if e.get("undone_at"):
+            continue
+        if e.get("action") == "set" and rid in current:
+            try:
+                written = json.loads(e.get("after_value") or "null")
+            except ValueError:
+                written = e.get("after_value")
+            if _norm(current[rid].get(e.get("field"))) == _norm(written):
+                fixed.add(rid)
+        elif e.get("action") == "delete" and rid not in current:
+            fixed.add(rid)
+        elif e.get("action") == "resolve" and rid in current:
+            decided.add(rid)
+    return {"fixed": len(fixed), "decided": len(decided)}
+# PHASE3-END
 
 
 def _after_write(message: str, capture: Any = None) -> None:
@@ -347,6 +387,11 @@ def _kpis_simple(report: Dict[str, Any]) -> None:
     kpi_row([("Records scanned", report["records_scanned"]), ("Anomalies found", before),
              ("Fixed automatically", before - after), ("Sent to a person", disp.get("quarantined", 0)),
              ("Flagged as clone evidence", disp.get("flagged", 0)), ("Unhandled", disp.get("unhandled", 0))])
+    # PHASE3-ADDED (C5: what operators have done, from the cleansing log; the row above describes the data as it is)
+    tally = st.session_state.get("dc_scan", {}).get("tally") or {"fixed": 0, "decided": 0}
+    group_label("Done by operators so far (from the cleansing log; Undo lowers these)")
+    kpi_row([("Records fixed (applied)", tally["fixed"]), ("Records decided by a person", tally["decided"])])
+    # PHASE3-END
 
 
 def _table_simple(report: Dict[str, Any]) -> None:
