@@ -13,7 +13,7 @@ import json
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple  # PHASE3-REPLACED (C6: + Tuple) was: Any, Dict, List, Optional
 
 _ROOT = Path(__file__).resolve().parents[2]
 if str(_ROOT) not in sys.path:
@@ -89,14 +89,61 @@ def operator_tally(entries: List[Dict[str, Any]], records: List[Dict[str, Any]])
 # PHASE3-END
 
 
+# PHASE3-REPLACED (C6: after a write only a green line at the very top said anything; the numbers gave no sign of
+# what changed, and a fixed record silently left the list):
+# def _after_write(message: str, capture: Any = None) -> None:
+#     """Every write is followed by a fresh scan, so the counts and the list never describe old data."""
+#     st.session_state["dc_flash"] = message
+#     change_watch.note_write(message, capture)  # the Watch panel compares this capture's row before/after
+#     if capture is not None:
+#         st.session_state["dc_pending_capture"] = str(capture)
+#     _scan()
+#     st.rerun()
 def _after_write(message: str, capture: Any = None) -> None:
-    """Every write is followed by a fresh scan, so the counts and the list never describe old data."""
-    st.session_state["dc_flash"] = message
+    """Every write is followed by a fresh scan, so the counts and the list never describe old data; the numbers
+    that moved are kept as the 'Last change', shown under the tiles until the next write."""
+    before = counts(st.session_state.get("dc_scan"))
     change_watch.note_write(message, capture)  # the Watch panel compares this capture's row before/after
     if capture is not None:
         st.session_state["dc_pending_capture"] = str(capture)
     _scan()
+    after = counts(st.session_state.get("dc_scan"))
+    items = {str(i["record_id"]) for i in (st.session_state["dc_scan"]["report"].get("items") or [])}
+    st.session_state["dc_last"] = {
+        "message": message, "at": datetime.now().strftime("%H:%M:%S"),
+        "changes": {k: (before.get(k), v) for k, v in after.items() if before and before.get(k) != v},
+        "left_list": capture not in (None, "") and str(capture) not in items,
+        "capture": capture, "clean": (st.session_state.pop("ex_last", None) or {}).get("clean")}
     st.rerun()
+
+
+def counts(scan: Optional[Dict[str, Any]]) -> Dict[str, int]:
+    """Every tile's number, by label, from one scan (empty when there is no usable scan)."""
+    if not scan or (scan.get("report") or {}).get("status") != "OK":
+        return {}
+    report, tally = scan["report"], scan.get("tally") or {"fixed": 0, "decided": 0}
+    before = sum(report["anomalies_before"].values())
+    after = sum(report["remaining_after"].values())
+    disp = report["remaining_by_disposition"]
+    return {"Records scanned": report["records_scanned"], "Anomalies found": before,
+            "Fixed automatically": before - after, "Sent to a person": disp.get("quarantined", 0),
+            "Flagged as clone evidence": disp.get("flagged", 0), "Unhandled": disp.get("unhandled", 0),
+            "Records fixed (applied)": tally["fixed"], "Records decided by a person": tally["decided"]}
+
+
+def last_change_lines(last: Dict[str, Any]) -> List[str]:
+    """The 'Last change' box: what was done, which numbers moved, and where the record went."""
+    lines = [f"**Last change ({last['at']}):** {last['message'].split(' — sent to')[0]}"]
+    moved = [f"{k} {old} → {new}" for k, (old, new) in last["changes"].items()]
+    lines.append("Numbers changed: " + "; ".join(moved) if moved else
+                 "No number changed: this write and the anomaly it removed cancel out (e.g. an insert, then its fix).")
+    if last.get("left_list"):
+        lines.append(f"Record #{last['capture']} has no anomaly left, so it left the list (Undo under it is gone; "
+                     "use the toolbox's 'Your changes' or the log).")
+    if last.get("clean"):
+        lines.append(last["clean"])
+    return lines
+# PHASE3-END
 
 
 def _attempt(action: Any, *args: Any, **kwargs: Any) -> Any:
@@ -380,18 +427,38 @@ def _render_before_simplification() -> None:
 
 # ------------------------------------------------------------------ phase-2 simplified page
 
+# PHASE3-REPLACED (C6: the tiles now show how each number moved with the last write, and the Last change box sits
+# right under them):
+# def _kpis_simple(report: Dict[str, Any]) -> None:
+#     before = sum(report["anomalies_before"].values())
+#     after = sum(report["remaining_after"].values())
+#     disp = report["remaining_by_disposition"]
+#     kpi_row([("Records scanned", report["records_scanned"]), ("Anomalies found", before),
+#              ("Fixed automatically", before - after), ("Sent to a person", disp.get("quarantined", 0)),
+#              ("Flagged as clone evidence", disp.get("flagged", 0)), ("Unhandled", disp.get("unhandled", 0))])
+#     # PHASE3-ADDED (C5: what operators have done, from the cleansing log; the row above describes the data as it is)
+#     tally = st.session_state.get("dc_scan", {}).get("tally") or {"fixed": 0, "decided": 0}
+#     group_label("Done by operators so far (from the cleansing log; Undo lowers these)")
+#     kpi_row([("Records fixed (applied)", tally["fixed"]), ("Records decided by a person", tally["decided"])])
+#     # PHASE3-END
 def _kpis_simple(report: Dict[str, Any]) -> None:
-    before = sum(report["anomalies_before"].values())
-    after = sum(report["remaining_after"].values())
-    disp = report["remaining_by_disposition"]
-    kpi_row([("Records scanned", report["records_scanned"]), ("Anomalies found", before),
-             ("Fixed automatically", before - after), ("Sent to a person", disp.get("quarantined", 0)),
-             ("Flagged as clone evidence", disp.get("flagged", 0)), ("Unhandled", disp.get("unhandled", 0))])
-    # PHASE3-ADDED (C5: what operators have done, from the cleansing log; the row above describes the data as it is)
-    tally = st.session_state.get("dc_scan", {}).get("tally") or {"fixed": 0, "decided": 0}
+    now = counts(st.session_state.get("dc_scan"))
+    last = st.session_state.get("dc_last") or {}
+    moved = last.get("changes") or {}
+
+    def tile(label: str) -> Tuple[str, str]:
+        value = now.get(label, 0)
+        if label in moved and moved[label][0] is not None:
+            delta = value - moved[label][0]
+            return label, f"{value} ({delta:+d})"
+        return label, str(value)
+    kpi_row([tile(k) for k in ("Records scanned", "Anomalies found", "Fixed automatically", "Sent to a person",
+                               "Flagged as clone evidence", "Unhandled")])
     group_label("Done by operators so far (from the cleansing log; Undo lowers these)")
-    kpi_row([("Records fixed (applied)", tally["fixed"]), ("Records decided by a person", tally["decided"])])
-    # PHASE3-END
+    kpi_row([tile("Records fixed (applied)"), tile("Records decided by a person")])
+    if last:
+        st.success("\n\n".join(last_change_lines(last)))
+# PHASE3-END
 
 
 def _table_simple(report: Dict[str, Any]) -> None:
@@ -575,8 +642,13 @@ def _actions_simple(sel: Dict[str, Any], actor: str) -> None:
         # if st.button("Apply the fix", key="dc_apply", type="primary", disabled=not prop.changes):
         writes = [f for f in prop.changes if f.action in ("set", "delete")]
         if st.button("Apply the fix", key="dc_apply", type="primary", disabled=not writes):
-            if (done := _attempt(cleansing.apply, prop, actor=actor, ctx=sel["ctx"])) is not None:
-                _after_write(f"Applied {len(done)} change(s) to capture {rid}", rid)
+            # PHASE3-REPLACED (C6: no sign of progress during the write and the ~10 s re-scan):
+            # if (done := _attempt(cleansing.apply, prop, actor=actor, ctx=sel["ctx"])) is not None:
+            #     _after_write(f"Applied {len(done)} change(s) to capture {rid}", rid)
+            with st.spinner("Applying the fix and re-scanning every record…"):
+                if (done := _attempt(cleansing.apply, prop, actor=actor, ctx=sel["ctx"])) is not None:
+                    _after_write(f"Applied {len(done)} change(s) to capture {rid}", rid)
+            # PHASE3-END
         st.markdown(f"Writes {len(writes)} change(s) shown under 'What the rules propose' into the camera database."
                     if writes else "Nothing to write: a flag or 'send to a person' leaves the data as it is.")
     with c2:
@@ -627,9 +699,16 @@ def _actions_simple(sel: Dict[str, Any], actor: str) -> None:
                 candidate = st.selectbox("Candidate plate", list(labels), key="dc_res_candidate", format_func=labels.get)
         note = st.text_input("Note (mandatory for dismiss)", "", key="dc_res_note")
         if st.button("Resolve", key="dc_resolve", type="primary"):
-            res = _attempt(cleansing.resolve, rid, decision, note, actor, candidate=candidate)
-            if res is not None:
-                _after_write(f"Capture {rid}: {decision} recorded (log {res['log_id']})", rid)
+            # PHASE3-REPLACED (C6: no sign of progress, and the decision named by its code):
+            # res = _attempt(cleansing.resolve, rid, decision, note, actor, candidate=candidate)
+            # if res is not None:
+            #     _after_write(f"Capture {rid}: {decision} recorded (log {res['log_id']})", rid)
+            with st.spinner("Recording the decision and re-scanning every record…"):
+                res = _attempt(cleansing.resolve, rid, decision, note, actor, candidate=candidate)
+                if res is not None:
+                    _after_write(f"Capture {rid}: '{cleansing_words.RESOLUTION_WORDS[decision][0]}' recorded "
+                                 f"(log {res['log_id']})", rid)
+            # PHASE3-END
 
 
 def render() -> None:
@@ -642,10 +721,15 @@ def render() -> None:
             "Pick a camera record: it is shown next to its registration, with what the rules propose.",
             "Apply the fix, or Resolve it yourself (the fitting choice is preselected); Undo reverses either.",
             "To test: change a camera record or a registration in the Examiner toolbox; the page re-scans."])
-    if msg := st.session_state.pop("dc_flash", None):
-        st.success(msg)
-        if nxt := (st.session_state.pop("ex_last", None) or {}).get("clean"):
-            st.info(nxt)
+    # PHASE3-REPLACED (C6: the confirmation now sits under the numbers, as the Last change box):
+    # if msg := st.session_state.pop("dc_flash", None):
+    #     st.success(msg)
+    #     if nxt := (st.session_state.pop("ex_last", None) or {}).get("clean"):
+    #         st.info(nxt)
+    # PHASE3-ADDED (C6: while the page re-runs, Streamlit keeps the previous run's elements on screen, greyed, next
+    # to the new ones -- two 'Pick a camera record' boxes and a stale Apply button; hide them on this page)
+    st.markdown("<style>[data-stale='true'] { display: none !important; }</style>", unsafe_allow_html=True)
+    # PHASE3-END
     with panel("dc_kpis"):
         c1, c2 = st.columns([3, 1])
         actor = c1.text_input("Operator name (recorded with every write)", "operator", key="dc_actor").strip() or "operator"
