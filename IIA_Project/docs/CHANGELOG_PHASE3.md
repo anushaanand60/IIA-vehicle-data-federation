@@ -211,3 +211,53 @@ are real. Findings:
   *Why this match*, the stacked model's log-odds by evidence group (`plate_match.explain`).
 - Matching Evaluation: the matcher in use and why, the leaderboard, the significance tests and the photo results,
   ahead of the phase-2 closed-world evaluation.
+
+## 8. C4: the observed car moves the probability again (after review of C3)
+
+**What was wrong.** The stacked model's probability saturates near 1 on almost every plausible read, and C3 shows
+`model p x p(held)`, where `p(held)` comes from the characters alone. So the camera's (or the photo's) make, model
+and colour no longer moved the probability shown: `DL05CD9B76` showed 0.774 whether the car agreed or contradicted.
+Only the clone veto reacted, which hid phase 2's main finding (context is what separates candidates).
+
+**The fix** (`mediator/plate_match.py`, marked `PHASE3-REPLACED (C4 ...)` / `PHASE3-ADDED (C4 ...)`):
+
+- `p(held)` asks "is this the held car, or an unknown car with a similar plate?". The observed car answers that:
+  each make, model and colour is a **likelihood ratio** on its odds. The real car shows its registered value at
+  the rates the benchmark simulates for road cameras (make 0.85, model 0.70, colour 0.75; real CAM captures agree
+  0.955, so these are conservative); an unknown car matches only by chance, the share of held cars with that value.
+  Agree: `rate / share`; contradict: `(1 - rate) / (1 - share)`; not observed: 1. (`context_ratio`, `value_shares`)
+- **An implausible read cannot be rescued by the car's look.** When the characters alone favour an unknown car
+  (`p_unknown >= 0.5`, `UNKNOWN_VETO`), the ratio may lower p but never raise it, and the decision cannot be ACCEPT.
+  Without this, `XX05CD9876` seen as a silver Maruti Swift held by three agencies reached 0.916 and was ACCEPTed.
+
+| read | context | C3 | C4 |
+|---|---|---|---|
+| `DL05CD9B76` | none | 0.774 ACCEPT | 0.774 ACCEPT |
+| `DL05CD9B76` | Maruti Suzuki, Swift, Silver (agrees) | 0.774 ACCEPT | **0.997 ACCEPT** |
+| `DL05CD9B76` | Honda, Red (contradicts) | 0.774 REVIEW | **0.162 REVIEW** |
+| `DL01AB0118` | Honda, Red (exact plate, other car: clone) | 0.946 REVIEW | **0.497 REVIEW** |
+| `0L01AB1234` | none (the examiner's case) | 0.877 REVIEW | 0.877 REVIEW |
+| `XX05CD9876` | agrees, held by REG, INS, PUC | 0.005 REVIEW | 0.087 REVIEW (C4 before the rule: 0.916 ACCEPT) |
+
+**Measured** (all regenerated after C4):
+
+| document | measure | before C4 | after C4 |
+|---|---|---|---|
+| `docs/OPEN_WORLD.md` | honest reads auto-accepted (precision) | 0.691 (1.000) | **0.716 (1.000)** |
+| | unknown neighbour / state code 0 / XX / truncated auto-accepted | 0 / 0 / 0 / 0 | 0 / 0 / 0 / 0 |
+| `docs/CONTEXT_VETO.md` | clones auto-accepted, with the phase-2 clone veto | — | 0.106 (no veto: 0.257) |
+| `docs/CLEANSING_VALIDATION.md` | correction accuracy / wrong corrections | 0.844 / 0 (C3; phase 2 was 0.952 / 0) | 0.848 / 0 |
+
+The cleansing drop is the open-world caution of C3 reaching rule R5: a plate missing a character may really be a
+different car, so those records now go to a person (invalid shape 0.76 -> 0.0 corrected automatically). Detection
+recall stays 1.0, false alarms 0, wrong plate corrections 0.
+
+Tests: `tests/test_context_c4.py` (new).
+
+**Not in git:** `data/vehicle_photos/manifest.csv` and `sources.csv` are caught by the `*.csv` rule in `.gitignore`,
+so `scripts/evaluate_vision.py` and Plate Match's *Photo dataset* input do not work on a fresh clone; the photos
+themselves are committed and can be uploaded directly.
+
+`docs/MATCHER_COMPARISON.md` was not regenerated after C4 (`scripts/compare_matchers.py` would also retrain and
+rewrite `data/match_model.joblib`); its *live* row (0.811 auto-accepted at precision 1.000) is the C3 matcher. C4's
+effect on the same honest reads is in `docs/OPEN_WORLD.md`.

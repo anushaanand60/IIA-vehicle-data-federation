@@ -7,7 +7,7 @@
     "detection_recall": 1.0,
     "detection_precision": 1.0,
     "control_false_alarm_rate": 0.0,
-    "correction_accuracy": 0.952,
+    "correction_accuracy": 0.848,
     "wrong_corrections": 0,
     "plate_wrong_corrections": 0
   },
@@ -50,8 +50,8 @@
       "expected": "PLATE_NOT_REGISTERED -> set",
       "detection_recall": 1.0,
       "false_alarm_rate": null,
-      "correction_accuracy": 1.0,
-      "quarantine_rate": 0.0,
+      "correction_accuracy": 0.88,
+      "quarantine_rate": 0.12,
       "flag_rate": 0.0,
       "wrong_corrections": 0,
       "plate_wrong_corrections": 0
@@ -61,8 +61,8 @@
       "expected": "PLATE_NOT_REGISTERED -> set",
       "detection_recall": 1.0,
       "false_alarm_rate": null,
-      "correction_accuracy": 0.76,
-      "quarantine_rate": 0.24,
+      "correction_accuracy": 0.6,
+      "quarantine_rate": 0.4,
       "flag_rate": 0.0,
       "wrong_corrections": 0,
       "plate_wrong_corrections": 0
@@ -72,8 +72,8 @@
       "expected": "PLATE_SHAPE_INVALID or PLATE_NOT_REGISTERED -> set",
       "detection_recall": 1.0,
       "false_alarm_rate": null,
-      "correction_accuracy": 0.76,
-      "quarantine_rate": 0.24,
+      "correction_accuracy": 0.0,
+      "quarantine_rate": 1.0,
       "flag_rate": 0.0,
       "wrong_corrections": 0,
       "plate_wrong_corrections": 0
@@ -227,12 +227,12 @@
         "PLATE_NOT_REGISTERED",
         "PLATE_SHAPE_INVALID"
       ],
-      "proposed": "set 'DL01GH0033'",
+      "proposed": "quarantine 'DL01GH003'",
       "rule_path": [
         "R0",
-        "R5"
+        "R6"
       ],
-      "correct": true
+      "correct": false
     },
     {
       "type": "duplicate",
@@ -268,11 +268,11 @@
       "type": "timestamp_future",
       "field": "last_seen_time",
       "original": "2026-07-13T11:00:00",
-      "noisy": "2027-04-22T20:46:32",
+      "noisy": "2027-04-27T13:53:12",
       "detected": [
         "TIMESTAMP_FUTURE"
       ],
-      "proposed": "quarantine '2027-04-22T20:46:32'",
+      "proposed": "quarantine '2027-04-27T13:53:12'",
       "rule_path": [
         "R0",
         "R10"
@@ -386,12 +386,12 @@
         "PLATE_NOT_REGISTERED",
         "PLATE_SHAPE_INVALID"
       ],
-      "proposed": "set 'MH12AB0196'",
+      "proposed": "quarantine 'MU12ABU196'",
       "rule_path": [
         "R0",
-        "R5"
+        "R6"
       ],
-      "correct": true
+      "correct": false
     },
     {
       "type": "invalid_shape",
@@ -402,12 +402,12 @@
         "PLATE_NOT_REGISTERED",
         "PLATE_SHAPE_INVALID"
       ],
-      "proposed": "set 'HR26IJ0194'",
+      "proposed": "quarantine 'HR26IJ019'",
       "rule_path": [
         "R0",
-        "R5"
+        "R6"
       ],
-      "correct": true
+      "correct": false
     },
     {
       "type": "duplicate",
@@ -443,11 +443,11 @@
       "type": "timestamp_future",
       "field": "last_seen_time",
       "original": "2026-07-12T10:00:00",
-      "noisy": "2027-06-15T20:46:32",
+      "noisy": "2027-06-20T13:53:12",
       "detected": [
         "TIMESTAMP_FUTURE"
       ],
-      "proposed": "quarantine '2027-06-15T20:46:32'",
+      "proposed": "quarantine '2027-06-20T13:53:12'",
       "rule_path": [
         "R0",
         "R10"
@@ -500,6 +500,6 @@
   "seed": 20261017,
   "n_requested": 300,
   "source": "local SQLite copies",
-  "generated_at": "2026-10-17T20:46:37",
+  "generated_at": "2026-10-22T13:53:22",
   "wrong_corrections_detail": []
 }
