@@ -130,7 +130,12 @@ def rows_table(rows: Iterable[Any]) -> str:
             '</th><th>Score</th><th>Key values</th></tr></thead><tbody>' + "".join(body) + "</tbody></table></div>")
 
 
-def context_dot(rows: Sequence[Any], table_source: Dict[str, str], limit: int = 40) -> str:
+# CONTEXT-REPLACED (R2: the graph showed each database's records as islands; a query node now links every
+# database's starting record by the value that reached it (plate / chassis / person), and composite keys print once):
+# def context_dot(rows: Sequence[Any], table_source: Dict[str, str], limit: int = 40) -> str:
+def context_dot(rows: Sequence[Any], table_source: Dict[str, str], limit: int = 40,
+                query: Optional[str] = None) -> str:
+# CONTEXT-END
     """Graphviz DOT: one node per row (coloured by its database), edges along each join path;
     a dashed, labelled edge where context crossed from one database to another (a bridge)."""
     nodes: Dict[str, str] = {}
@@ -140,6 +145,10 @@ def context_dot(rows: Sequence[Any], table_source: Dict[str, str], limit: int = 
         src, table, pk = node_label(element)
         sid = (src or table_source.get(table) or sid_hint or "").upper()
         pk = pk.replace('"', "'")   # composite keys print as lists; a double quote would end the DOT string
+        # CONTEXT-ADDED (R2: one spelling per composite key, so "[5, 9, 'ACCUSED']" and "5|9|ACCUSED" are one node)
+        if pk.startswith("[") and pk.endswith("]"):
+            pk = "|".join(x.strip(" '") for x in pk[1:-1].split(","))
+        # CONTEXT-END
         nid = f"{sid}:{table}#{pk}"
         if nid not in nodes:
             fill = source_colour(sid)
@@ -158,7 +167,12 @@ def context_dot(rows: Sequence[Any], table_source: Dict[str, str], limit: int = 
                 bridge = hop.group(1)
                 continue
             cur = node(p, sid if i == len(path) - 1 else None)
-            if prev is not None:
+            # CONTEXT-ADDED (R2: the first record of a path hangs off the query, labelled by how it was reached)
+            if prev is None and query:
+                edges[("__q", cur)] = (f'"__q" -> "{cur}" [style=dashed, color="#1F3B57", '
+                                       f'label="{esc(get(r, "via_bridge") or "plate")}"];')
+            # CONTEXT-END
+            if prev is not None and prev != cur:  # CONTEXT-REPLACED (R2: no self-loop when a key repeats): was `if prev is not None:`
                 label = bridge or (get(r, "via_bridge") if prev.split(":")[0] != cur.split(":")[0] else None)
                 edges[(prev, cur)] = (f'"{prev}" -> "{cur}" [style=dashed, label="{label}"];' if label
                                       else f'"{prev}" -> "{cur}";')
@@ -166,7 +180,12 @@ def context_dot(rows: Sequence[Any], table_source: Dict[str, str], limit: int = 
     return ("digraph context {\n  rankdir=LR; bgcolor=\"transparent\";\n"
             '  node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=11, color="#D9DEE5"];\n'
             '  edge [color="#5F6B76", fontname="Helvetica", fontsize=10, fontcolor="#3C4650"];\n  '
-            + "\n  ".join(list(nodes.values()) + list(edges.values())) + "\n}")
+            # CONTEXT-REPLACED (R2: query node first):
+            # + "\n  ".join(list(nodes.values()) + list(edges.values())) + "\n}")
+            + "\n  ".join(([f'"__q" [label="{esc(query)}", shape=ellipse, style=filled, fillcolor="#FFFFFF", '
+                            'color="#1F3B57", penwidth=2, fontsize=13];'] if query else [])
+                          + list(nodes.values()) + list(edges.values())) + "\n}")
+            # CONTEXT-END
 
 
 def source_legend(sources: Iterable[str]) -> str:

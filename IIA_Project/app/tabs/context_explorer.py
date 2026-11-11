@@ -68,6 +68,10 @@ def _open_vehicle(plate: str, back_to: str) -> None:
 def _search() -> bool:
     with panel("cx_search"):
         st.pills("Try", examples(), key="cx_example", on_change=_pick_example)
+        # CONTEXT-ADDED (R2: the search box is the page's one control; its text rendered at caption size)
+        st.markdown('<style>.st-key-cx_q input{font-size:1.15rem !important;font-family:inherit !important;}'
+                    '.st-key-cx_q [data-baseweb="input"]{min-height:52px;}</style>', unsafe_allow_html=True)
+        # CONTEXT-END
         with st.container(horizontal=True, vertical_alignment="bottom"):
             st.text_input("A plate or a question in plain words", key="cx_q",
                           placeholder="DL05CD9876   or   stolen white Creta Gurgaon")
@@ -140,7 +144,11 @@ def _tab_graph(ctx: Any) -> None:
     st.caption("Each box is one record, coloured by its database; arrows follow foreign keys; a dashed arrow "
                "is where the context crossed into another database.")
     st.markdown(w.source_legend({r.source_id for r in ctx.rows}), unsafe_allow_html=True)
-    st.graphviz_chart(w.context_dot(ctx.rows, flow.table_sources()), width="stretch")
+    # CONTEXT-REPLACED (R2: pass the query so the graph is one connected picture):
+    # st.graphviz_chart(w.context_dot(ctx.rows, flow.table_sources()), width="stretch")
+    st.graphviz_chart(w.context_dot(ctx.rows, flow.table_sources(), query=getattr(ctx.query, "text", None)),
+                      width="stretch")
+    # CONTEXT-END
 
 
 def _tab_indicators(inds: List[Any]) -> None:

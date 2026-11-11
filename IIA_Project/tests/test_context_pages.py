@@ -233,4 +233,9 @@ def test_bridge_steps_render_in_the_chain_and_as_a_dashed_graph_edge():
     composite = ContextRow("THEFT", "INCIDENT_PERSONS", [12, 18, "ACCUSED"], {}, 0.1, [], 1)
     dot = w.context_dot([r, composite], {"VEHICLE_REGISTRATION": "REG", "OWNERS": "REG", "POLICY_RECORDS": "INS"})
     assert '"REG:OWNERS#603" -> "INS:POLICY_RECORDS#51" [style=dashed, label="plate"]' in dot
-    assert "plate->INS" not in dot and "[12, 18, 'ACCUSED']" in dot
+    # CONTEXT-REPLACED (R2: composite keys now print once as a|b|c, and a query node links the starting records):
+    # assert "plate->INS" not in dot and "[12, 18, 'ACCUSED']" in dot
+    assert "plate->INS" not in dot and "12|18|ACCUSED" in dot
+    q = w.context_dot([r], {"VEHICLE_REGISTRATION": "REG", "OWNERS": "REG", "POLICY_RECORDS": "INS"}, query="DL01AB1234")
+    assert '"__q" -> "REG:VEHICLE_REGISTRATION#603"' in q and 'label="DL01AB1234"' in q
+    # CONTEXT-END
