@@ -30,6 +30,9 @@ import httpx  # noqa: E402
 from mediator.catalog import META_DB_PATH, get_source_catalog, register_source  # noqa: E402
 
 DEFAULT_PORTS = {"REG": 8001, "INS": 8002, "THEFT": 8003, "CAM": 8004, "PUC": 8005}
+# CONTEXT-ADDED (R3: DOCS, the sixth autonomous source, conventional port 8006)
+DEFAULT_PORTS["DOCS"] = 8006
+# CONTEXT-END
 PROBE_TIMEOUT_S = 2.0
 
 

@@ -17,6 +17,9 @@ from sources.ins.wrapper import app as ins_app
 from sources.theft.wrapper import app as theft_app
 from sources.cam.wrapper import app as cam_app
 from sources.puc.wrapper import app as puc_app
+# CONTEXT-ADDED (R3: DOCS, the sixth autonomous source, unstructured documents on :8006)
+from sources.docs.wrapper import app as docs_app
+# CONTEXT-END
 
 SOURCE_CONFIGS = {
     "REG": {"app": reg_app, "port": 8001},
@@ -24,6 +27,9 @@ SOURCE_CONFIGS = {
     "THEFT": {"app": theft_app, "port": 8003},
     "CAM": {"app": cam_app, "port": 8004},
     "PUC": {"app": puc_app, "port": 8005},
+    # CONTEXT-ADDED (R3: DOCS source)
+    "DOCS": {"app": docs_app, "port": 8006},
+    # CONTEXT-END
 }
 
 def is_port_in_use(port: int, host: str = "127.0.0.1") -> bool:
@@ -56,10 +62,18 @@ class SourceCluster:
         # Sources stopped on purpose (a scenario taking INS down): the healer must not restart them.
         self.held: Set[str] = set()
 
-    def start_all(self, include_puc: bool = False):
+    # CONTEXT-REPLACED (R3: the full local cluster also serves DOCS):
+    # def start_all(self, include_puc: bool = False):
+    def start_all(self, include_puc: bool = False, include_docs: Optional[bool] = None):
+        # CONTEXT-END
         sources = ["REG", "INS", "THEFT", "CAM"]
         if include_puc:
             sources.append("PUC")
+        # CONTEXT-ADDED (R3: DOCS starts with the full cluster; None = follow include_puc, so the
+        # four-source default used by phase 1 tests is unchanged)
+        if include_puc if include_docs is None else include_docs:
+            sources.append("DOCS")
+        # CONTEXT-END
 
         for s_id in sources:
             if s_id not in self.servers:
