@@ -104,8 +104,13 @@ def detect(doc_id: str, body: str, mentions: Sequence[Mention], linked: Sequence
         if str(row.row.get("case_status", "")).upper() == "OPEN":
             for m in re.finditer(r"\b(recovered|traced)\b", low):
                 if not NEGATION.search(low[max(0, m.start() - 30): m.start()]):
-                    out.append(Conflict("recovery", "OPEN", "THEFT", body[m.start(): m.end() + 20].strip(), doc_id,
+                    # CONTEXT-REPLACED (R3: a fixed 20-character window cut dates in half ("22nd September 2");
+                    # quote up to the end of the clause instead, capped at 60 characters):
+                    # out.append(Conflict("recovery", "OPEN", "THEFT", body[m.start(): m.end() + 20].strip(), doc_id,
+                    clause = re.split(r"[.;\n]", body[m.start(): m.start() + 60])[0].strip()
+                    out.append(Conflict("recovery", "OPEN", "THEFT", clause, doc_id,
                                         (m.start(), m.end()), f"text says the vehicle was {m.group(1)}; FIR {row.pk} is OPEN"))
+                    # CONTEXT-END
                     break
     tables = graph.get("sources", {})
     for d, s, e in text_dates(body):

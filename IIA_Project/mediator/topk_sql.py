@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import json
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import replace, dataclass
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from pathlib import Path
@@ -208,6 +208,12 @@ def _value_cond(attr: str, value: Any, op: str) -> List[Tuple[str, str, str]]:
     return out
 
 
+# CONTEXT-ADDED (R2: predicate weights; trade-off: one fixed factor, explained in the UI, instead of learned weights)
+STATUS_ATTRS = {"stolen_status", "insurance_status", "registration_status", "case_status", "indicator"}
+STATUS_WEIGHT = 2.0
+# CONTEXT-END
+
+
 def features_for(query: ParsedQuery) -> Dict[str, List[Feature]]:
     """Every predicate becomes one feature per source able to judge it."""
     feats: Dict[str, List[Feature]] = {}
@@ -216,8 +222,19 @@ def features_for(query: ParsedQuery) -> Dict[str, List[Feature]]:
         cond = f"({cond}){window_cond(source, tables[0], query.time_window)}"
         feats.setdefault(source, []).append(Feature(source, tables, cond, round(w, 6), label, negate))
 
+    # CONTEXT-ADDED (R2: review of "stolen white Creta Gurgaon": a non-stolen white Creta tied with a stolen one.
+    # (1) a model already implies its make, so the make is not counted twice; (2) status words name the set the user
+    # asks for ("stolen", "expired"), descriptors only narrow it, so a status predicate weighs STATUS_WEIGHT.)
+    has_model = any(q.attr == "vehicle_model" for q in query.predicates)
+    # CONTEXT-END
     for p in query.predicates:
         label = f"{p.attr} {p.op} {p.value}"
+        # CONTEXT-ADDED (R2: see above)
+        if p.attr == "vehicle_make" and has_model:
+            continue
+        if p.attr in STATUS_ATTRS:
+            p = replace(p, confidence=p.confidence * STATUS_WEIGHT)
+        # CONTEXT-END
         if (p.attr, p.value) in ENCODED:
             by_src: Dict[Tuple[str, str], List[str]] = {}
             negate = False

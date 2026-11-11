@@ -69,7 +69,13 @@ def run_query(text: str, use_llm: bool = True) -> Dict[str, Any]:
         out["indicators"] = (_step(problems, "warning signs", lambda: an.indicators_for(plates[0], context=ctx))
                              if an else None)
         dr = module("mediator.doc_retrieval", missing)
-        docs = _step(problems, "documents", lambda: dr.retrieve(ctx, k=5, mode="context+anchors")) if dr and ctx else None
+        # CONTEXT-REPLACED (R3: show 8, and put documents that contradict a database record first -- a contradiction
+        # can change the verdict, so it should not sit just below the fold; order is otherwise BM25 score):
+        # docs = _step(problems, "documents", lambda: dr.retrieve(ctx, k=5, mode="context+anchors")) if dr and ctx else None
+        docs = _step(problems, "documents", lambda: dr.retrieve(ctx, k=8, mode="context+anchors")) if dr and ctx else None
+        if docs is not None and getattr(docs, "docs", None):
+            docs.docs.sort(key=lambda d: (not d.conflicts, -d.score))
+        # CONTEXT-END
         out["docs"] = docs
         gs = module("mediator.grounded_summary", missing)
         out["summary"] = (_step(problems, "summary", lambda: gs.summarise(ctx, docs, use_llm=use_llm))

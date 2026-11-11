@@ -226,7 +226,7 @@ def _render_topk(res: Dict[str, Any]) -> None:
         for i, v in enumerate(tk.vehicles):
             with st.container(horizontal=True, vertical_alignment="center", key=f"cx_v_{i}"):
                 st.markdown(f"**{i + 1}. {w.esc(v.plate)}** &nbsp; {w.score_bar(v.score)}", unsafe_allow_html=True)
-                st.markdown(w.esc("; ".join(v.explanation[:2])) or "&nbsp;", unsafe_allow_html=True)
+                st.markdown(w.esc("; ".join(v.explanation[:4])) or "&nbsp;", unsafe_allow_html=True)  # CONTEXT-REPLACED (R2: every agency's reason, not just the first two): was v.explanation[:2]
                 st.button("Open context", key=f"cx_open_{i}", on_click=_open_vehicle, args=(v.plate, res["query"]))
 
 

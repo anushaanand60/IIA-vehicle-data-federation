@@ -89,13 +89,19 @@ def brute_force(w: Dict[str, Any]) -> Dict[str, float]:
         theft.setdefault(canon(c["vehicle_number"]), []).append(c)
     for p, cs in theft.items():
         st = [district[c["police_station"]] for c in cs]
-        total[p] += 1.0 * any(c["stolen_flag"] == "Y" and c["recovered_flag"] == "N" for c in cs)
+        # CONTEXT-REPLACED (R2: status predicates weigh STATUS_WEIGHT, see topk_sql):
+        # total[p] += 1.0 * any(c["stolen_flag"] == "Y" and c["recovered_flag"] == "N" for c in cs)
+        total[p] += 2.0 * 1.0 * any(c["stolen_flag"] == "Y" and c["recovered_flag"] == "N" for c in cs)
+        # CONTEXT-END
         total[p] += loc * any(guru(s["district"]) or guru(s["zone"]) or guru(s["station_name"]) for s in st)
     ins: Dict[str, List[int]] = {}
     for r in w["INS"]["POLICY_RECORDS"]:
         ins.setdefault(canon(r["vehicle_reg"]), []).append(r["is_active"])
     for p, act in ins.items():
-        total[p] += 0.55 * (0 if any(a == 1 for a in act) else 1)
+        # CONTEXT-REPLACED (R2: status predicates weigh STATUS_WEIGHT, see topk_sql):
+        # total[p] += 0.55 * (0 if any(a == 1 for a in act) else 1)
+        total[p] += 2.0 * 0.55 * (0 if any(a == 1 for a in act) else 1)
+        # CONTEXT-END
     cams: Dict[str, List[Dict[str, Any]]] = {}
     for c in w["CAM"]["PLATE_CAPTURES"]:
         cams.setdefault(c["plate_id"], []).append(c)
