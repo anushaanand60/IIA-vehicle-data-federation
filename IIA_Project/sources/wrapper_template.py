@@ -268,6 +268,14 @@ def create_app(db_url: str, *, source_id: str, dbms: str, tables: Iterable[str],
         return JSONResponse(content={"source_id": source_id, "rows_affected": max(affected, 0),
                                      "sql": sql, "executed_at": _now()})
 
+    # CONTEXT-ADDED (R2: in-DBMS scored context discovery; one generated WITH RECURSIVE statement,
+    # read-only engine, same statement timeout; its own guard lives in sources/context_endpoint.py so
+    # /query's guard is not widened)
+    from sources.context_endpoint import mount_context  # late import: context_endpoint imports this module
+    mount_context(app, source_id=source_id, whitelist=whitelist, engine_fn=engine,
+                  statement_timeout_s=statement_timeout_s)
+    # CONTEXT-END
+
     return app
 
 
