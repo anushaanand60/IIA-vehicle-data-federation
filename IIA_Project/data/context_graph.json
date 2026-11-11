@@ -1,0 +1,102 @@
+{
+  "_doc": "CONTEXT-ADDED (R1/R2): machine-readable twin of docs/phase3/CONTRACT.md. Each source's FK graph, the columns that seed and score context, and the bridges that carry context between databases. The /context endpoint and the mediator read this file; no table or column name is hard-coded in their logic. time.fmt is one of iso_date | iso_ts | ddmmyyyy | epoch. decision lists value conditions that make a row matter to a verdict (boost added to relevance). w is an optional expert override of the edge weight; null means w0 / (1 + ln avg fan-out), measured live.",
+  "params": {"w0": 1.0, "theta": 0.05, "n": 10, "per_parent": 3, "max_hops": 3, "gamma_hops": 0.8},
+  "sources": {
+    "REG": {
+      "tables": {
+        "VEHICLE_REGISTRATION": {"pk": "registration_id", "plate": "registration_no", "time": {"col": "registered_on", "fmt": "iso_date"},
+                                  "text": ["make", "model", "colour", "reg_status", "rto_code", "fuel_type"],
+                                  "decision": [{"col": "reg_status", "op": "!=", "value": "ACTIVE", "boost": 0.5}]},
+        "OWNERS": {"pk": "owner_id", "text": ["full_name", "address_line", "city"], "person": {"name": "full_name", "address": "address_line", "city": "city"}},
+        "VEHICLE_IDENTITY": {"pk": "registration_id", "chassis": "chassis_no", "text": ["chassis_no", "engine_no"]},
+        "OWNERSHIP_HISTORY": {"pk": "transfer_id", "time": {"col": "transfer_date", "fmt": "iso_date"}, "text": ["transfer_type"],
+                               "decision": [{"col": "transfer_type", "op": "=", "value": "SALE", "boost": 0.2}]},
+        "OWNER_CONTACTS": {"pk": "owner_id", "text": ["mobile", "pincode"], "person": {"mobile": "mobile", "pincode": "pincode"}}
+      },
+      "edges": [
+        {"from": "VEHICLE_REGISTRATION", "col": "owner_id", "to": "OWNERS", "to_col": "owner_id", "w": null},
+        {"from": "VEHICLE_IDENTITY", "col": "registration_id", "to": "VEHICLE_REGISTRATION", "to_col": "registration_id", "w": 1.0},
+        {"from": "OWNERSHIP_HISTORY", "col": "registration_id", "to": "VEHICLE_REGISTRATION", "to_col": "registration_id", "w": null},
+        {"from": "OWNERSHIP_HISTORY", "col": "prev_owner_id", "to": "OWNERS", "to_col": "owner_id", "w": null},
+        {"from": "OWNERSHIP_HISTORY", "col": "new_owner_id", "to": "OWNERS", "to_col": "owner_id", "w": null},
+        {"from": "OWNER_CONTACTS", "col": "owner_id", "to": "OWNERS", "to_col": "owner_id", "w": 1.0}
+      ]
+    },
+    "INS": {
+      "tables": {
+        "POLICY_RECORDS": {"pk": "policy_id", "plate": "vehicle_reg", "time": {"col": "policy_until", "fmt": "ddmmyyyy"},
+                           "text": ["policy_type", "is_active"],
+                           "decision": [{"col": "is_active", "op": "=", "value": 0, "boost": 0.5}]},
+        "INSURERS": {"pk": "insurer_id", "text": ["insurer_name"]},
+        "POLICY_HOLDERS": {"pk": "holder_id", "text": ["holder_name", "address", "mobile", "pincode"],
+                           "person": {"name": "holder_name", "mobile": "mobile", "address": "address", "pincode": "pincode"}},
+        "POLICY_PARTIES": {"pk": "policy_id", "chassis": "chassis_no", "text": ["chassis_no"]},
+        "CLAIMS": {"pk": "claim_id", "time": {"col": "loss_date", "fmt": "ddmmyyyy"}, "text": ["loss_type", "claim_status", "surveyor_name"],
+                   "decision": [{"col": "loss_type", "op": "=", "value": "THEFT", "boost": 0.6},
+                                {"col": "claim_status", "op": "=", "value": "INVESTIGATING", "boost": 0.3}]}
+      },
+      "edges": [
+        {"from": "POLICY_RECORDS", "col": "insurer_id", "to": "INSURERS", "to_col": "insurer_id", "w": null},
+        {"from": "POLICY_PARTIES", "col": "policy_id", "to": "POLICY_RECORDS", "to_col": "policy_id", "w": 1.0},
+        {"from": "POLICY_PARTIES", "col": "holder_id", "to": "POLICY_HOLDERS", "to_col": "holder_id", "w": null},
+        {"from": "CLAIMS", "col": "policy_id", "to": "POLICY_RECORDS", "to_col": "policy_id", "w": null}
+      ]
+    },
+    "THEFT": {
+      "tables": {
+        "CRIME_RECORDS": {"pk": "incident_id", "plate": "vehicle_number", "time": {"col": "reported_date", "fmt": "epoch"},
+                          "text": ["fir_no", "incident_type", "case_status", "police_station"],
+                          "decision": [{"col": "stolen_flag", "op": "=", "value": "Y", "boost": 0.6},
+                                       {"col": "case_status", "op": "=", "value": "OPEN", "boost": 0.3}]},
+        "STATIONS": {"pk": "station_name", "text": ["station_name", "district", "zone"]},
+        "STOLEN_PROPERTY": {"pk": "incident_id", "chassis": "chassis_no", "time": {"col": "recovered_on", "fmt": "epoch"}, "text": ["chassis_no", "engine_no"]},
+        "PERSONS": {"pk": "person_id", "text": ["name", "mobile", "address"], "person": {"name": "name", "mobile": "mobile", "address": "address"}},
+        "INCIDENT_PERSONS": {"pk": ["incident_id", "person_id", "role"], "text": ["role"],
+                             "decision": [{"col": "role", "op": "=", "value": "ACCUSED", "boost": 0.4}]}
+      },
+      "edges": [
+        {"from": "CRIME_RECORDS", "col": "police_station", "to": "STATIONS", "to_col": "station_name", "w": null},
+        {"from": "STOLEN_PROPERTY", "col": "incident_id", "to": "CRIME_RECORDS", "to_col": "incident_id", "w": 1.0},
+        {"from": "INCIDENT_PERSONS", "col": "incident_id", "to": "CRIME_RECORDS", "to_col": "incident_id", "w": null},
+        {"from": "INCIDENT_PERSONS", "col": "person_id", "to": "PERSONS", "to_col": "person_id", "w": null}
+      ]
+    },
+    "CAM": {
+      "tables": {
+        "PLATE_CAPTURES": {"pk": "capture_id", "plate": "plate_id", "time": {"col": "captured_at", "fmt": "iso_ts"},
+                           "text": ["observed_make", "observed_model", "observed_colour"]},
+        "CAMERAS": {"pk": "camera_id", "text": ["location_name"]},
+        "ZONES": {"pk": "zone_id", "text": ["zone_name", "city"]},
+        "CAMERA_ZONES": {"pk": "camera_id", "text": ["road"]},
+        "CHALLANS": {"pk": "challan_id", "time": {"col": "issued_at", "fmt": "iso_ts"}, "text": ["violation", "challan_status"],
+                     "decision": [{"col": "challan_status", "op": "=", "value": "PENDING", "boost": 0.2}]}
+      },
+      "edges": [
+        {"from": "PLATE_CAPTURES", "col": "camera_id", "to": "CAMERAS", "to_col": "camera_id", "w": null},
+        {"from": "CAMERA_ZONES", "col": "camera_id", "to": "CAMERAS", "to_col": "camera_id", "w": 1.0},
+        {"from": "CAMERA_ZONES", "col": "zone_id", "to": "ZONES", "to_col": "zone_id", "w": null},
+        {"from": "CHALLANS", "col": "capture_id", "to": "PLATE_CAPTURES", "to_col": "capture_id", "w": null}
+      ]
+    },
+    "PUC": {
+      "tables": {
+        "POLLUTION_CERT": {"pk": "cert_no", "plate": "regn_number", "time": {"col": "valid_upto", "fmt": "iso_date"}, "text": ["emission_norm", "tested_at"]},
+        "TEST_CENTRES": {"pk": "centre_id", "text": ["centre_name", "city"]},
+        "ANALYSERS": {"pk": "analyser_id", "time": {"col": "calibrated_on", "fmt": "iso_date"}, "text": []},
+        "CERT_TESTS": {"pk": "test_id", "time": {"col": "test_ts", "fmt": "iso_ts"}, "text": ["result"],
+                       "decision": [{"col": "result", "op": "=", "value": "PASS", "boost": 0.1}]}
+      },
+      "edges": [
+        {"from": "CERT_TESTS", "col": "cert_no", "to": "POLLUTION_CERT", "to_col": "cert_no", "w": null},
+        {"from": "CERT_TESTS", "col": "analyser_id", "to": "ANALYSERS", "to_col": "analyser_id", "w": null},
+        {"from": "ANALYSERS", "col": "centre_id", "to": "TEST_CENTRES", "to_col": "centre_id", "w": null}
+      ]
+    }
+  },
+  "bridges": {
+    "chassis": {"confidence": "exact", "members": [["REG", "VEHICLE_IDENTITY", "chassis_no"], ["INS", "POLICY_PARTIES", "chassis_no"], ["THEFT", "STOLEN_PROPERTY", "chassis_no"]]},
+    "plate": {"confidence": "match_probability", "members": [["REG", "VEHICLE_REGISTRATION", "registration_no"], ["INS", "POLICY_RECORDS", "vehicle_reg"],
+               ["THEFT", "CRIME_RECORDS", "vehicle_number"], ["CAM", "PLATE_CAPTURES", "plate_id"], ["PUC", "POLLUTION_CERT", "regn_number"]]},
+    "person": {"confidence": "fellegi_sunter", "members": [["REG", "OWNERS", "owner_id"], ["INS", "POLICY_HOLDERS", "holder_id"], ["THEFT", "PERSONS", "person_id"]]}
+  }
+}
