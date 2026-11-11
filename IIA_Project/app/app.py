@@ -66,6 +66,7 @@ from tabs.plate_match_lab import render as render_plate_match  # noqa: E402
 from tabs.cleansing_tab import render as render_cleansing  # noqa: E402
 from tabs.matching_eval import render as render_matching_eval  # noqa: E402
 from tabs import how_it_works, scenarios_tab, source_status  # noqa: E402
+from tabs import context_evaluation, context_explorer  # noqa: E402  # CONTEXT-ADDED (R2/R3: two phase-3 pages)
 from components import chip, chip_strip, group_label  # noqa: E402
 from mediator.catalog import get_source_catalog  # noqa: E402
 from theme import TOKENS, inject  # noqa: E402
@@ -91,6 +92,10 @@ PAGES: dict[str, object] = {
     "Data Cleansing": render_cleansing,
     "Matching Evaluation": render_matching_eval,
     "Test scenarios": scenarios_tab.render,
+    # CONTEXT-ADDED (R2/R3: two phase-3 pages = a fifth group, Context (16-17); heading drawn in theme.py)
+    "Context Explorer": context_explorer.render,
+    "Context Evaluation": context_evaluation.render,
+    # CONTEXT-END
 }
 
 BRAND = (

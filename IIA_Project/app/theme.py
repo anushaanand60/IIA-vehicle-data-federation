@@ -228,6 +228,15 @@ def _sidebar() -> str:
 [data-testid="stSidebar"] [role="radiogroup"] > label:nth-of-type(11)::after {
   content:""; position:absolute; top:-36px; left:0; right:0; height:1px;
   background:rgba(255,255,255,.18);}
+/* CONTEXT-ADDED (R2/R3: fifth group heading, Context (16) = Context Explorer + Context Evaluation;
+   positions follow PAGES in app/app.py) */
+[data-testid="stSidebar"] [role="radiogroup"] > label:nth-of-type(16) {margin-top:38px;}
+[data-testid="stSidebar"] [role="radiogroup"] > label:nth-of-type(16)::before {
+  content:"Context"; position:absolute; top:-24px; left:14px;}
+[data-testid="stSidebar"] [role="radiogroup"] > label:nth-of-type(16)::after {
+  content:""; position:absolute; top:-36px; left:0; right:0; height:1px;
+  background:rgba(255,255,255,.18);}
+/* CONTEXT-END */
 """
 
 

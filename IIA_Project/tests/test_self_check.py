@@ -244,7 +244,9 @@ def test_app_file_renders_every_tab_with_no_exceptions():
     # assert len(at.sidebar.radio(key="nav").options) == 10  # the sidebar menu (Task D2)
     # PHASE2-REPLACED (How it works and Test scenarios added; 13 -> 15):
     # assert len(at.sidebar.radio(key="nav").options) == 13  # the sidebar menu (Task D2 + phase-2 F)
-    assert len(at.sidebar.radio(key="nav").options) == 15  # the sidebar menu (Task D2 + phase-2 F, G)
+    # CONTEXT-REPLACED (R2: two phase-3 pages, Context Explorer and Context Evaluation; 15 -> 17):
+    # assert len(at.sidebar.radio(key="nav").options) == 15  # the sidebar menu (Task D2 + phase-2 F, G)
+    assert len(at.sidebar.radio(key="nav").options) == 17  # the sidebar menu (Task D2 + phase-2 F, G + context)
 
 
 # ----------------------------------------------------------- (6) citizen dispute loop
