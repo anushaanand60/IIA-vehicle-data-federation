@@ -1,0 +1,726 @@
+[
+ {
+  "id": "ALIBI-1",
+  "kind": "ALIBI",
+  "plates": [
+   "MH12EF0248"
+  ],
+  "chassis": [
+   "MAL1T4AS9RG263912"
+  ],
+  "persons": [
+   [
+    "THEFT",
+    "PERSONS",
+    8
+   ]
+  ],
+  "expected_indicators": [
+   "ALIBI_PUC"
+  ],
+  "evidence": [
+   [
+    "THEFT",
+    "CRIME_RECORDS",
+    5
+   ],
+   [
+    "PUC",
+    "POLLUTION_CERT",
+    "PUC-2026-215"
+   ],
+   [
+    "PUC",
+    "CERT_TESTS",
+    455
+   ]
+  ],
+  "explanation": "FIR FIR00005/2026 (open) says the car was stolen on 2026-08-30, yet it passed a PUC test on 2026-09-04 inside the stolen interval: a PUC test needs the car physically at the centre."
+ },
+ {
+  "id": "ALIBI-2",
+  "kind": "ALIBI",
+  "plates": [
+   "DL05AB0420"
+  ],
+  "chassis": [
+   "MA1XDZ8L8NG725980"
+  ],
+  "persons": [
+   [
+    "THEFT",
+    "PERSONS",
+    15
+   ]
+  ],
+  "expected_indicators": [
+   "ALIBI_PUC",
+   "ALIBI_CAMERA",
+   "ALIBI_CHALLAN"
+  ],
+  "evidence": [
+   [
+    "THEFT",
+    "CRIME_RECORDS",
+    10
+   ],
+   [
+    "PUC",
+    "POLLUTION_CERT",
+    "PUC-2026-344"
+   ],
+   [
+    "PUC",
+    "CERT_TESTS",
+    456
+   ],
+   [
+    "CAM",
+    "PLATE_CAPTURES",
+    395
+   ],
+   [
+    "CAM",
+    "CHALLANS",
+    90
+   ]
+  ],
+  "explanation": "FIR FIR00010/2026 (open) says the car was stolen on 2026-07-29, yet it passed a PUC test on 2026-08-23 and a challan was issued and paid inside the stolen interval: a PUC test needs the car physically at the centre."
+ },
+ {
+  "id": "ALIBI-3",
+  "kind": "ALIBI",
+  "plates": [
+   "UP16GH0547"
+  ],
+  "chassis": [
+   "MA3WLZRA0MJ831693"
+  ],
+  "persons": [
+   [
+    "THEFT",
+    "PERSONS",
+    28
+   ]
+  ],
+  "expected_indicators": [
+   "ALIBI_PUC"
+  ],
+  "evidence": [
+   [
+    "THEFT",
+    "CRIME_RECORDS",
+    18
+   ],
+   [
+    "PUC",
+    "POLLUTION_CERT",
+    "PUC-2026-236"
+   ],
+   [
+    "PUC",
+    "CERT_TESTS",
+    457
+   ]
+  ],
+  "explanation": "FIR FIR00018/2026 (open) says the car was stolen on 2026-06-27, yet it passed a PUC test on 2026-07-04 inside the stolen interval: a PUC test needs the car physically at the centre."
+ },
+ {
+  "id": "QUICK_CLAIM-1",
+  "kind": "QUICK_CLAIM",
+  "plates": [
+   "UP16CD0391"
+  ],
+  "chassis": [
+   "MALZZHCD6RL496329"
+  ],
+  "persons": [],
+  "expected_indicators": [
+   "QUICK_CLAIM"
+  ],
+  "evidence": [
+   [
+    "INS",
+    "POLICY_RECORDS",
+    508
+   ],
+   [
+    "INS",
+    "CLAIMS",
+    60
+   ],
+   [
+    "THEFT",
+    "CRIME_RECORDS",
+    2
+   ]
+  ],
+  "explanation": "Theft loss on 2026-06-22, 10 days after the policy started; the insurer was told on 2026-06-23, a day before FIR FIR00002/2026 was filed."
+ },
+ {
+  "id": "QUICK_CLAIM-2",
+  "kind": "QUICK_CLAIM",
+  "plates": [
+   "UP16CD0542"
+  ],
+  "chassis": [
+   "MZBZ4UK19SN792098"
+  ],
+  "persons": [],
+  "expected_indicators": [
+   "QUICK_CLAIM"
+  ],
+  "evidence": [
+   [
+    "INS",
+    "POLICY_RECORDS",
+    289
+   ],
+   [
+    "INS",
+    "CLAIMS",
+    61
+   ]
+  ],
+  "explanation": "Theft claimed for a loss on 2026-05-19, 11 days into a new policy, and the police have no FIR for this vehicle."
+ },
+ {
+  "id": "QUICK_CLAIM-3",
+  "kind": "QUICK_CLAIM",
+  "plates": [
+   "DL01AB0270"
+  ],
+  "chassis": [
+   "MAKZMNF42SB438130"
+  ],
+  "persons": [],
+  "expected_indicators": [
+   "QUICK_CLAIM"
+  ],
+  "evidence": [
+   [
+    "INS",
+    "POLICY_RECORDS",
+    468
+   ],
+   [
+    "INS",
+    "CLAIMS",
+    62
+   ]
+  ],
+  "explanation": "Theft claimed for a loss on 2026-07-20, 7 days into a new policy, and the police have no FIR for this vehicle."
+ },
+ {
+  "id": "TRANSFER-1",
+  "kind": "TRANSFER_BEFORE_LOSS",
+  "plates": [
+   "DL01GH0599"
+  ],
+  "chassis": [
+   "MBJWH8XD3MG343481"
+  ],
+  "persons": [
+   [
+    "REG",
+    "OWNERS",
+    599
+   ],
+   [
+    "THEFT",
+    "PERSONS",
+    1
+   ]
+  ],
+  "expected_indicators": [
+   "TRANSFER_BEFORE_LOSS"
+  ],
+  "evidence": [
+   [
+    "REG",
+    "OWNERSHIP_HISTORY",
+    83
+   ],
+   [
+    "THEFT",
+    "CRIME_RECORDS",
+    1
+   ],
+   [
+    "INS",
+    "CLAIMS",
+    53
+   ]
+  ],
+  "explanation": "Sold to the current owner on 2026-08-18, 8 days before FIR FIR00001/2026 and the theft claim."
+ },
+ {
+  "id": "TRANSFER-2",
+  "kind": "TRANSFER_BEFORE_LOSS",
+  "plates": [
+   "HR26AB0597"
+  ],
+  "chassis": [
+   "MAT1G4K69PE327643"
+  ],
+  "persons": [
+   [
+    "REG",
+    "OWNERS",
+    597
+   ],
+   [
+    "THEFT",
+    "PERSONS",
+    5
+   ]
+  ],
+  "expected_indicators": [
+   "TRANSFER_BEFORE_LOSS"
+  ],
+  "evidence": [
+   [
+    "REG",
+    "OWNERSHIP_HISTORY",
+    84
+   ],
+   [
+    "THEFT",
+    "CRIME_RECORDS",
+    3
+   ],
+   [
+    "INS",
+    "CLAIMS",
+    59
+   ]
+  ],
+  "explanation": "Sold to the current owner on 2026-08-18, 14 days before FIR FIR00003/2026 and the theft claim."
+ },
+ {
+  "id": "TRANSFER-3",
+  "kind": "TRANSFER_BEFORE_LOSS",
+  "plates": [
+   "DL01CD0195"
+  ],
+  "chassis": [
+   "MBJ2DNSW5ML744205"
+  ],
+  "persons": [
+   [
+    "REG",
+    "OWNERS",
+    195
+   ],
+   [
+    "THEFT",
+    "PERSONS",
+    6
+   ]
+  ],
+  "expected_indicators": [
+   "TRANSFER_BEFORE_LOSS"
+  ],
+  "evidence": [
+   [
+    "REG",
+    "OWNERSHIP_HISTORY",
+    85
+   ],
+   [
+    "THEFT",
+    "CRIME_RECORDS",
+    4
+   ],
+   [
+    "INS",
+    "CLAIMS",
+    47
+   ]
+  ],
+  "explanation": "Sold to the current owner on 2026-07-23, 14 days before FIR FIR00004/2026 and the theft claim."
+ },
+ {
+  "id": "HN-TRANSFER-1",
+  "kind": "HARD_NEGATIVE",
+  "plates": [
+   "DL05CD0386"
+  ],
+  "chassis": [
+   "MAKRXYBE1MJ456734"
+  ],
+  "persons": [],
+  "expected_indicators": [],
+  "evidence": [
+   [
+    "REG",
+    "OWNERSHIP_HISTORY",
+    86
+   ],
+   [
+    "THEFT",
+    "CRIME_RECORDS",
+    6
+   ]
+  ],
+  "explanation": "A sale more than 200 days before the theft: TRANSFER_BEFORE_LOSS must not fire."
+ },
+ {
+  "id": "RING-1",
+  "kind": "PERSON_RING",
+  "plates": [
+   "MH12EF0006",
+   "DL05EF0146",
+   "HR26IJ0443",
+   "DL05GH0507"
+  ],
+  "chassis": [
+   "MA1LL3ZM7SH147514",
+   "MA3T38P37RN908117",
+   "MATBGZWH8MN356174",
+   "MZBD4X4D3RC514933"
+  ],
+  "persons": [
+   [
+    "REG",
+    "OWNERS",
+    6
+   ],
+   [
+    "INS",
+    "POLICY_HOLDERS",
+    161
+   ],
+   [
+    "THEFT",
+    "PERSONS",
+    73
+   ]
+  ],
+  "expected_indicators": [
+   "PERSON_RING"
+  ],
+  "evidence": [
+   [
+    "REG",
+    "OWNER_CONTACTS",
+    6
+   ],
+   [
+    "INS",
+    "POLICY_PARTIES",
+    171
+   ],
+   [
+    "THEFT",
+    "INCIDENT_PERSONS",
+    [
+     11,
+     73,
+     "ACCUSED"
+    ]
+   ],
+   [
+    "THEFT",
+    "INCIDENT_PERSONS",
+    [
+     12,
+     73,
+     "ACCUSED"
+    ]
+   ]
+  ],
+  "explanation": "Mobile 9929883141 belongs to Yasti Raval (REG owner of MH12EF0006), to policy holder 'Y. Raval' of DL05EF0146, and to the accused in 2 FIR(s): one person behind several vehicles."
+ },
+ {
+  "id": "RING-2",
+  "kind": "PERSON_RING",
+  "plates": [
+   "UP16CD0223",
+   "UP16EF0179",
+   "DL05CD0032"
+  ],
+  "chassis": [
+   "MA1ENK868PH353408",
+   "MATJARM30SE965937",
+   "MBJC42R29RK617501"
+  ],
+  "persons": [
+   [
+    "REG",
+    "OWNERS",
+    223
+   ],
+   [
+    "INS",
+    "POLICY_HOLDERS",
+    65
+   ],
+   [
+    "THEFT",
+    "PERSONS",
+    74
+   ]
+  ],
+  "expected_indicators": [
+   "PERSON_RING"
+  ],
+  "evidence": [
+   [
+    "REG",
+    "OWNER_CONTACTS",
+    223
+   ],
+   [
+    "INS",
+    "POLICY_PARTIES",
+    75
+   ],
+   [
+    "THEFT",
+    "INCIDENT_PERSONS",
+    [
+     16,
+     74,
+     "ACCUSED"
+    ]
+   ]
+  ],
+  "explanation": "Mobile 8047088117 belongs to Qarin Kapoor (REG owner of UP16CD0223), to policy holder 'Kapoor Qarin' of UP16EF0179, and to the accused in 1 FIR(s): one person behind several vehicles."
+ },
+ {
+  "id": "CLONE-1",
+  "kind": "CLONE",
+  "plates": [
+   "UP16GH1122"
+  ],
+  "chassis": [
+   "MALH035Z0PC383076"
+  ],
+  "persons": [],
+  "expected_indicators": [
+   "CLONE"
+  ],
+  "evidence": [
+   [
+    "REG",
+    "VEHICLE_REGISTRATION",
+    604
+   ],
+   [
+    "CAM",
+    "PLATE_CAPTURES",
+    913
+   ],
+   [
+    "CAM",
+    "PLATE_CAPTURES",
+    918
+   ],
+   [
+    "CAM",
+    "CHALLANS",
+    91
+   ]
+  ],
+  "explanation": "Seen at Sector 29 Crossing and Yamuna Expressway Toll, Agra 170 km apart within 30 min, as a Kia Seltos although REG says Hyundai Creta."
+ },
+ {
+  "id": "HN-PLATE-1",
+  "kind": "HARD_NEGATIVE",
+  "plates": [
+   "DL01AB0514",
+   "DL01AB0515"
+  ],
+  "chassis": [
+   "MA3B0JGC7RJ570366",
+   "MAT5VSES8NK578285"
+  ],
+  "persons": [],
+  "expected_indicators": [],
+  "evidence": [
+   [
+    "REG",
+    "VEHICLE_REGISTRATION",
+    514
+   ],
+   [
+    "THEFT",
+    "CRIME_RECORDS",
+    8
+   ]
+  ],
+  "explanation": "DL01AB0514 is one character from stolen DL01AB0515 but a different car (own chassis, own owner): its context must not pick up that FIR."
+ },
+ {
+  "id": "HN-PLATE-2",
+  "kind": "HARD_NEGATIVE",
+  "plates": [
+   "HR26AB0550",
+   "HR26AB0559"
+  ],
+  "chassis": [
+   "MAKF3HMXXSJ926721",
+   "MAL2GHSS7RB855450"
+  ],
+  "persons": [],
+  "expected_indicators": [],
+  "evidence": [
+   [
+    "REG",
+    "VEHICLE_REGISTRATION",
+    550
+   ],
+   [
+    "THEFT",
+    "CRIME_RECORDS",
+    13
+   ]
+  ],
+  "explanation": "HR26AB0550 is one character from stolen HR26AB0559 but a different car (own chassis, own owner): its context must not pick up that FIR."
+ },
+ {
+  "id": "HN-NAME-1",
+  "kind": "HARD_NEGATIVE",
+  "plates": [],
+  "chassis": [],
+  "persons": [
+   [
+    "REG",
+    "OWNERS",
+    393
+   ],
+   [
+    "REG",
+    "OWNERS",
+    514
+   ]
+  ],
+  "expected_indicators": [],
+  "evidence": [
+   [
+    "REG",
+    "OWNER_CONTACTS",
+    393
+   ],
+   [
+    "REG",
+    "OWNER_CONTACTS",
+    514
+   ]
+  ],
+  "explanation": "Two REG owners are both called Raksha Hayre, with different mobiles and towns: they are two people."
+ },
+ {
+  "id": "HN-NAME-2",
+  "kind": "HARD_NEGATIVE",
+  "plates": [],
+  "chassis": [],
+  "persons": [
+   [
+    "REG",
+    "OWNERS",
+    8
+   ],
+   [
+    "THEFT",
+    "PERSONS",
+    75
+   ]
+  ],
+  "expected_indicators": [],
+  "evidence": [
+   [
+    "THEFT",
+    "INCIDENT_PERSONS",
+    [
+     31,
+     75,
+     "WITNESS"
+    ]
+   ]
+  ],
+  "explanation": "A Delhi witness shares the exact name of REG owner Raghav Ahuja from Kharagpur, with another mobile and address: a name alone must not merge them."
+ },
+ {
+  "id": "HN-CHASSIS-1",
+  "kind": "HARD_NEGATIVE",
+  "plates": [],
+  "chassis": [],
+  "persons": [],
+  "expected_indicators": [],
+  "evidence": [
+   [
+    "INS",
+    "POLICY_PARTIES",
+    10
+   ],
+   [
+    "INS",
+    "POLICY_PARTIES",
+    79
+   ],
+   [
+    "INS",
+    "POLICY_PARTIES",
+    149
+   ],
+   [
+    "INS",
+    "POLICY_PARTIES",
+    163
+   ],
+   [
+    "INS",
+    "POLICY_PARTIES",
+    238
+   ],
+   [
+    "INS",
+    "POLICY_PARTIES",
+    251
+   ],
+   [
+    "INS",
+    "POLICY_PARTIES",
+    338
+   ],
+   [
+    "INS",
+    "POLICY_PARTIES",
+    391
+   ],
+   [
+    "INS",
+    "POLICY_PARTIES",
+    411
+   ],
+   [
+    "INS",
+    "POLICY_PARTIES",
+    439
+   ],
+   [
+    "INS",
+    "POLICY_PARTIES",
+    477
+   ],
+   [
+    "INS",
+    "POLICY_PARTIES",
+    499
+   ],
+   [
+    "INS",
+    "POLICY_PARTIES",
+    530
+   ],
+   [
+    "THEFT",
+    "STOLEN_PROPERTY",
+    40
+   ]
+  ],
+  "explanation": "14 chassis numbers are missing (NULL) or mistyped outside REG: the exact chassis bridge must not link them; the plate bridge still can."
+ }
+]

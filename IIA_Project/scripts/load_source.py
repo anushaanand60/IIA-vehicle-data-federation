@@ -38,6 +38,23 @@ SOURCES: dict[str, list[tuple[str, str]]] = {
     "CAM": [("cam_cameras.csv", "CAMERAS"), ("cam_plate_captures.csv", "PLATE_CAPTURES")],
     "PUC": [("puc_records.csv", "POLLUTION_CERT")],
 }
+# CONTEXT-ADDED (R1: phase-3 tables, parents first, written by scripts/phase3_generate.py; DOCS by WS-D)
+_PHASE12_CSVS = {csv_name for pairs in SOURCES.values() for csv_name, _ in pairs}
+SOURCES["REG"] += [("reg_vehicle_identity.csv", "VEHICLE_IDENTITY"), ("reg_ownership_history.csv", "OWNERSHIP_HISTORY"),
+                   ("reg_owner_contacts.csv", "OWNER_CONTACTS")]
+SOURCES["INS"] += [("ins_policy_holders.csv", "POLICY_HOLDERS"), ("ins_policy_parties.csv", "POLICY_PARTIES"),
+                   ("ins_claims.csv", "CLAIMS")]
+SOURCES["THEFT"] += [("theft_stations.csv", "STATIONS"), ("theft_stolen_property.csv", "STOLEN_PROPERTY"),
+                     ("theft_persons.csv", "PERSONS"), ("theft_incident_persons.csv", "INCIDENT_PERSONS")]
+SOURCES["CAM"] += [("cam_zones.csv", "ZONES"), ("cam_camera_zones.csv", "CAMERA_ZONES"), ("cam_challans.csv", "CHALLANS")]
+SOURCES["PUC"] += [("puc_test_centres.csv", "TEST_CENTRES"), ("puc_analysers.csv", "ANALYSERS"),
+                   ("puc_cert_tests.csv", "CERT_TESTS")]
+SOURCES["DOCS"] = [("docs_documents.csv", "DOCUMENTS")]
+# A missing optional CSV leaves its (already created) table empty with a message instead of aborting,
+# so a clone without the phase-3 generator output still loads its phase 1-2 tables (trade-off: an empty
+# table is quieter than a crash, hence the printed warning).
+OPTIONAL_CSVS = {csv_name for pairs in SOURCES.values() for csv_name, _ in pairs} - _PHASE12_CSVS
+# CONTEXT-END
 PLATE_COLUMN = {
     "REG": ("VEHICLE_REGISTRATION", "registration_no"),
     "INS": ("POLICY_RECORDS", "vehicle_reg"),
@@ -160,6 +177,11 @@ def grant_select(engine: Engine, tables: list[str], role: str) -> None:
 
 
 def verify(engine: Engine, source_id: str) -> None:
+    # CONTEXT-ADDED (R1: DOCS holds free text, there is no plate column to count)
+    if source_id not in PLATE_COLUMN:
+        print(source_id + " has no plate column; nothing to verify")
+        return
+    # CONTEXT-END
     table, column = PLATE_COLUMN[source_id]
     print("\ndemo plates in " + table + "." + column + ":")
     with engine.connect() as conn:
@@ -199,6 +221,12 @@ def main(argv: list[str] | None = None) -> int:
     print("created " + str(len(tables)) + " table(s): " + ", ".join(tables))
     total = 0
     for csv_name, table in SOURCES[source_id]:
+        # CONTEXT-ADDED (R1: tolerate a not-yet-generated phase-3 / DOCS CSV)
+        if csv_name in OPTIONAL_CSVS and not (ROOT / csv_name).exists():
+            print("  " + table.ljust(22) + "     - skipped: " + csv_name + " not generated yet "
+                  "(scripts/phase3_generate.py, or scripts/phase3_docs_generate.py for DOCS)")
+            continue
+        # CONTEXT-END
         loaded = load_table(engine, table, ROOT / csv_name)
         total += loaded
         print("  " + table.ljust(22) + str(loaded).rjust(6) + " row(s) from " + csv_name)

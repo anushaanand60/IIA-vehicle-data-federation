@@ -55,6 +55,7 @@ class SourceStats:
     sql_statements: int = 0
     latency_ms: float = 0.0
     bound: float = 0.0                   # upper bound on any row this source did not return
+    hints_shipped: int = 0               # bridge-only hint rows (table, pk, affinity, bridge value), counted separately
     status: str = "OK"                   # OK / TIMEOUT / DOWN / ERROR (phase-1 meaning)
     error: Optional[str] = None
 
@@ -77,6 +78,8 @@ class ContextResult:
     complete: bool = True                # False when a source was down: answer is a lower bound
     baseline_rows: Optional[int] = None  # rows the naive full-closure approach would ship (for the counter)
     elapsed_ms: float = 0.0
+    trace: List[Dict[str, Any]] = field(default_factory=list)   # per round: tau_n, max frontier bound, expanded, pruned
+    hints_shipped: Dict[str, int] = field(default_factory=dict) # source_id -> bridge-only hint rows shipped
 
 
 # ------------------------------------------------------------------ entity top-k (R2, free text)
@@ -100,6 +103,8 @@ class TopKResult:
     baseline_rows: int = 0
     stopped_at_depth: int = 0
     elapsed_ms: float = 0.0
+    round_trips: int = 0                 # requested by WS-C: charted TA vs TPUT
+    method: str = "ta"                   # "ta" (Fagin threshold algorithm) | "tput" (three-phase uniform threshold)
 
 
 # ------------------------------------------------------------------ documents (R3)
@@ -151,7 +156,7 @@ class DocResult:
 
 @dataclass
 class Indicator:
-    code: str                            # ALIBI_PUC, ALIBI_CAMERA, QUICK_CLAIM, TRANSFER_BEFORE_LOSS, PERSON_RING, ...
+    code: str                            # ALIBI_PUC, ALIBI_CAMERA, ALIBI_CHALLAN, QUICK_CLAIM, TRANSFER_BEFORE_LOSS, PERSON_RING, ...
     severity: str                        # "high" | "medium" | "low"
     title: str
     explanation: str

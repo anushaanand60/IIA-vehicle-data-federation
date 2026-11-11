@@ -10,7 +10,10 @@ app = from_env(
     "REG",
     default_url=sqlite_default("REG"),
     default_dbms="PostgreSQL",
-    default_tables=["VEHICLE_REGISTRATION", "OWNERS"],  # design PDF section 3.1
+    # CONTEXT-REPLACED (R1: publish the phase-3 tables so /query and /schema can reach them):
+    # default_tables=["VEHICLE_REGISTRATION", "OWNERS"],  # design PDF section 3.1
+    default_tables=["VEHICLE_REGISTRATION", "OWNERS", "VEHICLE_IDENTITY", "OWNERSHIP_HISTORY", "OWNER_CONTACTS"],
+    # CONTEXT-END
 )
 
 if __name__ == "__main__":

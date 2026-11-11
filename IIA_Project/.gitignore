@@ -58,3 +58,23 @@ Thumbs.db
 data/plate_images/*
 !data/plate_images/manifest.csv
 !data/match_benchmark.csv
+# CONTEXT-ADDED (R1: phase-3 source CSVs are committed like the phase 1-2 ones; scale copies are regenerated)
+!/reg_vehicle_identity.csv
+!/reg_ownership_history.csv
+!/reg_owner_contacts.csv
+!/ins_policy_holders.csv
+!/ins_policy_parties.csv
+!/ins_claims.csv
+!/theft_stations.csv
+!/theft_stolen_property.csv
+!/theft_persons.csv
+!/theft_incident_persons.csv
+!/cam_zones.csv
+!/cam_camera_zones.csv
+!/cam_challans.csv
+!/puc_test_centres.csv
+!/puc_analysers.csv
+!/puc_cert_tests.csv
+!/docs_documents.csv
+data/scale/
+# CONTEXT-END

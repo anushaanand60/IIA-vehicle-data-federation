@@ -271,6 +271,13 @@ def compute_instance_similarity(samples: List[Any], global_attr: str, global_inf
     # 4. If no specific value profile (regex, vocabulary, date parser) matches, instance similarity is 0.0
     return 0.0
 
+# CONTEXT-ADDED (R1: the tables added for context discovery; see match_source_schema)
+CONTEXT_ONLY_TABLES = {"VEHICLE_IDENTITY", "OWNERSHIP_HISTORY", "OWNER_CONTACTS", "POLICY_HOLDERS", "POLICY_PARTIES",
+                       "CLAIMS", "STATIONS", "STOLEN_PROPERTY", "PERSONS", "INCIDENT_PERSONS", "ZONES", "CAMERA_ZONES",
+                       "CHALLANS", "TEST_CENTRES", "ANALYSERS", "CERT_TESTS", "DOCUMENTS"}
+# CONTEXT-END
+
+
 def match_source_schema(source_schema: Dict[str, Any], theta: float = 0.55) -> Dict[str, Any]:
     """
     Runs the hybrid schema matching algorithm.
@@ -281,6 +288,11 @@ def match_source_schema(source_schema: Dict[str, Any], theta: float = 0.55) -> D
       - similarity_matrix: Full NxM matrix of scores for UI heatmap
     """
     tables = source_schema.get("tables", {})
+    # CONTEXT-ADDED (R1: phase-3 tables are reached through the FK graph in data/context_graph.json, not
+    # through GAV mappings onto the global schema; matching them only adds false correspondences, e.g.
+    # CLAIMS.loss_date -> last_incident_date. Trade-off: a fixed list, kept next to the one place that needs it.)
+    tables = {t: d for t, d in tables.items() if t.upper() not in CONTEXT_ONLY_TABLES}
+    # CONTEXT-END
     correspondences = []
     unmapped = []
     matrix = {}

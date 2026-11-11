@@ -41,7 +41,7 @@ REG (5)
 INS (5)
 - `POLICY_HOLDERS(holder_id INTEGER PK, holder_name VARCHAR(80), mobile VARCHAR(10), address VARCHAR(160), pincode CHAR(6))`  -- own identity, NOT REG's owner
 - `POLICY_PARTIES(policy_id INTEGER PK REFERENCES POLICY_RECORDS, holder_id → POLICY_HOLDERS, chassis_no VARCHAR(17))`
-- `CLAIMS(claim_id INTEGER PK, policy_id → POLICY_RECORDS, loss_date VARCHAR(10) DD/MM/YYYY, intimation_date VARCHAR(10) DD/MM/YYYY, loss_type VARCHAR(12), amount_claimed DECIMAL(10,2), claim_status VARCHAR(12), surveyor_name VARCHAR(60))`  -- loss_type THEFT/OWN_DAMAGE/THIRD_PARTY; status OPEN/SETTLED/REJECTED/INVESTIGATING
+- `CLAIMS(claim_id INTEGER PK, policy_id → POLICY_RECORDS, loss_date VARCHAR(10) DD/MM/YYYY, intimation_date VARCHAR(10) DD/MM/YYYY, loss_type VARCHAR(12), amount_claimed DECIMAL(10,2), claim_status VARCHAR(16), surveyor_name VARCHAR(60))`  -- loss_type THEFT/OWN_DAMAGE/THIRD_PARTY; status OPEN/SETTLED/REJECTED/INVESTIGATING
 
 THEFT (5)
 - `STATIONS(station_name VARCHAR(60) PK, district VARCHAR(40), zone VARCHAR(20))`  -- logical FK: CRIME_RECORDS.police_station → STATIONS.station_name
@@ -76,6 +76,9 @@ Keep the phase 1-2 story vehicles (DL01AB1234, DL05CD9876, DL09KL3321, HR26EF445
 - PERSON_RING: one mobile shared by an REG owner, an INS holder (different spelling) and a THEFT accused across ≥ 3 vehicles.
 - CLONE: plate seen by two cameras far apart within minutes, observed make ≠ registered.
 - HARD NEGATIVES: plates one character apart, same owner name different person (different mobile).
+
+## Indicator codes
+ALIBI_PUC, ALIBI_CAMERA, ALIBI_CHALLAN, QUICK_CLAIM, TRANSFER_BEFORE_LOSS, LAPSED_COVER_SEEN, PERSON_RING.
 
 ## Shared Python types
 `mediator/context_types.py` (written by the integrator) — every workstream imports from it, never redefines.

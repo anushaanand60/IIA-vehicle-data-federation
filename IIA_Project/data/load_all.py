@@ -131,9 +131,43 @@ def load_puc():
     print("Loaded PUC DB successfully.")
 
 
+# CONTEXT-ADDED (R1: the phase-3 tables; schema.sql above already created them, this fills them)
+PHASE3_TABLES = {
+    REG_DB: ["VEHICLE_IDENTITY", "OWNERSHIP_HISTORY", "OWNER_CONTACTS"],
+    INS_DB: ["POLICY_HOLDERS", "POLICY_PARTIES", "CLAIMS"],
+    THEFT_DB: ["STATIONS", "STOLEN_PROPERTY", "PERSONS", "INCIDENT_PERSONS"],
+    CAM_DB: ["ZONES", "CAMERA_ZONES", "CHALLANS"],
+    PUC_DB: ["TEST_CENTRES", "ANALYSERS", "CERT_TESTS"],
+}
+
+
+def load_phase3():
+    """CSV <src>_<table>.csv from scripts/phase3_generate.py; an empty cell is NULL."""
+    for db_path, tables in PHASE3_TABLES.items():
+        prefix = os.path.basename(db_path)[:-3] + "_"
+        conn = sqlite3.connect(db_path)
+        for table in tables:
+            path = os.path.join(ROOT_DIR, prefix + table.lower() + ".csv")
+            if not os.path.exists(path):
+                print("skipped " + table + ": run scripts/phase3_generate.py first")
+                continue
+            with open(path, newline='', encoding='utf-8') as f:
+                rows = list(csv.DictReader(f))
+            if rows:
+                cols = list(rows[0])
+                conn.executemany("INSERT INTO " + table + " (" + ", ".join(cols) + ") VALUES ("
+                                 + ", ".join("?" for _ in cols) + ")",
+                                 [[r[c] if r[c] != "" else None for c in cols] for r in rows])
+        conn.commit()
+        conn.close()
+    print("Loaded phase-3 tables successfully.")
+# CONTEXT-END
+
+
 if __name__ == "__main__":
     load_reg()
     load_ins()
     load_theft()
     load_cam()
     load_puc()
+    load_phase3()  # CONTEXT-ADDED (R1: phase-3 tables)

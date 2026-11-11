@@ -95,7 +95,7 @@
   },
   "bridges": {
     "chassis": {"confidence": "exact", "members": [["REG", "VEHICLE_IDENTITY", "chassis_no"], ["INS", "POLICY_PARTIES", "chassis_no"], ["THEFT", "STOLEN_PROPERTY", "chassis_no"]]},
-    "plate": {"confidence": "match_probability", "members": [["REG", "VEHICLE_REGISTRATION", "registration_no"], ["INS", "POLICY_RECORDS", "vehicle_reg"],
+    "plate": {"confidence": "match_probability", "noisy": ["CAM"], "members": [["REG", "VEHICLE_REGISTRATION", "registration_no"], ["INS", "POLICY_RECORDS", "vehicle_reg"],
                ["THEFT", "CRIME_RECORDS", "vehicle_number"], ["CAM", "PLATE_CAPTURES", "plate_id"], ["PUC", "POLLUTION_CERT", "regn_number"]]},
     "person": {"confidence": "fellegi_sunter", "members": [["REG", "OWNERS", "owner_id"], ["INS", "POLICY_HOLDERS", "holder_id"], ["THEFT", "PERSONS", "person_id"]]}
   }

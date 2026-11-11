@@ -10,7 +10,10 @@ app = from_env(
     "INS",
     default_url=sqlite_default("INS"),
     default_dbms="MySQL",
-    default_tables=["POLICY_RECORDS", "INSURERS"],  # design PDF section 3.2
+    # CONTEXT-REPLACED (R1: publish the phase-3 tables so /query and /schema can reach them):
+    # default_tables=["POLICY_RECORDS", "INSURERS"],  # design PDF section 3.2
+    default_tables=["POLICY_RECORDS", "INSURERS", "POLICY_HOLDERS", "POLICY_PARTIES", "CLAIMS"],
+    # CONTEXT-END
 )
 
 if __name__ == "__main__":

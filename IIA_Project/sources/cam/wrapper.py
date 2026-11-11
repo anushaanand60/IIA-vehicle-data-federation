@@ -10,7 +10,10 @@ app = from_env(
     "CAM",
     default_url=sqlite_default("CAM"),
     default_dbms="PostgreSQL",
-    default_tables=["PLATE_CAPTURES", "CAMERAS"],  # design PDF section 3.4
+    # CONTEXT-REPLACED (R1: publish the phase-3 tables so /query and /schema can reach them):
+    # default_tables=["PLATE_CAPTURES", "CAMERAS"],  # design PDF section 3.4
+    default_tables=["PLATE_CAPTURES", "CAMERAS", "ZONES", "CAMERA_ZONES", "CHALLANS"],
+    # CONTEXT-END
 )
 
 if __name__ == "__main__":

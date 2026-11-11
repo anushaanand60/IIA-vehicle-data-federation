@@ -10,7 +10,10 @@ app = from_env(
     "THEFT",
     default_url=sqlite_default("THEFT"),
     default_dbms="SQLite",
-    default_tables=["CRIME_RECORDS"],  # design PDF section 3.3
+    # CONTEXT-REPLACED (R1: publish the phase-3 tables so /query and /schema can reach them):
+    # default_tables=["CRIME_RECORDS"],  # design PDF section 3.3
+    default_tables=["CRIME_RECORDS", "STATIONS", "STOLEN_PROPERTY", "PERSONS", "INCIDENT_PERSONS"],
+    # CONTEXT-END
 )
 
 if __name__ == "__main__":

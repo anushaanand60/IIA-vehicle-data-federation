@@ -10,7 +10,10 @@ app = from_env(
     "PUC",
     default_url=sqlite_default("PUC"),
     default_dbms="SQLite",
-    default_tables=["POLLUTION_CERT"],
+    # CONTEXT-REPLACED (R1: publish the phase-3 tables so /query and /schema can reach them):
+    # default_tables=["POLLUTION_CERT"],
+    default_tables=["POLLUTION_CERT", "TEST_CENTRES", "ANALYSERS", "CERT_TESTS"],
+    # CONTEXT-END
 )
 
 if __name__ == "__main__":
