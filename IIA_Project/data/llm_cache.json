@@ -1,0 +1,114 @@
+{
+ "qwen2.5:3b|text|63cc1ab78057f1242920d32335188adeabfb3d73726c7f26887e438acfb34dbf": "OK, I'm ready. How can I assist you today?",
+ "qwen2.5:3b|json|7238d6a7b3d491810d0ac1258a174cff21e287c83e2c8b74550a96fed0c9c116": {
+  "predicates": [
+   {
+    "attr": "vehicle_make",
+    "op": "=",
+    "value": "Toyota"
+   },
+   {
+    "attr": "vehicle_model",
+    "op": "=",
+    "value": "RAV4"
+   },
+   {
+    "attr": "location",
+    "op": "~",
+    "value": "airport"
+   }
+  ]
+ },
+ "qwen2.5:3b|json|843174605a234ec0b473acecec3323c78332d4b23780102c36cc186f7a3fd6a8": {
+  "predicates": [
+   {
+    "attr": "vehicle_make",
+    "op": "=",
+    "value": "MG"
+   },
+   {
+    "attr": "vehicle_model",
+    "op": "=",
+    "value": "City"
+   }
+  ]
+ },
+ "qwen2.5:3b|json|b45d35f0d7a8e191bd51a83c8de3beafd6e7e6c0073f0894527018fe98903bcf": {
+  "predicates": [
+   {
+    "attr": "last_seen_location",
+    "op": "=",
+    "value": "Gurugram",
+    "confidence": 0.95
+   }
+  ]
+ },
+ "qwen2.5:3b|json|4b9afcccbc39e65142f48bbdbd4db335e73c2d2d5c9055222f786d82de0c33ca": {
+  "predicates": [
+   {
+    "word": "suv",
+    "attr": "vehicle_make",
+    "op": "=",
+    "value": "Toyota"
+   },
+   {
+    "word": "airport",
+    "attr": "location",
+    "op": "~",
+    "value": "Delhi"
+   }
+  ]
+ },
+ "qwen2.5:3b|json|a096414521761262b2bce908050c878c46715443ac92b1f50154090b98a8d452": {
+  "predicates": [
+   {
+    "word": "hatchback",
+    "attr": "vehicle_model",
+    "op": "=",
+    "value": "a person's name copied from the text",
+    "confidence": 0.9
+   },
+   {
+    "word": "rouge",
+    "attr": "vehicle_make",
+    "op": "=",
+    "value": "a person's name copied from the text",
+    "confidence": 0.9
+   }
+  ]
+ },
+ "qwen2.5:3b|json|ac8f9e410a149e140b06111f87657f1c4d432ab2c4662708287abe28febd8887": {
+  "predicates": [
+   {
+    "word": "twice",
+    "attr": "last_seen_location",
+    "op": "=",
+    "value": "Gurugram",
+    "confidence": 1.0
+   }
+  ]
+ },
+ "qwen2.5:3b|json|25387bfeae4cee7f7b570ae9e00f32f139bc1ef77ba5f5260d9fa6f65f782604": {
+  "predicates": [
+   {
+    "word": "nicked",
+    "attr": "indicator",
+    "op": "=",
+    "value": "ALIBI_CAMERA",
+    "confidence": 1.0
+   },
+   {
+    "word": "gurgoan",
+    "attr": "location",
+    "op": "=",
+    "value": "Gurugram",
+    "confidence": 1.0
+   }
+  ]
+ },
+ "qwen2.5:3b|json|b0f27c3da814b6b545dcf1c245f20c27851d9eadcb2164e6ccdf947b15124f6c": {
+  "predicates": []
+ },
+ "qwen2.5:3b|text|7c1b5b59506f467f51acb2d3444b9b75fae350ec13705ce00bae5f1ac5984e97": "[REG:VEHICLE_REGISTRATION#604] Red Hyundai Creta with registration UP16GH1122 is active and insured.\n\n[REG:OWNERS#604] The vehicle is owned by Vikram Patel, residing at 88 Sector 62, Noida.\n\n[PUC:POLLUTION_CERT#PUC-2026-004] The vehicle has a valid Pollution Control Certificate (PUC) until 28th February 2027, issued by Noida Inspection Point, with emission norm BS-VI.\n\n[INS:POLICY_RECORDS#564] The comprehensive insurance policy for the vehicle is active from 20/03/2026 to 19/03/2027.\n\n[D:D00122] A PUC certificate for the vehicle UP16GH1122 (red Hyundai Creta) was issued by Noida Inspection Point, valid until 28th February 2027.\n\n[D:D01009] There is a conflict in the news report; the vehicle is described as a blue Kia Seltos, while the registration shows a red Hyundai Creta.",
+ "qwen2.5:3b|text|e174574d81d4e6914aac3931ce49d86a0f577dfa299ed489e53ed1d6ba3f5f69": "[REG:VEHICLE_REGISTRATION#603] [INS:POLICY_RECORDS#563] [THEFT:CRIME_RECORDS#41] [CAM:PLATE_CAPTURES#912] [PUC:POLLUTION_CERT#PUC-2026-003] [REG:OWNERS#603] [REG:VEHICLE_IDENTITY#603] [INS:INSURERS#2] [D:D00878] [D:D01018] [D:D00090] [D:D00109]\n\n[REG:VEHICLE_REGISTRATION#603] [THEFT:CRIME_RECORDS#41] [CAM:PLATE_CAPTURES#912] [PUC:POLLUTION_CERT#PUC-2026-003] [REG:OWNERS#603] [REG:VEHICLE_IDENTITY#603] [INS:INSURERS#2] [D:D00878] [D:D01018] [D:D00090] [D:D00109]\n\n[THEFT:CRIME_RECORDS#41] [CAM:PLATE_CAPTURES#912] [PUC:POLLUTION_CERT#PUC-2026-003] [REG:OWNERS#603] [REG:VEHICLE_IDENTITY#603] [INS:INSURERS#2] [D:D00878] [D:D01018] [D:D00090] [D:D00109]\n\nCONFLICT: [D:D01018] [D:D00090] [D:D00109]"
+}
