@@ -214,3 +214,32 @@ def test_bounded_equals_the_central_oracle(tmp_path, monkeypatch, case):
     assert expect[-1] >= theta                                    # theta can only matter below the n-th score
     assert res.trace[-1]["stopped"] == "bound"
     assert [round(r.score, 4) for r in res.rows] == [round(s, 4) for s in expect]
+
+
+# CONTEXT-ADDED (R2: integration fixes -- perf, fair B2, cheap B0 size)
+def test_closed_form_variant_confidence_equals_the_edit_distance():
+    from mediator.context_scoring import ocr_variants_conf
+    for plate in (STORY, "HR26EF4455", "UP16GH1122", "MH12IJ7788"):
+        for v, c in ocr_variants_conf(plate):
+            assert c == pytest.approx(plate_confidence(plate, v), abs=1e-12)
+
+
+def test_mediator_baseline_honours_seeds_and_keywords(world):
+    hub = run(world, mode="mediator", n=10, query=ParsedQuery(text="station"),
+              seeds={"pks": {"STATIONS": ["PS Rohini"]}})[0]
+    assert len(hub.rows) == 10 and all(r.path[0] == "STATIONS#PS Rohini" for r in hub.rows if r.via_bridge is None)
+    assert any(r.via_bridge is None and r.hops >= 1 for r in hub.rows)            # walked out of the hub
+    free = run(world, mode="mediator", n=5, query=ParsedQuery(text="x", keywords=["investigating"]))[0]
+    assert free.rows and free.rows[0].table == "CLAIMS"
+
+
+def test_baseline_probe_reports_b0_size_without_charging_it_to_the_query(world):
+    plain, c1 = run(world, n=8)
+    probed, c2 = run(world, n=8, with_baseline=True)
+    closure, cc = run(world, mode="closure", n=8)
+    assert plain.baseline_rows is None
+    assert 0.8 * closure.baseline_rows <= probed.baseline_rows <= closure.baseline_rows
+    assert shipped(c2) == shipped(c1) and probed.trace[-1]["baseline_probe"]["round_trips"] > 0
+    assert sum(s.round_trips for s in c2.stats()) == sum(s.round_trips for s in c1.stats())
+    assert probed.hints_shipped and all(s.hints_shipped == probed.hints_shipped.get(s.source_id, 0) for s in probed.stats)
+# CONTEXT-END

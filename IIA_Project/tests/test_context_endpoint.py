@@ -240,3 +240,14 @@ def test_same_answer_on_a_real_server(env, urls, tmp_path):
     a, b = ctx(urls, "THEFT", **body), remote.post("/context", json=body).json()
     assert [(r["table"], r["pk_key"], round(r["score"], 6)) for r in a["rows"]] == \
            [(r["table"], r["pk_key"], round(r["score"], 6)) for r in b["rows"]]
+
+
+# CONTEXT-ADDED (R2: count_only -- the B0 size without shipping B0)
+def test_count_only_closure_counts_what_closure_would_ship(urls):
+    for sid in ("REG", "THEFT", "CAM"):
+        full = ctx(urls, sid, seeds={"plate": [STORY]}, mode="closure")
+        count = ctx(urls, sid, seeds={"plate": [STORY]}, mode="closure", count_only=True)
+        assert count["rows"] == [] and count["closure_rows"] == full["row_count"]
+        values = {(r["bridge"]["attr"], r["bridge"]["value"]) for r in full["rows"] if r["bridge"]}
+        assert values == {(a, v) for a, vs in count["bridge_values"].items() for v in vs}
+# CONTEXT-END

@@ -50,6 +50,7 @@ class ContextRequest(BaseModel):
     per_parent: Optional[int] = None
     max_hints: int = 500
     hint_min: float = 0.0
+    count_only: bool = False   # CONTEXT-ADDED (R2: B0 baseline size without shipping it) -- use with mode="closure"
     explain: bool = False
 
     @field_validator("window")
@@ -121,6 +122,16 @@ def run_context(conn: Any, graph: Dict[str, Any], source_id: str, whitelist: Lis
         return {"rows": [], "hints": [], "bound": 0.0, "bound_cut": 0.0, "sql": None}
     guard_context_sql(sql, whitelist)
     out = [dict(r) for r in conn.execute(text(sql), params).mappings().all()]
+    # CONTEXT-ADDED (R2: count_only answer -- one integer + the closure's distinct bridge values, no rows)
+    if req.get("count_only"):
+        values: Dict[str, List[str]] = {}
+        for r in out:
+            if r["kind"] == "value":
+                values.setdefault(r["battr"], []).append(str(r["bval"]))
+        total = next((int(r["n_rows"] or 0) for r in out if r["kind"] == "count"), 0)
+        return {"rows": [], "hints": [], "bound": 0.0, "bound_cut": 0.0, "closure_rows": total,
+                "bridge_values": {k: sorted(v) for k, v in values.items()}, "sql": sql if req.get("explain") else None}
+    # CONTEXT-END
     top = [r for r in out if r["kind"] == "row"]
     full = _fetch_rows(conn, Dialect(dialect), tables, top)
     rows = [{"table": r["t"], "pk": _native_pk(tables[r["t"]], full.get((r["t"], r["pk"])), r["pk"]),

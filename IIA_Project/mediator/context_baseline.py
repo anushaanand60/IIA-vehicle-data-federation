@@ -41,6 +41,7 @@ class _B2:
         self.found: Dict[Tuple[str, str, str], ContextRow] = {}
         self.truncated = 0
         self._weights: Dict[str, List[Tuple[float, float]]] = {}
+        self.aff: Dict[Tuple[str, str, str], float] = {}   # CONTEXT-ADDED (R2: fair B2) affinity per row found
 
     def q(self, sid: str, sql: str) -> List[Dict[str, Any]]:
         rows = self.client.query(sid, sql)
@@ -61,15 +62,37 @@ class _B2:
         self._weights[sid] = out
         return out
 
-    def walk(self, sid: str, seeds: Dict[str, List[str]], start_aff: float, via: Optional[str]) -> None:
+    def walk(self, sid: str, seeds: Dict[str, Any], start_aff: float, via: Optional[str]) -> None:
         tables, gamma = self.graph["sources"][sid]["tables"], float(self.prm.get("gamma_hops", 1.0))
         frontier: Dict[str, List[Tuple[Dict[str, Any], float, List[str]]]] = {}
-        for kind, vals in seeds.items():
+        for kind in ("plate", "chassis"):
+            vals = list(seeds.get(kind) or [])
             for t, spec in tables.items():
                 if spec.get(kind) and _in(vals):
                     col = spec[kind]
                     sql = f"SELECT * FROM {t} WHERE UPPER(REPLACE(REPLACE({col}, '-', ''), ' ', '')) IN ({_in(vals)})"
-                    frontier.setdefault(t, []).extend((r, start_aff, []) for r in self.q(sid, sql))
+                    # CONTEXT-REPLACED (R2: fair B2 -- a bridged row starts at its bridge value's affinity, as in bounded):
+                    # frontier.setdefault(t, []).extend((r, start_aff, []) for r in self.q(sid, sql))
+                    vw = seeds.get("weights") or {}
+                    frontier.setdefault(t, []).extend((r, vw.get(canon(_get(r, col)), start_aff), [])
+                                                      for r in self.q(sid, sql))
+                    # CONTEXT-END
+        # CONTEXT-ADDED (R2: B2 honours the same seeds as bounded -- explicit pks / person ids, then keywords)
+        for group in ("pks", "person_ids"):
+            for t, vals in (seeds.get(group) or {}).items():
+                spec = tables.get(t)
+                if spec is None or isinstance(spec["pk"], list) or not _in(list(vals)):
+                    continue  # composite keys cannot be written as one IN list through /query
+                rows = self.q(sid, f"SELECT * FROM {t} WHERE {spec['pk']} IN ({_in(list(vals))})")
+                frontier.setdefault(t, []).extend((r, start_aff, []) for r in rows)
+        if not frontier and seeds.get("keywords"):  # free text: like bounded, rows hitting a keyword seed the walk
+            for t, spec in tables.items():
+                conds = [f"LOWER({c} || '') LIKE {q}" for c in spec.get("text", []) for k in seeds["keywords"]
+                         if (q := _lit(f"%{k.lower()}%")) and "%" not in k and "_" not in k]
+                if conds:  # `|| ''` makes any column text in all three engines (the wrapper sets PIPES_AS_CONCAT on MySQL)
+                    rows = self.q(sid, f"SELECT * FROM {t} WHERE {' OR '.join(conds)} LIMIT 50")
+                    frontier.setdefault(t, []).extend((r, start_aff, []) for r in rows)
+        # CONTEXT-END
         seen: set = set()
         edges, weights = self.graph["sources"][sid].get("edges", []), self.weights(sid)
         for hop in range(self.max_hops + 1):
@@ -107,12 +130,13 @@ class _B2:
         spec = self.graph["sources"][sid]["tables"][t]
         score = aff * relevance(spec, row, self.kw, self.window, self.prm)
         key = (sid, t, pk_key(spec, row))
+        self.aff[key] = max(aff, self.aff.get(key, 0.0))  # CONTEXT-ADDED (R2: fair B2)
         if key not in self.found or score > self.found[key].score:
             self.found[key] = ContextRow(sid, t, key[2], row, score, path, hops, via, 1.0)
 
 
 def run_mediator_baseline(pq: ParsedQuery, graph: Dict[str, Any], client: Any, n: int = 10, theta: float = 0.05,
-                          max_hops: Optional[int] = None) -> ContextResult:
+                          max_hops: Optional[int] = None, seeds: Optional[Dict[str, Any]] = None) -> ContextResult:
     t0 = time.perf_counter()
     from mediator.context_discovery import _keywords
     b = _B2(graph, client, _keywords(pq), list(pq.time_window) if pq.time_window else None,
@@ -120,17 +144,34 @@ def run_mediator_baseline(pq: ParsedQuery, graph: Dict[str, Any], client: Any, n
     noisy = set(noisy_plate_sources(graph))
     for sid in graph["sources"]:
         plates = [v for p in pq.plates for v in (ocr_variants(p) if sid in noisy else [canon(p)])]
-        b.walk(sid, {"plate": plates}, 1.0, None)
+        # CONTEXT-REPLACED (R2: same seeds/keywords as bounded):
+        # b.walk(sid, {"plate": plates}, 1.0, None)
+        given = seeds or {}
+        b.walk(sid, {"plate": plates + [canon(v) for v in given.get("plate") or []],
+                     "chassis": [canon(v) for v in given.get("chassis") or []], "pks": given.get("pks"),
+                     "person_ids": given.get("person_ids"), "keywords": b.kw}, 1.0, None)
+        # CONTEXT-END
     members = bridge_members(graph)
     values = {k: {canon(_get(r.row, c)) for r in list(b.found.values()) for s, t, c in members.get(k, [])
                   if (r.source_id, r.table) == (s, t)} for k in ("plate", "chassis")}
+    # CONTEXT-ADDED (R2: fair B2) each bridge value carries the best affinity of a row holding it
+    weights: Dict[str, float] = {}
+    for key, r in list(b.found.items()):
+        for k in ("plate", "chassis"):
+            for s, t, c in members.get(k, []):
+                if (r.source_id, r.table) == (s, t) and (v := canon(_get(r.row, c))):
+                    weights[v] = max(weights.get(v, 0.0), b.aff.get(key, 0.0))
+    # CONTEXT-END
     for sid in graph["sources"]:  # follow every bridge value once (no bounds: that is the point of a baseline)
-        b.walk(sid, {k: sorted(v - {""} - set(pq.plates)) for k, v in values.items()}, 1.0, "bridge")
+        b.walk(sid, {**{k: sorted(v - {""} - set(pq.plates)) for k, v in values.items()}, "weights": weights},
+               1.0, "bridge")
     rows = sorted(b.found.values(), key=lambda r: (-r.score, r.source_id, r.table, str(r.pk)))
     stats = client.stats()
-    res = ContextResult(query=pq, rows=rows[:n], stats=stats, rounds=2,
-                        complete=all(s.status == "OK" for s in stats), elapsed_ms=(time.perf_counter() - t0) * 1000)
-    res.trace = [{"round": 1, "final": True, "queries": sum(s.round_trips for s in stats),  # type: ignore[attr-defined]
-                  "rows_shipped": sum(s.rows_shipped for s in stats), "truncated_hops": b.truncated,
-                  "expanded": 0, "pruned": 0}]
-    return res
+    # CONTEXT-REPLACED (R2: trace is now a ContextResult field):
+    # res.trace = [...]  (was an attribute)
+    trace = [{"round": 1, "final": True, "queries": sum(s.round_trips for s in stats),
+              "rows_shipped": sum(s.rows_shipped for s in stats), "truncated_hops": b.truncated,
+              "expanded": 0, "pruned": 0}]
+    return ContextResult(query=pq, rows=rows[:n], stats=stats, rounds=2, trace=trace,
+                         complete=all(s.status == "OK" for s in stats), elapsed_ms=(time.perf_counter() - t0) * 1000)
+    # CONTEXT-END

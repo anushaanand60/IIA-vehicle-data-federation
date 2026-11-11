@@ -15,7 +15,7 @@ import math
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
-from mediator.context_scoring import bridge_members, canon, noisy_plate_sources, ocr_variants, plate_confidence
+from mediator.context_scoring import bridge_members, canon, noisy_plate_sources, ocr_variants_conf
 from mediator.person_resolution import _digits, name_prefixes, records_from_rows
 from sources.context_sql import ident
 
@@ -50,7 +50,7 @@ def spawn_states(graph: Dict[str, Any], origin: str, attr: str, value: Any, affi
     v = canon(value)
     for t in targets:
         if attr == "plate" and (origin in noisy or t in noisy):
-            pairs = [(var, plate_confidence(v, var)) for var in ocr_variants(v)]
+            pairs = list(ocr_variants_conf(v))  # CONTEXT-REPLACED (R2: perf): was plate_confidence per variant
         else:
             pairs = [(v, 1.0)]
         for var, c in pairs:
@@ -131,15 +131,27 @@ def person_query(info: Dict[str, Any], pks: Sequence[Any] = (), mobiles: Sequenc
             f"WHERE {' OR '.join(conds)}")
 
 
+PERSON_BATCH = 40  # CONTEXT-ADDED (R2): keys of each kind per /query, keeps each statement under the guard's 10,000 characters
+
+
 def fetch_person_records(client: Any, graph: Dict[str, Any], source_id: str, **keys: Any) -> List[Dict[str, Any]]:
     """Candidate person records from one agency, filtered at the source by the given keys (counted by the client)."""
     info = person_sources(graph).get(source_id)
-    sql = person_query(info, **keys) if info else None
-    if not sql:
+    if not info:
         return []
-    rows = client.query(source_id, sql)
+    # CONTEXT-REPLACED (R2: batch the keys -- closure mode resolves hundreds of people at once):
+    # sql = person_query(info, **keys); rows = client.query(source_id, sql)
+    lists = {k: sorted({str(v) for v in vals}) for k, vals in keys.items() if vals}
+    rows: List[Dict[str, Any]] = []
+    longest = max((len(v) for v in lists.values()), default=0)
+    for i in range(0, longest, PERSON_BATCH):  # usually one statement; more only when the key lists are long
+        sql = person_query(info, **{k: v[i:i + PERSON_BATCH] for k, v in lists.items()})
+        if sql:
+            rows += client.query(source_id, sql)
+    uniq = {str(r.get("pk")): r for r in rows}
+    # CONTEXT-END
     mapping = {f: f for f in info["fields"]}
-    return records_from_rows(rows, mapping, source_id, info["table"], "pk")
+    return records_from_rows(list(uniq.values()), mapping, source_id, info["table"], "pk")
 
 
 def blocking_keys(records: Iterable[Dict[str, Any]]) -> Dict[str, List[str]]:

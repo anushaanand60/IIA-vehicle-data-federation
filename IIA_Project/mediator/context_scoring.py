@@ -60,6 +60,19 @@ def ocr_variants(plate: str, cap: int = 24, max_subs: int = 2) -> List[str]:
     return list(_variants(canon(plate), cap, max_subs))
 
 
+# CONTEXT-ADDED (R2: perf -- the per-pair OCR edit distance was ~90% of a discover call)
+@functools.lru_cache(maxsize=8192)
+def ocr_variants_conf(plate: str, cap: int = 24, max_subs: int = 2) -> Tuple[Tuple[str, float], ...]:
+    """(variant, confidence) pairs. A variant made by k confusable substitutions has OCR edit similarity
+    exactly 1 - k x OCR_SUB_COST / len (indels cost 1 > 2 x 0.2), so no edit distance is computed;
+    equality with plate_confidence() is checked in tests/test_context_discovery.py."""
+    from mediator.similarity import OCR_SUB_COST
+    p = canon(plate)
+    return tuple((v, 1.0 - sum(a != b for a, b in zip(v, p)) * OCR_SUB_COST / max(1, len(p)))
+                 for v in _variants(p, cap, max_subs))
+# CONTEXT-END
+
+
 @functools.lru_cache(maxsize=65536)
 def plate_confidence(a: str, b: str) -> float:
     """Phase-2 OCR-confusion similarity as a cheap proxy for the learned match probability."""

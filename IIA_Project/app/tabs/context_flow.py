@@ -57,8 +57,13 @@ def run_query(text: str, use_llm: bool = True) -> Dict[str, Any]:
     out["plate"] = plates[0] if plates else None
     if plates:
         cd = module("mediator.context_discovery", missing)
+        # CONTEXT-REPLACED (R2: the baseline is now counted live inside each DBMS (count_only /context) instead of
+        # quoted from the last evaluation run; costs ~2 s of database work but ships integers, not the rows):
+        # ctx = _step(problems, "context discovery", lambda: cd.discover(
+        #     out["parsed"], n=N_PER_SOURCE, theta=THETA, mode="bounded")) if cd else None
         ctx = _step(problems, "context discovery", lambda: cd.discover(
-            out["parsed"], n=N_PER_SOURCE, theta=THETA, mode="bounded")) if cd else None
+            out["parsed"], n=N_PER_SOURCE, theta=THETA, mode="bounded", with_baseline=True)) if cd else None
+        # CONTEXT-END
         out["context"] = ctx
         an = module("mediator.analytics", missing)
         out["indicators"] = (_step(problems, "warning signs", lambda: an.indicators_for(plates[0], context=ctx))

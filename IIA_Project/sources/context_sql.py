@@ -237,6 +237,14 @@ FROM elig e WHERE e.rn <= {n}
 UNION ALL
 SELECT 'hint', h.t, h.pk, NULL, h.hops, h.aff, NULL, h.skey, h.battr, h.bval, NULL, NULL, NULL, NULL
 FROM hint_top h WHERE h.rn_h <= {hint_cap}"""
+    # CONTEXT-ADDED (R2: count_only -- how many rows the full closure WOULD ship, plus its distinct bridge
+    # values, without shipping those rows: lets bounded mode report the B0 baseline at the cost of integers/values)
+    if req.get("count_only"):
+        sql = sql[: sql.index("SELECT 'row' AS kind")] + """
+SELECT 'count' AS kind, NULL AS battr, NULL AS bval, (SELECT COUNT(*) FROM node) AS n_rows
+UNION ALL
+SELECT DISTINCT 'value', s.battr, s.bval, NULL FROM scored s WHERE s.battr IS NOT NULL AND s.bval IS NOT NULL"""
+    # CONTEXT-END
     return sql, b.params
 
 

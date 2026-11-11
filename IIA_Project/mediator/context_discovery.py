@@ -25,11 +25,13 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from mediator.context_bridges import FrontierState, shipping_estimate, spawn_states
 from mediator.context_people import resolve_pending
-from mediator.context_scoring import (canon, load_graph, max_relevance, noisy_plate_sources, ocr_variants, params_of,
-                                      plate_confidence, seed_factor)
+from mediator.context_probe import probe_baseline  # CONTEXT-ADDED (R2: B0 size without shipping B0)
+from mediator.context_scoring import (canon, load_graph, max_relevance, noisy_plate_sources, ocr_variants_conf,
+                                      params_of, seed_factor)
 from mediator.context_types import ContextResult, ContextRow, ParsedQuery
 
 HINTS_PER_N = 5
+CLOSURE_CHUNK = 1000   # CONTEXT-ADDED (R2): seeds per B0 follow-up request; ~1 s of in-DB work, under the 3 s timeout
 PLATE_RE = re.compile(r"^[A-Z]{2}\d{1,2}[A-Z]{0,3}\d{1,4}$")
 
 
@@ -62,6 +64,7 @@ class _Run:
         self.prm = prm = params_of(graph)
         self.rbar = {s: max_relevance(graph["sources"][s], base["keywords"], base["window"], prm) for s in self.sources}
         self.ew: Dict[str, List[Dict[str, Any]]] = {}      # edge weights each source measured and reported
+        self._factor: Dict[Tuple[str, str, Optional[str]], float] = {}  # CONTEXT-ADDED (R2: perf) memo for factor()
         self.rows: Dict[Tuple[str, str, str], ContextRow] = {}
         self.sent: Dict[Tuple[str, str, str], float] = {}
         self.meta: Dict[Tuple[str, str], FrontierState] = {}
@@ -76,27 +79,43 @@ class _Run:
         self.trace: List[Dict[str, Any]] = []
 
     # ------------------------------------------------------------------ calls
-    def call(self, requests: Dict[str, Dict[str, Any]]) -> None:
-        with ThreadPoolExecutor(max_workers=max(1, len(requests))) as pool:
-            futures = {sid: pool.submit(self.client.post, sid, "/context", _strip(body)) for sid, body in requests.items()}
+    def call(self, requests: Dict[str, Any]) -> None:
+        # CONTEXT-REPLACED (R2: a source may get several requests in one round -- closure seeds are chunked):
+        # futures = {sid: pool.submit(self.client.post, sid, "/context", _strip(body)) ...}
+        batches = {sid: (r if isinstance(r, list) else [r]) for sid, r in requests.items()}
+
+        def per_source(sid: str) -> List[Optional[Dict[str, Any]]]:  # sequential within a source, parallel across
+            return [self.client.post(sid, "/context", _strip(body)) for body in batches[sid]]
+
+        with ThreadPoolExecutor(max_workers=max(1, len(batches))) as pool:
+            futures = {sid: pool.submit(per_source, sid) for sid in batches}
         for sid, fut in futures.items():
             try:
-                body = fut.result()
+                bodies = fut.result()
             except Exception:  # a misbehaving client must not crash the query either
-                body = None
-            if body is None:
-                self.dead.add(sid)
-                continue
-            self.absorb(sid, body, requests[sid])
+                bodies = [None]
+            for body, req in zip(bodies, batches[sid]):
+                if body is None:
+                    self.dead.add(sid)
+                else:
+                    self.absorb(sid, body, req)
+        # CONTEXT-END
 
     def factor(self, t: str, kind: str, table: Optional[str] = None) -> float:
-        src = self.graph["sources"].get(t, {})
-        seed_tables = [table] if table else [name for name, s in src.get("tables", {}).items() if s.get(kind)]
-        return seed_factor(src, seed_tables, self.base["keywords"], self.base["window"], self.prm, self.ew.get(t))
+        # CONTEXT-ADDED (R2: perf -- memoised; it was recomputed for every one of ~10^5 states in closure mode)
+        key = (t, kind, table)
+        if key not in self._factor:
+            src = self.graph["sources"].get(t, {})
+            seed_tables = [table] if table else [name for name, s in src.get("tables", {}).items() if s.get(kind)]
+            self._factor[key] = seed_factor(src, seed_tables, self.base["keywords"], self.base["window"], self.prm,
+                                            self.ew.get(t))
+        return self._factor[key]
+        # CONTEXT-END
 
     def absorb(self, sid: str, body: Dict[str, Any], req: Dict[str, Any]) -> None:
         if body.get("edge_weights") is not None:
             self.ew[sid] = body["edge_weights"]
+            self._factor = {k: v for k, v in self._factor.items() if k[0] != sid}  # CONTEXT-ADDED (R2: perf) new weights
         for r in body.get("rows", []):
             st = self.meta.get((sid, r.get("seed") or ""))
             path = (st.origin_path if st else []) + list(r.get("path", []))
@@ -169,7 +188,7 @@ def _round1(run: _Run, pq: ParsedQuery, seeds: Optional[Dict[str, Any]]) -> Dict
     for sid in run.sources:
         states = []
         for p in pq.plates:
-            pairs = [(v, plate_confidence(p, v)) for v in ocr_variants(p)] if sid in noisy else [(canon(p), 1.0)]
+            pairs = list(ocr_variants_conf(p)) if sid in noisy else [(canon(p), 1.0)]
             states += [FrontierState(sid, "plate", v, c, c, "plate", c) for v, c in pairs]
         tables = run.graph["sources"][sid]["tables"]
         for group in ("pks", "person_ids"):
@@ -188,7 +207,7 @@ def _round1(run: _Run, pq: ParsedQuery, seeds: Optional[Dict[str, Any]]) -> Dict
 def discover(query: Any, n: int = 10, theta: float = 0.05, mode: str = "bounded", client: Any = None,
              max_rounds: int = 4, *, seeds: Optional[Dict[str, Any]] = None, explain: bool = False,
              graph: Optional[Dict[str, Any]] = None, max_hops: Optional[int] = None,
-             per_parent: Optional[int] = None) -> ContextResult:
+             per_parent: Optional[int] = None, with_baseline: bool = False) -> ContextResult:
     t0 = time.perf_counter()
     pq, graph = to_parsed(query), graph or load_graph()
     if client is None:
@@ -196,14 +215,15 @@ def discover(query: Any, n: int = 10, theta: float = 0.05, mode: str = "bounded"
         client = SourceClient()
     if mode == "mediator":
         from mediator.context_baseline import run_mediator_baseline
-        return run_mediator_baseline(pq, graph, client, n=n, theta=theta, max_hops=max_hops)
+        return run_mediator_baseline(pq, graph, client, n=n, theta=theta, max_hops=max_hops, seeds=seeds)
     if mode not in ("bounded", "topn", "closure"):
         raise ValueError(f"unknown mode {mode!r}")
     base = {"theta": theta, "window": list(pq.time_window) if pq.time_window else None, "keywords": _keywords(pq),
             "mode": "closure" if mode == "closure" else "bounded", "max_hops": max_hops, "per_parent": per_parent,
             "explain": explain}
     run = _Run(graph, client, pq, n, theta, mode, base)
-    run.call(_round1(run, pq, seeds))
+    first = _round1(run, pq, seeds)
+    run.call(first)
     rounds, stopped = 1, "single round" if mode == "topn" else "bound"
     while mode != "topn":
         tau = 0.0 if mode == "closure" else run.tau()
@@ -221,15 +241,21 @@ def discover(query: Any, n: int = 10, theta: float = 0.05, mode: str = "bounded"
             stopped = ("closure: every bridge followed once" if mode == "closure"
                        else "bound" if not expand and not deepen else "max_rounds")
             break
-        reqs: Dict[str, Dict[str, Any]] = {}
+        reqs: Dict[str, Any] = {}
         for sid in sorted({f.target for f in expand} | set(deepen)):
             mine = [f for f in expand if f.target == sid]
+            if mode == "closure":  # CONTEXT-ADDED (R2: chunk B0's thousands of seeds under the statement timeout)
+                keys = sorted({f.key for f in mine})
+                chunks = [set(keys[i:i + CLOSURE_CHUNK]) for i in range(0, len(keys), CLOSURE_CHUNK)]
+                reqs[sid] = [run.request(sid, [f for f in mine if f.key in ch], n, False) for ch in chunks]
+                continue  # CONTEXT-END
             reqs[sid] = run.request(sid, mine, run.n_sent.get(sid, n) * (2 if sid in deepen else 1), sid in deepen)
-        entry["shipping"] = {sid: r["_ship"] for sid, r in reqs.items()}
+        entry["shipping"] = {sid: (r[0] if isinstance(r, list) else r)["_ship"] for sid, r in reqs.items()}
         run.frontier = []  # expanded now, or pruned for good: tau_n never decreases, so a pruned bound stays pruned
         run.call(reqs)
         rounds += 1
-    return _finish(run, client, rounds, stopped, t0)
+    probe = probe_baseline(run, first) if with_baseline and mode != "closure" else None  # CONTEXT-ADDED (R2)
+    return _finish(run, client, rounds, stopped, t0, probe)
 
 
 def _trips(client: Any) -> int:
@@ -240,7 +266,8 @@ def _strip(req: Dict[str, Any]) -> Dict[str, Any]:
     return {k: v for k, v in req.items() if not k.startswith("_") and v is not None}
 
 
-def _finish(run: _Run, client: Any, rounds: int, stopped: str, t0: float) -> ContextResult:
+def _finish(run: _Run, client: Any, rounds: int, stopped: str, t0: float,
+            probe: Optional[Dict[str, Any]] = None) -> ContextResult:
     ordered = sorted(run.rows.values(), key=lambda r: (-r.score, r.source_id, r.table, str(r.pk)))
     stats = client.stats()
     for st in stats:
@@ -248,7 +275,7 @@ def _finish(run: _Run, client: Any, rounds: int, stopped: str, t0: float) -> Con
     shipped = sum(s.rows_shipped for s in stats)
     res = ContextResult(query=run.pq, rows=ordered if run.mode == "closure" else ordered[:run.n], stats=stats,
                         persons=run.persons, rounds=rounds, complete=not run.dead,
-                        baseline_rows=shipped if run.mode == "closure" else None,
+                        baseline_rows=shipped if run.mode == "closure" else (probe or {}).get("rows"),
                         elapsed_ms=(time.perf_counter() - t0) * 1000)
     tau = run.tau() if run.mode != "closure" else 0.0
     run.trace.append({"round": rounds, "tau_n": tau, "final": True, "stopped": stopped,
@@ -256,6 +283,13 @@ def _finish(run: _Run, client: Any, rounds: int, stopped: str, t0: float) -> Con
                       "max_source_bound": max([max(b, default=0.0) for b in run.open.values()] + [1.0 if run.dead else 0.0]),
                       "expanded": 0, "pruned": 0, "rows_shipped": shipped,  # summary row: counts live in the rounds above
                       "hints_shipped": sum(run.hints.values())})
-    res.trace = run.trace  # type: ignore[attr-defined]  # attribute, not a dataclass field: context_types is shared
-    res.hints_shipped = dict(run.hints)  # type: ignore[attr-defined]
+    # CONTEXT-REPLACED (R2: trace / hints_shipped are now ContextResult and SourceStats fields):
+    # res.trace = run.trace  # type: ignore[attr-defined]
+    # res.hints_shipped = dict(run.hints)  # type: ignore[attr-defined]
+    if probe:
+        run.trace[-1]["baseline_probe"] = probe
+    res.trace, res.hints_shipped = run.trace, dict(run.hints)
+    for st in stats:
+        st.hints_shipped = run.hints.get(st.source_id, 0)
+    # CONTEXT-END
     return res

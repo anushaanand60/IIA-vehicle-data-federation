@@ -48,7 +48,10 @@ import pytest
 
 # Conventional ports (mirrors sources/server_manager.py::SOURCE_CONFIGS and
 # scripts/configure_cluster.py::DEFAULT_PORTS).
-_PORTS = {"REG": 8001, "INS": 8002, "THEFT": 8003, "CAM": 8004, "PUC": 8005}
+# CONTEXT-REPLACED (R3: start_all(include_puc=True) now also serves DOCS on 8006, so the busy-port and health checks cover it):
+# _PORTS = {"REG": 8001, "INS": 8002, "THEFT": 8003, "CAM": 8004, "PUC": 8005}
+_PORTS = {"REG": 8001, "INS": 8002, "THEFT": 8003, "CAM": 8004, "PUC": 8005, "DOCS": 8006}
+# CONTEXT-END
 
 
 def _wait_for_health(ports: "dict[str, int]", timeout_s: float = 10.0) -> None:
