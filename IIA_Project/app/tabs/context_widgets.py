@@ -438,3 +438,40 @@ def record_line(r: Any, facts: Dict[str, Any], limit: int = 4) -> str:
             + "".join(f' <span style="color:var(--cv-ink-muted);">·</span> {esc(v)}' for v in vals) + "</p>"
             f'<p style="margin:2px 0 0;font-size:0.85rem;color:var(--cv-ink-muted);">{esc(via)}</p></div>')
 # CONTEXT-END
+
+
+# CONTEXT-ADDED (R2: free-text results give each agency's reason in words, not "REG: vehicle_colour = White")
+_WHERE = {"CAM": "seen by a camera in", "PUC": "pollution-tested in", "THEFT": "stolen in", "REG": "registered in",
+          "INS": "insured in"}
+_STATUS = {("stolen_status", "TRUE"): "reported stolen", ("stolen_status", "FALSE"): "not reported stolen",
+           ("insurance_status", "EXPIRED"): "insurance expired", ("insurance_status", "ACTIVE"): "insured"}
+_REASON = re.compile(r"^(\w+) (=|~|<=|>=|<|>) (.*?)(?: \((camera read [^,]+), identity ([\d.]+)\))?$")
+
+
+def plain_reasons(explanation: Iterable[str]) -> str:
+    """['REG: vehicle_colour = White; vehicle_model = Creta', 'THEFT: stolen_status = True; location ~ Gurugram']
+    -> 'Registration (RTO): white Creta · Police: reported stolen in Gurugram'. Unknown shapes are shown as written."""
+    out = []
+    for item in explanation or []:
+        sid, _, rest = str(item).partition(": ")
+        bits = []
+        for part in rest.split("; "):
+            m = _REASON.match(part.strip())
+            if not m:
+                bits.append(part.strip())
+                continue
+            attr, _op, val, read, ident = m.groups()
+            if (attr, val.upper()) in _STATUS:
+                bits.append(_STATUS[(attr, val.upper())])
+            elif attr == "location":
+                bits.append(f"{_WHERE.get(sid, 'in')} {val}" + (f" ({read}, {float(ident):.0%} sure it is this car)"
+                                                                 if read else ""))
+            elif attr.startswith("vehicle_"):
+                bits.append(val.lower() if attr == "vehicle_colour" else val)
+            else:
+                bits.append(f"{attr.replace('_', ' ')} {val}")
+        if sid == "THEFT" and "reported stolen" in bits and any(b.startswith("stolen in") for b in bits):
+            bits = [b.replace("stolen in", "reported stolen in") for b in bits if b != "reported stolen"]
+        out.append(f"{SOURCE_NAMES.get(sid, sid)}: {' '.join(bits) if sid == 'REG' else ', '.join(bits)}")
+    return " · ".join(out)
+# CONTEXT-END

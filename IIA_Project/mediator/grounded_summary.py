@@ -88,6 +88,59 @@ def _prompt(fs: List[Tuple[str, str]]) -> str:
             "Do not invent names, numbers or dates.\n\nFACTS:\n" + lines + "\n\nSUMMARY:")
 
 
+# CONTEXT-REPLACED (R3: the template sentences read like a log line ("Rto Notice D00547 ... is linked to PUC
+# POLLUTION_CERT"; "the text gives recovery as recovered on ... and, the database has OPEN"). They now read as
+# prose; "SID TABLE #pk" tokens stay so the page can swap them for plain nouns, and documents that matched only
+# generic words (RetrievedDoc.relevant False) are not summarised):
+# def template_sentences(context: ContextResult, docs: DocResult, fs: List[Tuple[str, str]]) -> List[Dict[str, Any]]:
+#     out: List[Dict[str, Any]] = []
+#     by_source: Dict[str, Any] = {}
+#     for r in sorted(context.rows, key=lambda r: -float(r.score or 0)):
+#         by_source.setdefault(r.source_id, r)
+#     if by_source:
+#         best = list(by_source.values())[0]
+#         out.append({"sentence": f"The context links {len(context.rows)} rows from {len(by_source)} sources; the "
+#                                 f"strongest is {best.source_id} {best.table} #{best.pk}.",
+#                     "citations": [row_cid(best.source_id, best.table, best.pk)]})
+#     for d in docs.docs[:2]:
+#         rows = ", ".join(f"{s} {t}" for s, t, _ in d.linked_rows[:3]) or "no row above the support threshold"
+#         out.append({"sentence": f"{d.doc_type.replace('_', ' ').title()} {d.doc_id} ('{d.title}') is linked to {rows}.",
+#                     "citations": [f"D:{d.doc_id}"] + [row_cid(*l) for l in d.linked_rows[:2]]})
+#     for d in docs.docs:
+#         for c in d.conflicts[:1]:
+#             out.append({"sentence": f"{d.doc_id} contradicts {c.db_source}: the text gives {c.attr} as "
+#                                     f"{c.text_value}, the database has {c.db_value}.", "citations": [f"D:{d.doc_id}"]})
+#     known = {cid for cid, _ in fs}
+#     return [s for s in out if all(c in known or c.startswith("D:") for c in s["citations"])][:MAX_SENTENCES]
+DOC_NOUNS = {"FIR_NARRATIVE": "The police FIR narrative", "SURVEYOR_REPORT": "The surveyor's report",
+             "RTO_NOTICE": "The RTO notice", "ACCIDENT_REPORT": "The accident report", "NEWS": "A news item",
+             "WITNESS_STATEMENT": "A witness statement", "CLAIM_FORM": "The claim form"}
+AGENCY_NOUNS = {"REG": "registration", "INS": "insurance", "THEFT": "police", "CAM": "camera", "PUC": "pollution"}
+ATTR_WORDS = {"recovered_on": "the recovery date", "loss_date": "the date of loss", "policy_until": "the policy end date",
+              "incident_date": "the theft date", "colour": "the colour", "make": "the make", "model": "the model"}
+_TRAIL = re.compile(r"[\s,]+(and|or|but|then|from|with)?[\s,]*$", re.I)
+
+
+def _doc_name(d: Any) -> str:
+    return f"{DOC_NOUNS.get(str(d.doc_type), 'Document')} {d.doc_id}"
+
+
+def _and(items: List[str]) -> str:
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
+
+
+def _conflict_sentence(d: Any, c: Any) -> str:
+    name = _doc_name(d)
+    if c.attr == "recovery":
+        clause = _TRAIL.sub("", str(c.text_value)).strip()
+        return f"{name} contradicts the police record: it says the vehicle was {clause}, but the case is still open."
+    if c.attr == "plate":
+        return f"{name} contradicts the registration: it prints the chassis next to a different plate, {c.text_value}."
+    what = ATTR_WORDS.get(c.attr, str(c.attr).replace("_", " "))
+    agency = AGENCY_NOUNS.get(str(c.db_source), str(c.db_source))
+    return f"{name} contradicts the {agency} record: it gives {what} as {c.text_value}; the record has {c.db_value}."
+
+
 def template_sentences(context: ContextResult, docs: DocResult, fs: List[Tuple[str, str]]) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
     by_source: Dict[str, Any] = {}
@@ -95,19 +148,19 @@ def template_sentences(context: ContextResult, docs: DocResult, fs: List[Tuple[s
         by_source.setdefault(r.source_id, r)
     if by_source:
         best = list(by_source.values())[0]
-        out.append({"sentence": f"The context links {len(context.rows)} rows from {len(by_source)} sources; the "
-                                f"strongest is {best.source_id} {best.table} #{best.pk}.",
+        out.append({"sentence": f"{len(context.rows)} records from {len(by_source)} agencies relate to this vehicle; "
+                                f"the closest is {best.source_id} {best.table} #{best.pk}.",
                     "citations": [row_cid(best.source_id, best.table, best.pk)]})
-    for d in docs.docs[:2]:
-        rows = ", ".join(f"{s} {t}" for s, t, _ in d.linked_rows[:3]) or "no row above the support threshold"
-        out.append({"sentence": f"{d.doc_type.replace('_', ' ').title()} {d.doc_id} ('{d.title}') is linked to {rows}.",
+    relevant = [d for d in docs.docs if getattr(d, "relevant", True)]
+    for d in [d for d in relevant if d.conflicts][:2]:   # a contradiction can change the verdict: it goes first
+        out.append({"sentence": _conflict_sentence(d, d.conflicts[0]), "citations": [f"D:{d.doc_id}"]})
+    for d in [d for d in relevant if not d.conflicts][:2]:
+        about = _and([f"{s} {t} #{k}" for s, t, k in d.linked_rows[:3]]) if d.linked_rows else "no record closely enough to link"
+        out.append({"sentence": f"{_doc_name(d)}, “{d.title}”, is about {about}.",
                     "citations": [f"D:{d.doc_id}"] + [row_cid(*l) for l in d.linked_rows[:2]]})
-    for d in docs.docs:
-        for c in d.conflicts[:1]:
-            out.append({"sentence": f"{d.doc_id} contradicts {c.db_source}: the text gives {c.attr} as "
-                                    f"{c.text_value}, the database has {c.db_value}.", "citations": [f"D:{d.doc_id}"]})
     known = {cid for cid, _ in fs}
     return [s for s in out if all(c in known or c.startswith("D:") for c in s["citations"])][:MAX_SENTENCES]
+# CONTEXT-END
 
 
 def summarise(context: ContextResult, docs: DocResult, use_llm: bool = True,

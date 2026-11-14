@@ -324,3 +324,14 @@ def test_bridge_steps_render_in_the_chain_and_as_a_dashed_graph_edge():
     q = w.context_dot([r], {"VEHICLE_REGISTRATION": "REG", "OWNERS": "REG", "POLICY_RECORDS": "INS"}, query="DL01AB1234")
     assert '"__q" -> "REG:VEHICLE_REGISTRATION#603"' in q and 'label="DL01AB1234"' in q
     # CONTEXT-END
+
+
+# CONTEXT-ADDED (R2: review - free-text reasons read in words)
+def test_plain_reasons_read_in_words():
+    from app.tabs import context_widgets as w
+    text = w.plain_reasons(["REG: vehicle_colour = White; vehicle_model = Creta",
+                            "THEFT: stolen_status = True; location ~ Gurugram",
+                            "CAM: location ~ Noida (camera read DLO5CD9B76, identity 0.96)", "odd shape"])
+    assert "white Creta" in text and "reported stolen in Gurugram" in text
+    assert "96% sure it is this car" in text and "vehicle_colour" not in text and "odd shape" in text
+# CONTEXT-END

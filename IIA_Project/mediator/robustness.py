@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from itertools import combinations
-from typing import Any, Dict, FrozenSet, List, Optional, Sequence, Set
+from typing import Any, Callable, Dict, FrozenSet, List, Optional, Sequence, Set  # CONTEXT-REPLACED (R2): + Callable
 
 from mediator import analytics
 from mediator import evidence as D
@@ -54,14 +54,17 @@ def _and(names: Sequence[str]) -> str:
     return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
 
 
-def summary_line(ko: Dict[str, Any]) -> str:
+# CONTEXT-REPLACED (R2: the page names agencies in words, so the caller may pass a namer; codes by default):
+# def summary_line(ko: Dict[str, Any]) -> str:
+def summary_line(ko: Dict[str, Any], name: Callable[[str], str] = str) -> str:
+# CONTEXT-END
     """'Holds without CAM, DOCS · Depends on THEFT and PUC' or the clear-verdict sentence."""
     if not ko["indicators"]:
         return (f"Clear verdict uses all {len(ko['asked'])} agencies; "
                 "losing any one would make it a lower bound")
     parts = []
     if ko["holds_without"]:
-        parts.append("Holds without " + ", ".join(ko["holds_without"]))
+        parts.append("Holds without " + ", ".join(map(name, ko["holds_without"])))  # CONTEXT-REPLACED (R2): was ", ".join(ko["holds_without"])
     if ko["depends"]:
-        parts.append("Depends on " + _and(ko["depends"]))
+        parts.append("Depends on " + _and([name(x) for x in ko["depends"]]))  # CONTEXT-REPLACED (R2): was _and(ko["depends"])
     return " · ".join(parts)

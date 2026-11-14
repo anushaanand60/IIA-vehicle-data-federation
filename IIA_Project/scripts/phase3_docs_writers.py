@@ -258,8 +258,14 @@ def rto_notice(w: Writer, v: V, kind: str, transfer: Optional[Dict[str, Any]] = 
 
 def puc_notice(w: Writer, v: V, cert: Dict[str, Any]) -> Doc:
     lapsed = str(cert.get("valid_upto") or "") < "2026-11-11"
+    # CONTEXT-REPLACED (R3: an "issued" notice was dated with the certificate's expiry, i.e. in the future; it is
+    # issued when the one-year certificate starts. A "lapsed" notice is issued at the lapse, as before):
+    # doc = Doc("RTO_NOTICE", f"PUC {'lapsed' if lapsed else 'issued'}: {canon(v['plate'])}", "", "Transport Dept. PUC cell",
+    #           str(cert.get("valid_upto") or "2026-01-01"), plates={canon(v["plate"]): 2},
+    upto = str(cert.get("valid_upto") or "2026-01-01")
     doc = Doc("RTO_NOTICE", f"PUC {'lapsed' if lapsed else 'issued'}: {canon(v['plate'])}", "", "Transport Dept. PUC cell",
-              str(cert.get("valid_upto") or "2026-01-01"), plates={canon(v["plate"]): 2},
+              upto if lapsed else shift(upto, -365), plates={canon(v["plate"]): 2},
+    # CONTEXT-END
               links=[("PUC", "POLLUTION_CERT", cert["cert_no"])] + _vehicle_links(v, owner=False))
     doc.body = (f"PUC certificate {cert['cert_no']} for vehicle {w.plate(v['plate'])} ({vehicle_phrase(w, v)}), "
                 f"tested at {cert.get('tested_at')}, emission norm {cert.get('emission_norm')}, valid up to "

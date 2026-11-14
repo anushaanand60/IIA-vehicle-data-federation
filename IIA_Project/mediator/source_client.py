@@ -33,6 +33,18 @@ def base_urls() -> Dict[str, str]:
     return urls
 
 
+# CONTEXT-ADDED (R2: one shared, thread-safe connection pool for every SourceClient in this process)
+_CLIENT: Optional[httpx.Client] = None
+
+
+def _http() -> httpx.Client:
+    global _CLIENT
+    if _CLIENT is None:
+        _CLIENT = httpx.Client(trust_env=False, limits=httpx.Limits(max_connections=64, max_keepalive_connections=32))
+    return _CLIENT
+# CONTEXT-END
+
+
 class SourceClient:
     """Counts what crosses the network per source. One instance per user query."""
 
@@ -56,7 +68,11 @@ class SourceClient:
             return None
         t0 = time.perf_counter()
         try:
-            resp = httpx.post(f"{url}{path}", json=payload, timeout=self.timeout_s)
+            # CONTEXT-REPLACED (R2: httpx.post() builds a new client -- and on Windows a new SSL context -- per call,
+            # ~250 ms each; one pooled client per process costs ~6 ms. It pools connections only, never responses):
+            # resp = httpx.post(f"{url}{path}", json=payload, timeout=self.timeout_s)
+            resp = _http().post(f"{url}{path}", json=payload, timeout=self.timeout_s)
+            # CONTEXT-END
         except httpx.TimeoutException:
             st.status, st.error = "TIMEOUT", f"no answer in {self.timeout_s:.0f} s"
             return None

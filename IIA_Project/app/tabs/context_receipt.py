@@ -82,7 +82,10 @@ def _robustness(res: Dict[str, Any]) -> None:
         return
     ko = robustness(res)
     titles = {w.get(i, "code"): w.get(i, "title") for i in res.get("indicators") or []}
-    _html(f'<p style="margin:4px 0;color:var(--cv-ink2);font-size:1rem;">{w.esc(R.summary_line(ko))}</p>')
+    # CONTEXT-REPLACED (R2: agency names in words, not REG/THEFT codes):
+    # _html(f'<p style="margin:4px 0;color:var(--cv-ink2);font-size:1rem;">{w.esc(R.summary_line(ko))}</p>')
+    _html(f'<p style="margin:4px 0;color:var(--cv-ink2);font-size:1rem;">{w.esc(R.summary_line(ko, agency))}</p>')
+    # CONTEXT-END
     with st.expander("Which agencies the verdict rests on"):
         if not ko["indicators"]:
             st.markdown("No warning sign was found. A clear verdict is only as complete as the agencies that "
