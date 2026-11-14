@@ -69,12 +69,15 @@ One page per rubric point. Every changed line in an existing file sits between `
 
 | Approach | Rows shipped | Round trips | Time |
 |---|---|---|---|
-| Ours (bounded) | 115–134 | 21–22 | ≈0.5 s |
-| B0: every match plus its full FK closure | 15,150–21,058 | 63–97 | 6–10 s |
-| B2: mediator walks FK edges itself with plain queries | ≈8,000 | 150–161 | ≈1 s |
+| Ours (bounded) | 107–134 | 15–22 | ≈0.3 s |
+| B0: every match plus its full FK closure | 12,762–21,058 | 63–97 | 6–10 s |
+| B2: mediator walks FK edges itself with plain queries | ≈8,000–8,300 | 150–161 | ≈0.6 s |
 
-That is about 130–180× fewer rows than B0. The Context Evaluation page has the scale (×1/×10/×100), exactness,
-sensitivity and convergence charts (`scripts/evaluate_context.py` → `data/context_eval.json`).
+That is about 110–180× fewer rows than B0, with the same answer. Against a central oracle that copies every
+match and re-ranks it with the same scores, our top rows agree on **100%** of the evaluation questions. One round
+of per-database top-n without the bound agrees on only 74%. The **Proof** page shows this, plus the scale chart
+(×1/×10/×100) and the document-ranking gain (`scripts/evaluate_context.py` → `data/context_eval.json`). Every
+search's own cost is printed at the bottom of its case file.
 
 ## R3 — unstructured data found with the context and integrated (3 marks)
 
@@ -100,8 +103,16 @@ sensitivity and convergence charts (`scripts/evaluate_context.py` → `data/cont
   | Search mode | nDCG@10 | Conflict recall |
   |---|---|---|
   | Question only | 0.89 | 0.87 |
-  | + context | 0.99 | 1.00 |
-  | + anchors | 0.998 | 1.00 |
+  | + context | 0.98 | 1.00 |
+  | + anchors | 0.97 | 1.00 |
+- **Documents are evidence the reader can open:**
+  - A relevance gate hides documents that matched only common words (for DL05CD9876, 5 of 8).
+  - Each card says what the document is, who issued it, when, and why it was retrieved.
+  - The reader shows the full text with every matched phrase numbered against the database record it supports or
+    contradicts.
+- **Who says what** (`mediator/claim_matrix.py`): each fact (colour, make, owner, theft date, case status, …) is set
+  against each agency *and each document*. Text is treated as one more source, with a trust-weighted
+  best-supported value.
 
 ## R4 — prompt, generated code, modified code (2 marks)
 
@@ -111,21 +122,37 @@ sensitivity and convergence charts (`scripts/evaluate_context.py` → `data/cont
   analytics, R3 documents, and the website.
 - **Modified code:** commits named `reviewed: …` plus the in-file markers. Example: review found that the
   "copy everything" baseline was silently truncated (a query-length limit and a timeout). The B0 figure was being
-  understated; fixing it made the comparison fair.
+  understated; fixing it made the comparison fair. A second example: review timed a search at 16 s and traced it to
+  the HTTP client building a new SSL context for every call on Windows (250 ms each). One pooled client made it
+  under 5 s; the database work itself was 0–70 ms per call.
 - To show the changes: `git log --oneline --grep="generated:\|reviewed:"`, then `git show <commit>`.
 
-## Demo in five steps (Context Explorer page)
+## The case file: what a viewer sees for one plate (Context Explorer)
 
-1. **`DL05CD9876`:**
-   - verdict;
-   - "each database sent only its best rows — N instead of M";
-   - the related records grouped by source, with their join paths;
-   - the graph.
-2. **The ALIBI plate from the examples:** the PUC test inside the stolen interval shows as a red warning sign; the
-   Documents tab shows the FIR narrative that says "recovered" while the FIR is still OPEN.
-3. **`stolen white Creta Gurgaon`:** the parsed chips, then ranked vehicles; open one to see its context.
-4. **Stop the INS wrapper and search again:** the answer is marked partial (a lower bound) instead of crashing.
-5. **Context Evaluation page:**
-   - rows moved per approach and scale;
-   - exactness against the central oracle;
-   - the threshold-convergence chart.
+One scroll, no tabs. Each block is a feature most federated projects do not have, and each is explainable in one
+sentence.
+
+| Block | What it shows | Rubric | Files |
+|---|---|---|---|
+| Header | The car itself (make, model, colour, owner), the verdict, and **which agencies the verdict rests on**: warning signs recomputed with each agency removed, in memory, nothing re-fetched | R2 | `mediator/robustness.py` |
+| What happened | 3–5 sentences, each citing the record or document it rests on; contradictions first | R3 | `mediator/grounded_summary.py` |
+| Timeline | One time axis rebuilt from five databases (four date formats) and the dates written in documents. The stolen period is a red band; a PUC test or camera hit inside it is ringed; a document that disagrees with a database is drawn as a dashed fork | R2 + R3 | `mediator/timeline.py` |
+| Warning signs | Cross-agency contradictions no single agency can see | R2 | `mediator/analytics.py` |
+| Documents | Only documents about this car; Open shows the full text with numbered links to records | R3 | `mediator/doc_retrieval.py`, `app/tabs/context_docs.py` |
+| Who says what | Fact × source grid, documents included | R3 | `mediator/claim_matrix.py` |
+| Related records | Records in words ("Insurance policy POL-000562 · TrustLine · valid till …"), with the FK path that reached each | R1 + R2 | `app/tabs/context_widgets.py` |
+| How it was found | **Why each record is here**: its FK path, the edge weights multiplied out, its score against the cut-off. **Leads not followed**: cross-database follow-ups the bound pruned, each with a Pursue button that follows it anyway and shows it could not change the answer | R2 | `mediator/context_explain.py`, `context_discovery.py` |
+| What this answer cost | An itemised bill per agency (rows, KB, round trips, "held back: nothing above x"), the live copy-everything count, and the stopping rule round by round | R2 | `app/tabs/context_receipt.py` |
+
+## Demo in six steps
+
+1. **`DL05CD9876`:** read the header line, then "What happened", then the timeline: a camera sighting 85 days
+   after the insurance cover ended. Scroll to "What this answer cost": 123 rows instead of 17,157.
+2. **`MH12EF0248`:** the timeline rings a PUC test inside the stolen band. Under Documents, open the police FIR
+   narrative: "recovered" is marked against the FIR that is still OPEN. "Who says what" shows the same dispute.
+3. **How it was found → Pursue a lead:** it fetches the pruned branch anyway; nothing it brings back beats the
+   cut-off. That is the stopping rule proven live.
+4. **`stolen white Creta Gurgaon`:** ranked vehicles, each with every agency's reason in words; open the first.
+5. **Stop the INS wrapper and search again:** the verdict says partial (a lower bound) instead of crashing.
+6. **Proof page:** same answer as copying everything (100%), how much less data moves as the data grows, and
+   better documents with the context.
