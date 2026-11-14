@@ -313,7 +313,9 @@ def test_nav_lists_seventeen_pages():
         "Investigate", "Challan Guard", "Watchlist", "Reports", "Citizen Check",
         "Plan Trace", "Catalog", "Matcher", "SQL Console", "Source Editor",
         "How it works", "Plate Match", "Data Cleansing", "Matching Evaluation", "Test scenarios",
-        "Context Explorer", "Context Evaluation"]
+        # CONTEXT-REPLACED (R2/R3: the evaluation page is labelled "Proof"): was "Context Explorer", "Context Evaluation"]
+        "Context Explorer", "Proof"]
+        # CONTEXT-END
     assert not at.tabs, "the nine-tab strip is replaced by the sidebar menu"
 
 

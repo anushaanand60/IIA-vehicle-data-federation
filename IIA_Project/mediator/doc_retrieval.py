@@ -28,6 +28,10 @@ from typing import Any, Dict, List, Mapping, Optional, Tuple
 from mediator.context_types import ContextResult, ContextRow, DocResult, RetrievedDoc
 from mediator.doc_conflicts import detect, to_date
 from mediator.doc_linking import CtxValue, find_mentions, link_rows, snippet
+# CONTEXT-ADDED (R3: the plate check in the "why" reasons)
+from mediator.context_types import Mention
+from sources.docs.textindex import canon
+# CONTEXT-END
 
 GRAPH_PATH = Path(__file__).resolve().parent.parent / "data" / "context_graph.json"
 TRUST = {"REG": 0.95, "INS": 0.90, "THEFT": 0.90, "CAM": 0.60, "PUC": 0.80}
@@ -43,6 +47,15 @@ EXTRA_ANCHORS: Dict[Tuple[str, str, str], Tuple[str, str]] = {
     ("PUC", "POLLUTION_CERT", "cert_no"): ("cert_no", "{}"),
 }
 _ENUM = re.compile(r"^[A-Z0-9_\-/.]+$")   # status codes, flags, norms: not descriptive text
+# CONTEXT-ADDED (R3: plain words for the "why was this document retrieved" reasons on each card)
+ANCHOR_WORDS = {"chassis": "the chassis number", "fir_no": "the FIR", "policy_no": "the policy",
+                "claim_no": "the claim", "cert_no": "the pollution certificate"}
+PLACE_WORDS = {"station": "the police station", "place": "the place", "insurer": "the insurer",
+               "address": "the address", "city": "the city"}
+PERSON_ROLE = {("REG", "OWNERS"): "owner", ("INS", "POLICY_HOLDERS"): "policy holder",
+               ("THEFT", "PERSONS"): "person in the police case"}
+VEHICLE_WORDS = ("make", "model", "colour")
+# CONTEXT-END
 
 
 def load_graph(path: Path = GRAPH_PATH) -> Dict[str, Any]:
@@ -164,9 +177,64 @@ def retrieve(context: ContextResult, k: int = 5, mode: str = "context+anchors", 
         mentions = find_mentions(text, values)
         linked = link_rows(mentions, values)
         linked_rows = [rows_by_key[(s, t, str(p))] for s, t, p in linked if (s, t, str(p)) in rows_by_key]
+        # CONTEXT-REPLACED (R3: the card shows the full body, issuer, date, plain reasons and the relevance gate):
+        # docs.append(RetrievedDoc(
+        #     doc_id=str(hit.get("doc_id")), doc_type=str(hit.get("doc_type") or ""), title=str(hit.get("title") or ""),
+        #     score=float(hit.get("score") or 0.0), snippet=snippet(text, mentions), mentions=mentions,
+        #     linked_rows=linked, conflicts=detect(str(hit.get("doc_id")), text, mentions, linked_rows, graph)))
         docs.append(RetrievedDoc(
             doc_id=str(hit.get("doc_id")), doc_type=str(hit.get("doc_type") or ""), title=str(hit.get("title") or ""),
             score=float(hit.get("score") or 0.0), snippet=snippet(text, mentions), mentions=mentions,
-            linked_rows=linked, conflicts=detect(str(hit.get("doc_id")), text, mentions, linked_rows, graph)))
+            linked_rows=linked, conflicts=detect(str(hit.get("doc_id")), text, mentions, linked_rows, graph),
+            body=text, issuer=hit.get("issuer"),
+            issued_on=None if hit.get("issued_on") is None else str(hit["issued_on"]),
+            why=why_reasons(mentions, values), relevant=is_relevant(mentions, linked, graph)))
+        # CONTEXT-END
     return DocResult(docs=docs, mode=mode, rows_shipped=len(body.get("rows", []) or []),
                      elapsed_ms=round((time.perf_counter() - started) * 1000, 1))
+
+
+# CONTEXT-ADDED (R3: relevance gate and plain-language reasons; ranking is unchanged, these only label a document)
+def lookup_table(graph: Mapping[str, Any], sid: str, table: str) -> bool:
+    """A reference table (insurers, stations, cameras): no plate, chassis, person or time column of its own."""
+    spec = graph.get("sources", {}).get(sid, {}).get("tables", {}).get(table, {})
+    return not any(spec.get(k) for k in ("plate", "chassis", "person", "time"))
+
+
+def is_relevant(mentions: List[Mention], linked: List[Tuple[str, str, Any]], graph: Mapping[str, Any]) -> bool:
+    # Relevant = it prints one of the case's identifiers, or it supports a record about the case itself. A link to a
+    # lookup row alone does not count: "TrustLine Insurers" names the insurer of thousands of cars, not this one.
+    return any(m.kind == "anchor" for m in mentions) or any(not lookup_table(graph, s, t) for s, t, _ in linked)
+
+
+def why_reasons(mentions: List[Mention], values: List[CtxValue]) -> List[str]:
+    """One plain sentence per kind of evidence: identifiers first, then by weight; make/model/colour fold into one."""
+    best: Dict[str, Mention] = {}
+    for m in mentions:
+        if m.attr not in best or m.weight > best[m.attr].weight:
+            best[m.attr] = m
+    rows = {(v.attr, v.value): v.rows for v in values}
+    out: List[Tuple[bool, float, str]] = []
+    for attr, m in best.items():
+        if attr in VEHICLE_WORDS:
+            continue
+        if attr == "plate":
+            text = "names this plate" + ("" if m.text == canon(m.matched_value).upper() else f" (written {m.text})")
+        elif m.kind == "anchor":
+            text = f"names {ANCHOR_WORDS.get(attr, 'the record')} {m.text}"
+        elif attr == "person":
+            role = next((PERSON_ROLE[(s, t)] for s, t, _ in rows.get((attr, m.matched_value), [])
+                         if (s, t) in PERSON_ROLE), "person")
+            text = f"names the {role} {m.text}"
+        elif attr == "date":
+            text = f"gives a date found in the records ({m.text})"
+        else:
+            text = f"names {PLACE_WORDS.get(attr, 'the')} {m.text}"
+        out.append((m.kind == "anchor", m.weight, text))
+    car = [a for a in VEHICLE_WORDS if a in best]
+    if car:
+        words = " and ".join(car) if len(car) < 3 else "make, model and colour"
+        described = " ".join(best[a].text for a in ("colour", "make", "model") if a in best)
+        out.append((False, sum(best[a].weight for a in car), f"same {words} ({described})"))
+    return [t for _, _, t in sorted(out, key=lambda p: (not p[0], -p[1]))]
+# CONTEXT-END

@@ -37,10 +37,17 @@ def _parse(text: str, use_llm: bool = True) -> ParsedQuery:
 
 def _context(complete: bool = True) -> ContextResult:
     rows = [
-        ContextRow("REG", "VEHICLE_REGISTRATION", 5, {"registration_no": PLATE, "make": "Hyundai"}, 0.95,
+        # CONTEXT-REPLACED (R2/R3: the case-file header reads make/model/colour and follows owner_id to the owner):
+        # ContextRow("REG", "VEHICLE_REGISTRATION", 5, {"registration_no": PLATE, "make": "Hyundai"}, 0.95,
+        #            ["VEHICLE_REGISTRATION#5"], 0),
+        # ContextRow("REG", "OWNERS", 7, {"full_name": "Asha Menon", "city": "Delhi"}, 0.71,
+        #            ["VEHICLE_REGISTRATION#5", "OWNERS#7"], 1),
+        ContextRow("REG", "VEHICLE_REGISTRATION", 5, {"registration_no": PLATE, "owner_id": 7, "make": "Hyundai",
+                                                      "model": "Creta", "colour": "White"}, 0.95,
                    ["VEHICLE_REGISTRATION#5"], 0),
-        ContextRow("REG", "OWNERS", 7, {"full_name": "Asha Menon", "city": "Delhi"}, 0.71,
+        ContextRow("REG", "OWNERS", 7, {"owner_id": 7, "full_name": "Asha Menon", "city": "Delhi"}, 0.71,
                    ["VEHICLE_REGISTRATION#5", "OWNERS#7"], 1),
+        # CONTEXT-END
         ContextRow("INS", "POLICY_RECORDS", 3, {"vehicle_reg": "DL-05-CD-9876", "policy_until": "12/07/2026"}, 0.88,
                    ["POLICY_RECORDS#3"], 0, via_bridge="plate", bridge_confidence=0.97),
         ContextRow("THEFT", "STOLEN_PROPERTY", 11, {"chassis_no": "MA3X"}, 0.4,
@@ -89,6 +96,11 @@ def install(monkeypatch: pytest.MonkeyPatch, *, complete: bool = True, discover_
             q, [RankedVehicle(PLATE, 0.91, {"REG": 0.5, "THEFT": 0.41}, explanation=["white Hyundai", "open FIR"]),
                 RankedVehicle("HR26EF4455", 0.77, {"REG": 0.77})], 14, 5, 40, 2000, 3)},
     }
+    # CONTEXT-ADDED (R2/R3: the case file reads column roles and printed ids from the real doc_retrieval helpers)
+    import mediator.doc_retrieval as real_docs
+    fns["mediator.doc_retrieval"].update(column_kind=real_docs.column_kind, EXTRA_ANCHORS=real_docs.EXTRA_ANCHORS,
+                                         load_graph=real_docs.load_graph)
+    # CONTEXT-END
     for name, attrs in fns.items():
         mod = types.ModuleType(name)
         for attr, fn in attrs.items():
@@ -134,18 +146,73 @@ def test_explorer_starts_with_only_the_search(monkeypatch):
     assert at.info and not at.tabs
 
 
-def test_plate_query_shows_verdict_counter_and_detail_tabs(monkeypatch):
+# CONTEXT-REPLACED (R2/R3: the five tabs became one case-file scroll; blocks from other modules are faked):
+# def test_plate_query_shows_verdict_counter_and_detail_tabs(monkeypatch):
+#     install(monkeypatch)
+#     at = ask(run(_explorer), "dl-05-cd-9876")
+#     page = html(at)
+#     assert "cv-banner--alert" in page and "2 warning sign(s), 1 serious" in page
+#     assert "Less data moved" in page and "instead of 480" in page
+#     assert "skipped by the bound: 5 of 7" in page
+#     assert [t.label for t in at.tabs][:1] == ["Related records (4)"] and len(at.tabs) == 5
+#     assert "VEHICLE_REGISTRATION → OWNERS" in page and "via plate" in page
+#     assert "Text and database disagree on case_status" in page and "<mark" in page
+#     assert at.get("graphviz_chart"), "context graph missing"
+#     assert not at.warning
+
+
+CASE_BLOCKS = {"tabs.context_receipt": ["render_robustness", "render_why", "render_receipt"],
+               "tabs.context_timeline": ["render_timeline"], "tabs.context_docs": ["render_documents", "render_claims"]}
+
+
+def install_blocks(monkeypatch: pytest.MonkeyPatch, *, broken: str = "") -> None:
+    """Fake case-file blocks: each writes its own name, so the test can read the page order."""
+    for name, fns in CASE_BLOCKS.items():
+        mod = types.ModuleType(name)
+        for fn in fns:
+            def draw(res: Any, _fn: str = fn) -> None:
+                import streamlit as st
+                if _fn == broken:
+                    raise ValueError("block exploded")
+                st.markdown(f"BLOCK:{_fn}:{res['plate']}")
+            setattr(mod, fn, draw)
+        monkeypatch.setitem(sys.modules, name, mod)
+
+
+def test_plate_query_is_one_case_file_in_order(monkeypatch):
     install(monkeypatch)
+    install_blocks(monkeypatch)
     at = ask(run(_explorer), "dl-05-cd-9876")
     page = html(at)
-    assert "cv-banner--alert" in page and "2 warning sign(s), 1 serious" in page
-    assert "Less data moved" in page and "instead of 480" in page
-    assert "skipped by the bound: 5 of 7" in page
-    assert [t.label for t in at.tabs][:1] == ["Related records (4)"] and len(at.tabs) == 5
-    assert "VEHICLE_REGISTRATION → OWNERS" in page and "via plate" in page
-    assert "Text and database disagree on case_status" in page and "<mark" in page
+    assert not at.tabs, "the five tabs are gone"
+    assert "Hyundai Creta · white · owner Asha Menon" in page
+    assert "cv-banner--alert" in page and "2 warning signs for DL05CD9876, 1 serious" in page
+    assert "Answered in" in page and "from 4 agencies" in page and "instead of 480" in page
+    order = ["DL05CD9876", "cv-banner--alert", "BLOCK:render_robustness", 'id="cx-what"', 'id="cx-timeline"',
+             "BLOCK:render_timeline", 'id="cx-signs"', 'id="cx-docs"', "BLOCK:render_documents", 'id="cx-claims"',
+             "BLOCK:render_claims", 'id="cx-records"', 'id="cx-how"', "BLOCK:render_why", 'id="cx-cost"',
+             "BLOCK:render_receipt"]
+    where = [page.find(m) for m in order]
+    assert -1 not in where and where == sorted(where), list(zip(order, where))
+    # plain language: citations, evidence and records are named, not TABLE #pk
+    assert "Insurance policy POL-000003" in page and "INS · POLICY_RECORDS" not in page
+    assert "Serious" in page and "found via Registration → Owner" in page and "found by matching the plate" in page
+    assert "valid till 12 Jul 2026" in page
+    assert [e.label for e in at.expander][:2] == ["Registration (RTO) · 2 records", "Insurance · 1 record"]
     assert at.get("graphviz_chart"), "context graph missing"
-    assert not at.warning
+    assert "Not available yet" not in page and not at.warning
+
+
+def test_missing_or_broken_case_blocks_degrade(monkeypatch):
+    install(monkeypatch)
+    install_blocks(monkeypatch, broken="render_timeline")
+    monkeypatch.setitem(sys.modules, "tabs.context_docs", None)
+    at = ask(run(_explorer), PLATE)
+    page = html(at)
+    assert "could not be drawn (ValueError)" in page and 'id="cx-docs"' not in page and 'id="cx-claims"' not in page
+    assert "context_docs.render_documents" in at.session_state["cx_result"]["missing"]
+    assert "Not available yet" in page and "BLOCK:render_receipt" in page
+# CONTEXT-END
 
 
 def test_free_text_ranks_vehicles_then_opens_one(monkeypatch):
@@ -162,14 +229,18 @@ def test_free_text_ranks_vehicles_then_opens_one(monkeypatch):
 def test_partial_answer_says_undetermined(monkeypatch):
     install(monkeypatch, complete=False)
     page = html(ask(run(_explorer), PLATE))
-    assert "cv-banner--undetermined" in page and "THEFT did not answer" in page
+    # CONTEXT-REPLACED (R2/R3: the agency is named in plain words): was "THEFT did not answer"
+    assert "cv-banner--undetermined" in page and "Police did not answer" in page
+    # CONTEXT-END
 
 
 def test_a_failing_discover_is_a_warning_not_a_crash(monkeypatch):
     install(monkeypatch, discover_raises=True)
     at = ask(run(_explorer), PLATE)
     assert any("wrapper exploded" in w.value for w in at.warning)
-    assert "could not be gathered" in html(at)
+    # CONTEXT-REPLACED (R2/R3: plain wording): assert "could not be gathered" in html(at)
+    assert "could not be asked" in html(at)
+    # CONTEXT-END
 
 
 @pytest.mark.parametrize("query", [PLATE, "stolen white Creta Gurgaon"])
@@ -202,18 +273,32 @@ def test_evaluation_script_output_renders(monkeypatch, tmp_path):
     path = tmp_path / "context_eval.json"
     path.write_text(json.dumps(data, default=str), encoding="utf-8")
     monkeypatch.setenv("CTX_EVAL_JSON", str(path))
+    # CONTEXT-REPLACED (R2/R3: the page is now "Proof": three claim cards, then "More measurements"):
+#     at = run(_evaluation)
+#     page = html(at)
+#     for title in ("Does it find what a central warehouse would find?", "Data moved as the data grows",
+#                   "Why the search can stop early", "How sensitive are the two knobs?", "Finding the best 10 vehicles",
+#                   "Documents: does the context help"):
+#         assert title in page, title
+#     # Hub seeds go straight to each wrapper's /context when discover() takes no seeds, so their share
+#     # depends on the real wrapper; the faked plate queries alone would be 100%.
+#     assert "Ours keeps" in page and "of the rows the central oracle picks" in page
+#     at.segmented_control(key="ce_metric").set_value("Latency").run()
+#     assert not at.exception, [e.value for e in at.exception]
+#     assert "lecture" not in page.lower() and "week" not in page.lower()
     at = run(_evaluation)
     page = html(at)
-    for title in ("Does it find what a central warehouse would find?", "Data moved as the data grows",
-                  "Why the search can stop early", "How sensitive are the two knobs?", "Finding the best 10 vehicles",
-                  "Documents: does the context help"):
-        assert title in page, title
-    # Hub seeds go straight to each wrapper's /context when discover() takes no seeds, so their share
-    # depends on the real wrapper; the faked plate queries alone would be 100%.
-    assert "Ours keeps" in page and "of the rows the central oracle picks" in page
-    at.segmented_control(key="ce_metric").set_value("Latency").run()
-    assert not at.exception, [e.value for e in at.exception]
+    order = ["Same answer as copying everything to one place?", "How much less data crosses the network?",
+             "Does the context find better documents?"]
+    where = [page.find(t) for t in order]
+    assert -1 not in where and where == sorted(where), list(zip(order, where))
+    assert page.count("How we measured it:") == 3 and "ranking quality (1 = perfect)" in page
+    assert [e.label for e in at.expander][0] == "More measurements"
+    assert "Does the ranking hold if the link weights are shaken?" in page or not data.get("stability_summary")
+    assert "B0" not in page and "nDCG" not in page.replace("Ranking quality is nDCG@10", "")
+    assert any(b.key == "ce_rerun" for b in at.button)
     assert "lecture" not in page.lower() and "week" not in page.lower()
+    # CONTEXT-END
 
 
 def test_evaluation_without_results_file(monkeypatch, tmp_path):

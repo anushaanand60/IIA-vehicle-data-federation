@@ -10,6 +10,7 @@ from __future__ import annotations
 import html
 import re
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Callable  # CONTEXT-ADDED (R2/R3: name functions passed in by the case file)
 
 from components import chip, readable_ink
 from theme import TOKENS
@@ -20,6 +21,11 @@ SOURCE_COLOURS = {"REG": "#2a78d6", "INS": "#eb6834", "THEFT": "#1baf7a", "CAM":
 SOURCE_NAMES = {"REG": "Registration (RTO)", "INS": "Insurance", "THEFT": "Police", "CAM": "Road cameras",
                 "PUC": "Pollution certificates", "DOCS": "Documents"}
 SEVERITY = {"high": ("bad", "High"), "medium": ("warn", "Medium"), "low": ("info", "Low")}
+# CONTEXT-ADDED (R2/R3: plain words for the case file)
+PLAIN_SEVERITY = {"High": "Serious", "Medium": "Worth a look", "Low": "Minor"}
+QUIET_CHIP = ("display:inline-block;margin-left:6px;padding:0 7px;border:1px solid var(--cv-line);border-radius:999px;"
+              "font-size:0.78rem;line-height:1.5;color:var(--cv-ink-muted);white-space:nowrap;vertical-align:1px;")
+# CONTEXT-END
 
 
 def get(obj: Any, name: str, default: Any = None) -> Any:
@@ -195,9 +201,19 @@ def source_legend(sources: Iterable[str]) -> str:
 
 # ------------------------------------------------------------------ analytics and documents
 
-def indicator_card(ind: Any) -> str:
+# CONTEXT-REPLACED (R2/R3: plain severity words and plain evidence names in the case file):
+# def indicator_card(ind: Any) -> str:
+#     variant, word = SEVERITY.get(str(get(ind, "severity", "low")).lower(), ("info", "Low"))
+#     evidence = "".join(chip(ref_text(e), source_colour(list(e)[0] if e else "")) for e in get(ind, "evidence") or [])
+def indicator_card(ind: Any, name: Optional[Callable[[Sequence[Any]], str]] = None) -> str:
     variant, word = SEVERITY.get(str(get(ind, "severity", "low")).lower(), ("info", "Low"))
-    evidence = "".join(chip(ref_text(e), source_colour(list(e)[0] if e else "")) for e in get(ind, "evidence") or [])
+    word = PLAIN_SEVERITY.get(word, word)
+    names: Dict[Tuple[str, str], int] = {}
+    for e in get(ind, "evidence") or []:   # two unnumbered camera sightings read as one chip "… ×2"
+        key = ((name or ref_text)(e), str(list(e)[0]) if e else "")
+        names[key] = names.get(key, 0) + 1
+    evidence = "".join(chip(n + (f" ×{k}" if k > 1 else ""), source_colour(sid)) for (n, sid), k in names.items())
+# CONTEXT-END
     return (f'<div class="cv-banner" style="border-left:5px solid var(--cv-{variant});">'
             f'<p class="cv-banner-title">{chip(word, TOKENS[variant])}&nbsp; {esc(get(ind, "title"))}</p>'
             f'<p style="margin:8px 0 6px;color:var(--cv-ink);font-size:1rem;">{esc(get(ind, "explanation"))}</p>'
@@ -235,12 +251,23 @@ def conflict_callout(c: Any) -> str:
             f'<span style="color:var(--cv-ink2);">{esc(get(c, "note"))}</span></div>')
 
 
-def summary_html(sentences: Iterable[Dict[str, Any]]) -> str:
+# CONTEXT-REPLACED (R2/R3: quiet citation chips with plain names; table jargon in the sentence read as nouns):
+# def summary_html(sentences: Iterable[Dict[str, Any]]) -> str:
+#     items = []
+#     for s in sentences or []:
+#         cites = "".join(f'<span class="cv-conf">{esc(_cite(c))}</span>' for c in s.get("citations") or [])
+#         items.append(f'<li>{esc(s.get("sentence"))}{cites}</li>')
+#     return f'<ul style="margin:0 0 0 18px;">{"".join(items)}</ul>' if items else ""
+def summary_html(sentences: Iterable[Dict[str, Any]], name: Optional[Callable[[Any], str]] = None,
+                 ident: Optional[Callable[[str, str, Any], Optional[str]]] = None) -> str:
     items = []
     for s in sentences or []:
-        cites = "".join(f'<span class="cv-conf">{esc(_cite(c))}</span>' for c in s.get("citations") or [])
-        items.append(f'<li>{esc(s.get("sentence"))}{cites}</li>')
-    return f'<ul style="margin:0 0 0 18px;">{"".join(items)}</ul>' if items else ""
+        cites = "".join(f'<span style="{QUIET_CHIP}">{esc((name or _cite)(c))}</span>' for c in s.get("citations") or [])
+        text = plain_text(str(s.get("sentence") or ""), ident) if name else str(s.get("sentence") or "")
+        items.append(f'<li style="margin:0 0 10px;">{esc(text)}{cites}</li>')
+    return (f'<ul style="margin:0 0 0 18px;line-height:1.6;font-size:1.05rem;">{"".join(items)}</ul>'
+            if items else "")
+# CONTEXT-END
 
 
 def _cite(c: Any) -> str:
@@ -269,3 +296,145 @@ def data_moved_sentence(rows: int, baseline: Optional[int], n: int) -> str:
         return (f"Each database ranked its own rows and sent only its best {n} — {rows:,} rows instead of "
                 f"{baseline:,} ({saved:.0%} less).")
     return f"Each database ranked its own rows and sent only its best {n} — {rows:,} rows in total."
+
+
+# ------------------------------------------------------------------ case file (plain language)
+# CONTEXT-ADDED (R2/R3: the Explorer as a single-scroll case file; every label a person reads is a noun, not a table)
+
+# table -> (what the record is, what its date means); one dict so the wording is reviewed in one place
+TABLE_NOUNS: Dict[str, Tuple[str, str]] = {
+    "VEHICLE_REGISTRATION": ("Registration", "registered"), "OWNERS": ("Owner", ""),
+    "VEHICLE_IDENTITY": ("Chassis and engine record", ""), "OWNERSHIP_HISTORY": ("Ownership transfer", "on"),
+    "OWNER_CONTACTS": ("Owner contact", ""), "POLICY_RECORDS": ("Insurance policy", "valid till"),
+    "INSURERS": ("Insurer", ""), "POLICY_HOLDERS": ("Policy holder", ""), "POLICY_PARTIES": ("Policy parties", ""),
+    "CLAIMS": ("Insurance claim", "loss on"), "CRIME_RECORDS": ("Police case", "reported"),
+    "STATIONS": ("Police station", ""), "STOLEN_PROPERTY": ("Stolen-property record", "recovered"),
+    "PERSONS": ("Person in police records", ""), "INCIDENT_PERSONS": ("Person named in a case", ""),
+    "PLATE_CAPTURES": ("Camera sighting", "seen"), "CAMERAS": ("Camera", ""), "ZONES": ("Camera zone", ""),
+    "CAMERA_ZONES": ("Camera road", ""), "CHALLANS": ("Traffic challan", "issued"),
+    "POLLUTION_CERT": ("Pollution certificate", "valid till"), "TEST_CENTRES": ("Pollution test centre", ""),
+    "ANALYSERS": ("Emission analyser", "calibrated"), "CERT_TESTS": ("Emission test", "tested"),
+}
+DOC_TYPES = {"FIR_NARRATIVE": "Police FIR", "SURVEYOR_REPORT": "Surveyor report", "RTO_NOTICE": "RTO notice",
+             "ACCIDENT_REPORT": "Accident report", "CLAIM_FORM": "Claim form", "PUC_NOTICE": "Pollution notice"}
+_TABLE_IN_TEXT = re.compile(r"\b(REG|INS|THEFT|CAM|PUC) ([A-Z][A-Z_]+)(?: #([\w\-]+))?")
+_ENUM = re.compile(r"^[A-Z]{3,}(?:_[A-Z]+)*$")
+IdentFn = Optional[Callable[[str, str, Any], Optional[str]]]
+
+
+def noun(table: Any) -> str:
+    t = str(table or "")
+    return TABLE_NOUNS.get(t, (t.replace("_", " ").capitalize(), ""))[0]
+
+
+def doc_noun(doc_type: Any) -> str:
+    t = str(doc_type or "Document")
+    return DOC_TYPES.get(t, t.replace("_", " ").capitalize())
+
+
+def plain_value(value: Any) -> str:
+    """THIRD_PARTY -> 'third party'; codes with digits or dashes (BS-IV, DL05) stay as written."""
+    text = str(value)
+    return text.replace("_", " ").lower() if _ENUM.match(text) else text
+
+
+def plain_day(d: Any) -> str:
+    return f"{d.day} {d:%b %Y}" if hasattr(d, "day") else str(d)
+
+
+def plain_ref(ref: Sequence[Any], ident: IdentFn = None) -> str:
+    """('INS', 'POLICY_RECORDS', 562) -> 'Insurance policy POL-000562'."""
+    sid, table, pk = (list(ref) + [None, None, None])[:3]
+    shown = ident(str(sid), str(table), pk) if ident else pk   # with an ident function, None hides a bare id
+    return f"{noun(table)} {shown}".strip() if shown not in (None, "") else noun(table)
+
+
+def plain_text(sentence: str, ident: IdentFn = None) -> str:
+    """'... the strongest is INS POLICY_RECORDS #562.' -> '... the strongest is Insurance policy POL-000562.'"""
+    def sub(m: "re.Match[str]") -> str:
+        if m.group(2) not in TABLE_NOUNS:
+            return m.group(0)
+        return plain_ref([m.group(1), m.group(2), m.group(3)], ident) if m.group(3) else noun(m.group(2))
+    return _TABLE_IN_TEXT.sub(sub, sentence)
+
+
+def cite_namer(docs: Any, ident: IdentFn = None) -> Callable[[Any], str]:
+    """A citation ('INS:POLICY_RECORDS#562', ['INS', ...], {'doc_id': 'D00312'}, 'D:D00312') -> a plain name."""
+    types = {str(get(d, "doc_id")): get(d, "doc_type") for d in (get(docs, "docs") or [])}
+
+    def name(c: Any) -> str:
+        if isinstance(c, (list, tuple)):
+            return plain_ref(c, ident)
+        if isinstance(c, dict):
+            if c.get("doc_id"):
+                return f"{doc_noun(types.get(str(c['doc_id'])))} {c['doc_id']}"
+            return plain_ref([c.get("source_id"), c.get("table"), c.get("pk")], ident)
+        src, table, pk = node_label(c)
+        if not pk:   # 'D:D00312' -- a document id, not a row
+            return f"{doc_noun(types.get(table))} {table}"
+        return plain_ref([src, table, pk], ident)
+    return name
+
+
+def heading(title: str, anchor: str, lead: Optional[str] = None) -> str:
+    lead_html = f'<p class="cv-lead">{esc(lead)}</p>' if lead else ""
+    return f'<p class="cv-h" id="{esc(anchor)}" style="margin-top:28px;">{esc(title)}</p>{lead_html}'
+
+
+def toc(items: Sequence[Tuple[str, str]]) -> str:
+    links = " · ".join(f'<a href="#{esc(a)}" style="color:var(--cv-ink2);text-decoration:none;">{esc(t)}</a>'
+                       for t, a in items)
+    return f'<p style="font-size:0.9rem;color:var(--cv-ink-muted);margin:6px 0 0;">{links}</p>' if items else ""
+
+
+def case_header(plate: str, ident: Dict[str, str]) -> str:
+    car = " ".join(ident[k] for k in ("make", "model") if ident.get(k))
+    parts = [p for p in (car, ident.get("colour", "").lower(), f"owner {ident['owner']}" if ident.get("owner") else "")
+             if p]
+    line = (f'<p style="margin:2px 0 0;font-size:1.15rem;color:var(--cv-ink2);">{esc(" · ".join(parts))}</p>'
+            if parts else '<p style="margin:2px 0 0;font-size:1rem;color:var(--cv-ink-muted);">'
+                          'No registration record was found for this plate.</p>')
+    return (f'<div style="margin:8px 0 14px;"><p style="margin:0;font-family:var(--cv-font-mono);font-size:2.4rem;'
+            f'font-weight:700;letter-spacing:.04em;color:var(--cv-brand);line-height:1.1;">{esc(plate)}</p>{line}</div>')
+
+
+def facts_line(elapsed_ms: Optional[float], agencies: int, rows: Optional[int], baseline: Optional[int],
+               baseline_measured_earlier: bool = False) -> str:
+    """'Answered in 0.6 s from 6 agencies · 115 rows moved instead of 17,157' -- one sentence, not a KPI wall."""
+    bits = []
+    if elapsed_ms is not None:
+        bits.append(f"Answered in {elapsed_ms / 1000:.1f} s from {agencies} agenc{'y' if agencies == 1 else 'ies'}")
+    if rows is not None:
+        bits.append(f"{rows:,} rows moved" + (f" instead of {baseline:,}" if baseline else "")
+                    + (" (that figure from the last evaluation run)" if baseline and baseline_measured_earlier else ""))
+    return f'<p style="margin:8px 0 0;font-size:0.95rem;color:var(--cv-ink-muted);">{esc(" · ".join(bits))}</p>'
+
+
+def found_via(path: Sequence[Any], via_bridge: Optional[str] = None) -> str:
+    """'found via Registration → Owner → same person → Policy holder' (plain nouns; muted)."""
+    steps = []
+    for p in path or []:
+        hop = BRIDGE_RE.match(str(p))
+        steps.append(f"same {hop.group(1)}" if hop else noun(node_label(p)[1]))
+    if len(steps) <= 1:
+        return "found directly from the plate" if not via_bridge else f"found by matching the {via_bridge}"
+    return "found via " + " → ".join(steps)
+
+
+def record_line(r: Any, facts: Dict[str, Any], limit: int = 4) -> str:
+    """'Insurance policy POL-000562 · TrustLine Insurers · third party · valid till 10 Jun 2026', with a muted
+    'found via …' line underneath. At most `limit` values after the noun; internal ids are never shown."""
+    table = get(r, "table")
+    head = noun(table) + (f" {facts['id']}" if facts.get("id") else "")
+    when = TABLE_NOUNS.get(str(table), ("", ""))[1]
+    vals = list(facts.get("linked") or [])
+    if facts.get("date") is not None:
+        vals.append(f"{when} {plain_day(facts['date'])}".strip())
+    vals += [plain_value(v) for v in facts.get("values") or [] if v not in vals]
+    vals = list(dict.fromkeys(vals))[:limit]
+    via = found_via(get(r, "path") or [], get(r, "via_bridge"))
+    return (f'<div style="padding:10px 0;border-bottom:1px solid var(--cv-line);">'
+            f'<p style="margin:0;font-size:1.02rem;"><b>{esc(head)}</b>'
+            + "".join(f' <span style="color:var(--cv-ink-muted);">·</span> {esc(v)}' for v in vals) + "</p>"
+            f'<p style="margin:2px 0 0;font-size:0.85rem;color:var(--cv-ink-muted);">{esc(via)}</p></div>')
+# CONTEXT-END

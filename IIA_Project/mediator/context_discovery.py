@@ -24,6 +24,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional, Tuple
 
 from mediator.context_bridges import FrontierState, shipping_estimate, spawn_states
+from mediator.context_explain import hop_weights, note_leads, top_leads  # CONTEXT-ADDED (R2: admission proof, leads)
 from mediator.context_people import resolve_pending
 from mediator.context_probe import probe_baseline  # CONTEXT-ADDED (R2: B0 size without shipping B0)
 from mediator.context_scoring import (canon, load_graph, max_relevance, noisy_plate_sources, ocr_variants_conf,
@@ -77,6 +78,9 @@ class _Run:
         self.persons: list = []
         self.hints: Dict[str, int] = {}
         self.trace: List[Dict[str, Any]] = []
+        # CONTEXT-ADDED (R2: "leads not followed" -- best pruned state per key, with the round it was pruned in)
+        self.leads: Dict[Tuple[str, str, str], Tuple[FrontierState, int]] = {}
+        # CONTEXT-END
 
     # ------------------------------------------------------------------ calls
     def call(self, requests: Dict[str, Any]) -> None:
@@ -123,6 +127,9 @@ class _Run:
             key = (sid, r["table"], str(r.get("pk_key", r["pk"])))
             row = ContextRow(sid, r["table"], r["pk"], r.get("row", {}), float(r["score"]), path, hops,
                              st.bridge if st else None, st.confidence if st else 1.0)
+            # CONTEXT-ADDED (R2: the source already reports each row's affinity -- keep it for the admission proof)
+            row.affinity = float(r["affinity"]) if r.get("affinity") is not None else None
+            # CONTEXT-END
             if key not in self.rows or row.score > self.rows[key].score:
                 self.rows[key] = row
             if b := r.get("bridge"):
@@ -237,7 +244,12 @@ def discover(query: Any, n: int = 10, theta: float = 0.05, mode: str = "bounded"
                  "expanded": len(expand), "pruned": len(live) - len(expand), "deepened": deepen,
                  "person_queries": _trips(client) - before, "rows_so_far": len(run.rows)}
         run.trace.append(entry)
+        # CONTEXT-ADDED (R2: record follow-ups not taken -- bound <= tau_n now, or every live one when the loop stops)
+        if mode != "closure":
+            note_leads(run.leads, [f for f in live if f.bound <= tau], rounds)
+        # CONTEXT-END
         if (not expand and not deepen) or rounds >= max_rounds or (mode == "closure" and rounds >= 2):
+            note_leads(run.leads, expand if mode != "closure" else [], rounds)  # CONTEXT-ADDED (R2: max_rounds leftovers)
             stopped = ("closure: every bridge followed once" if mode == "closure"
                        else "bound" if not expand and not deepen else "max_rounds")
             break
@@ -291,5 +303,11 @@ def _finish(run: _Run, client: Any, rounds: int, stopped: str, t0: float,
     res.trace, res.hints_shipped = run.trace, dict(run.hints)
     for st in stats:
         st.hints_shipped = run.hints.get(st.source_id, 0)
+    # CONTEXT-END
+    # CONTEXT-ADDED (R2: admission proof -- per-hop weights from the weights each source reported; pruned leads)
+    for r in res.rows if run.mode != "closure" else []:
+        r.edge_weights = hop_weights(r.path, r.source_id, run.ew, run.graph,
+                                     r.affinity / max(1e-9, r.bridge_confidence) if r.affinity else None)
+    res.pruned_leads = top_leads(run.leads, run.sent, run.graph)
     # CONTEXT-END
     return res

@@ -189,3 +189,42 @@ def test_validate_reworded_dates():
     known = {"PUC:POLLUTION_CERT#X": "PUC POLLUTION_CERT: valid_upto=2027-02-28, tested_at=Noida"}
     assert validate("Valid until 28th February 2027. [PUC:POLLUTION_CERT#X]", known)
     assert validate("Valid until 27th February 2027. [PUC:POLLUTION_CERT#X]", known) is None
+
+
+# CONTEXT-ADDED (R3: the case-file card - full body, issuer, date, plain reasons, relevance gate)
+def test_retrieved_docs_carry_body_issuer_and_date(client: FakeClient):
+    res = retrieve(context(), k=8, client=client)
+    stored = {d[0]: d for d in DOCS}
+    for d in res.docs:
+        assert d.body == stored[d.doc_id][3] and d.issuer == stored[d.doc_id][4]
+        assert d.issued_on == stored[d.doc_id][5]
+        assert all(d.body[m.start:m.end] == m.text for m in d.mentions)
+
+
+def test_why_reasons_are_plain_and_identifiers_come_first(client: FakeClient):
+    r1 = doc(retrieve(context(), k=8, client=client), "R1")
+    assert r1.why[0].startswith("names the FIR FIR00028/2026") or r1.why[0].startswith("names this plate")
+    assert "names this plate (written DLO5CD9B76)" in r1.why
+    assert any(w.startswith("names the owner Priya Singh") for w in r1.why)
+    assert any(w.startswith("same make, model and colour") for w in r1.why)
+    assert not any("_" in w for w in r1.why)                 # no raw codes or column names
+
+
+def test_relevance_gate(client: FakeClient):
+    res = retrieve(context(), k=10, client=client)
+    flags = {d.doc_id: d.relevant for d in res.docs}
+    assert flags["R1"] and flags["R4"] and flags["R5"]       # print the plate / the policy number
+    assert flags["R2"]                                       # no identifier, but supports the owner row
+    assert flags.get("R3") is not True and flags.get("R6") is not True   # other car / generic words only
+
+
+def test_a_lookup_row_alone_is_not_relevance():
+    from mediator.context_types import Mention
+    from mediator.doc_retrieval import is_relevant, load_graph, lookup_table
+    graph = load_graph()
+    assert lookup_table(graph, "INS", "INSURERS") and lookup_table(graph, "THEFT", "STATIONS")
+    assert not lookup_table(graph, "INS", "POLICY_RECORDS") and not lookup_table(graph, "REG", "OWNERS")
+    insurer = [Mention("TrustLine Insurers", "descriptor", "insurer", 0, 18, "TrustLine Insurers", 1.0, 0.5)]
+    assert not is_relevant(insurer, [("INS", "INSURERS", 4)], graph)
+    assert is_relevant(insurer, [("INS", "POLICY_RECORDS", 562)], graph)
+# CONTEXT-END

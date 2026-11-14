@@ -44,6 +44,10 @@ class ContextRow:
     hops: int
     via_bridge: Optional[str] = None     # "chassis" | "plate" | "person" when reached from another source
     bridge_confidence: float = 1.0
+    # CONTEXT-ADDED (R2: "why is this row here?" - the admission proof shown in the case file)
+    affinity: Optional[float] = None     # product of edge weights along `path` (x bridge confidence), before relevance
+    edge_weights: List[float] = field(default_factory=list)   # one weight per FK hop in `path`
+    # CONTEXT-END
 
 
 @dataclass
@@ -80,6 +84,10 @@ class ContextResult:
     elapsed_ms: float = 0.0
     trace: List[Dict[str, Any]] = field(default_factory=list)   # per round: tau_n, max frontier bound, expanded, pruned
     hints_shipped: Dict[str, int] = field(default_factory=dict) # source_id -> bridge-only hint rows shipped
+    # CONTEXT-ADDED (R2: "leads not followed" - cross-database follow-ups the bound pruned, kept for the case file;
+    # each: {"target", "attr", "value", "bound", "from": (source_id, table, pk) | None, "round"})
+    pruned_leads: List[Dict[str, Any]] = field(default_factory=list)
+    # CONTEXT-END
 
 
 # ------------------------------------------------------------------ entity top-k (R2, free text)
@@ -142,6 +150,13 @@ class RetrievedDoc:
     mentions: List[Mention] = field(default_factory=list)
     linked_rows: List[Tuple[str, str, Any]] = field(default_factory=list)   # (source_id, table, pk)
     conflicts: List[Conflict] = field(default_factory=list)
+    # CONTEXT-ADDED (R3: documents are opened in full in the case file, and say who issued them, when, and why)
+    body: str = ""                       # full text as stored by DOCS; Mention.start/end index into it
+    issuer: Optional[str] = None
+    issued_on: Optional[str] = None      # ISO date string as DOCS stores it
+    why: List[str] = field(default_factory=list)   # plain-language reasons it was retrieved, strongest first
+    relevant: bool = True                # False: matched only generic words, no anchor and no linked row
+    # CONTEXT-END
 
 
 @dataclass

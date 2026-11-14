@@ -230,6 +230,8 @@ def _sidebar() -> str:
   background:rgba(255,255,255,.18);}
 /* CONTEXT-ADDED (R2/R3: fifth group heading, Context (16) = Context Explorer + Context Evaluation;
    positions follow PAGES in app/app.py) */
+/* CONTEXT-ADDED (R2/R3: "Context Evaluation" is labelled "Proof" in the menu; same position 17, no CSS change) */
+/* CONTEXT-END */
 [data-testid="stSidebar"] [role="radiogroup"] > label:nth-of-type(16) {margin-top:38px;}
 [data-testid="stSidebar"] [role="radiogroup"] > label:nth-of-type(16)::before {
   content:"Context"; position:absolute; top:-24px; left:14px;}

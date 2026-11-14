@@ -13,6 +13,9 @@ import importlib
 import json
 import re
 import time
+# CONTEXT-ADDED (R2/R3: graph metadata is read once per process; it is schema, not source data)
+from functools import lru_cache
+# CONTEXT-END
 from typing import Any, Callable, Dict, List, Optional
 
 N_PER_SOURCE = 10      # each database's budget: its best 10 rows
@@ -124,3 +127,151 @@ def moved(ctx: Any, plate: Optional[str] = None) -> Dict[str, Any]:
     return {"rows": sum(s.rows_shipped for s in stats), "bytes": sum(s.bytes_shipped for s in stats),
             "round_trips": sum(s.round_trips for s in stats), "baseline": baseline, "baseline_from_eval": from_eval,
             "pruned": pruned, "considered": considered, "stats": stats}
+
+
+# CONTEXT-ADDED (R2/R3: the case file's identity line and plain record lines, read through data/context_graph.json --
+# which column is the make, the date, the linked name -- so no source column is named here; only the source id "REG"
+# (the registration agency, already fixed in context_widgets.SOURCE_ORDER) picks whose row is the identity)
+GRAPH_FILE = __import__("pathlib").Path(__file__).resolve().parents[2] / "data" / "context_graph.json"
+
+
+@lru_cache(maxsize=1)
+def _graph_file(mtime: float) -> Dict[str, Any]:
+    return json.loads(GRAPH_FILE.read_text(encoding="utf-8"))
+
+
+def graph() -> Dict[str, Any]:
+    """The context graph (schema metadata, not source data); re-read when the file changes, never cached as empty."""
+    try:
+        return _graph_file(GRAPH_FILE.stat().st_mtime)
+    except (OSError, ValueError):
+        return {"sources": {}}
+
+
+def _spec(sid: str, table: str) -> Dict[str, Any]:
+    return (graph().get("sources", {}).get(sid, {}).get("tables", {}).get(table) or {})
+
+
+def _edges(sid: str, table: str) -> List[Dict[str, Any]]:
+    return [e for e in graph().get("sources", {}).get(sid, {}).get("edges", []) or [] if e.get("from") == table]
+
+
+def _kind(col: str, spec: Dict[str, Any]) -> Optional[str]:
+    try:
+        from mediator.doc_retrieval import column_kind  # noqa: PLC0415
+        return column_kind(col, spec)
+    except Exception:
+        return None
+
+
+def _anchor(sid: str, table: str, row: Dict[str, Any]) -> Optional[tuple]:
+    """(column, printed identifier) when the agency prints this record's number on paper, e.g. POL-000562."""
+    try:
+        from mediator.doc_retrieval import EXTRA_ANCHORS  # noqa: PLC0415
+    except Exception:
+        return None
+    for (s, t, col), (_, pattern) in EXTRA_ANCHORS.items():
+        if (s, t) == (sid, table) and row.get(col) not in (None, ""):
+            try:
+                return col, pattern.format(int(row[col])) if "d}" in pattern else pattern.format(row[col])
+            except (TypeError, ValueError):
+                return col, str(row[col])
+    return None
+
+
+def display_id(sid: str, table: str, pk: Any) -> Optional[str]:
+    """How a record is named to a person: the printed number if the agency has one, a natural key as is,
+    nothing for a bare surrogate number (an internal id means nothing to a reader)."""
+    pk_col = _spec(sid, table).get("pk")
+    hit = _anchor(sid, table, {pk_col: pk}) if isinstance(pk_col, str) else None
+    if hit:
+        return hit[1]
+    text = "|".join(map(str, pk)) if isinstance(pk, (list, tuple)) else str(pk if pk is not None else "")
+    return None if not text or text.isdigit() else text
+
+
+def _name_of(row: Any) -> Optional[str]:
+    """A linked record's readable name (insurer, camera place, station, person), by column role."""
+    spec = _spec(row.source_id, row.table)
+    for col in [(spec.get("person") or {}).get("name")] + list(spec.get("text") or []):
+        if col and row.row.get(col) not in (None, "") and (
+                col == (spec.get("person") or {}).get("name") or _kind(col, spec) not in (None, "make", "model", "colour")):
+            return str(row.row[col])
+    return None
+
+
+def _target(rows: List[Any], sid: str, edge: Dict[str, Any], value: Any) -> Optional[Any]:
+    return next((x for x in rows if x.source_id == sid and x.table == edge.get("to")
+                 and value is not None and str(x.row.get(edge.get("to_col"))) == str(value)), None)
+
+
+def record_facts(r: Any, rows: List[Any]) -> Dict[str, Any]:
+    """What one context row says, for a plain line: printed id, names of the records it points to,
+    its date (decoded with the graph's time format), and its remaining descriptive values."""
+    spec, row = _spec(r.source_id, r.table), dict(r.row or {})
+    hit = _anchor(r.source_id, r.table, row)
+    used = {hit[0]} if hit else set()
+    ident = hit[1] if hit else display_id(r.source_id, r.table, r.pk)
+    linked = [n for e in _edges(r.source_id, r.table)
+              for t in [_target(rows, r.source_id, e, row.get(e.get("col")))] if t for n in [_name_of(t)] if n]
+    when, tcol = None, spec.get("time") or {}
+    if tcol.get("col") and row.get(tcol["col"]) not in (None, ""):
+        try:
+            from mediator.doc_conflicts import to_date  # noqa: PLC0415
+            when = to_date(row[tcol["col"]], tcol.get("fmt", "iso_date"))
+        except Exception:
+            when = None
+    person = spec.get("person") or {}
+    private = {person.get(k) for k in ("mobile", "pincode") if person.get(k)}   # contact details stay out of the line
+    values = [str(row[c]) for c in spec.get("text") or [] if c not in used | private and row.get(c) not in (None, "")
+              and not isinstance(row[c], (bool, int, float))]   # 0/1 flags and numbers read as noise
+    return {"id": ident, "linked": linked, "date": when, "values": values}
+
+
+def identity(ctx: Any) -> Dict[str, str]:
+    """make / model / colour / owner from the registration row in the context (empty when it is not there)."""
+    rows = list(getattr(ctx, "rows", None) or [])
+    reg = next((r for r in rows if r.source_id == "REG" and _spec("REG", r.table).get("plate")), None)
+    if reg is None:
+        return {}
+    spec, out = _spec("REG", reg.table), {}
+    for col in spec.get("text") or []:
+        kind = _kind(col, spec)
+        if kind in ("make", "model", "colour") and reg.row.get(col) not in (None, ""):
+            out.setdefault(kind, str(reg.row[col]))
+    owner = _owner(reg, rows, getattr(ctx, "persons", None) or [])
+    if owner:
+        out["owner"] = owner
+    return out
+
+
+def _owner(reg: Any, rows: List[Any], persons: List[Any]) -> Optional[str]:
+    """The owner's name: the owner row if it was shipped, else the person cluster holding it, else a person row
+    the context reached from that owner across the person bridge (same person by record linkage)."""
+    for e in _edges(reg.source_id, reg.table):
+        name_col = (_spec(reg.source_id, e.get("to", "")).get("person") or {}).get("name")
+        key = reg.row.get(e.get("col"))
+        if not name_col or key is None:
+            continue
+        hit = _target(rows, reg.source_id, e, key)
+        if hit is not None and hit.row.get(name_col):
+            return str(hit.row[name_col])
+        for p in persons:
+            if any((m[0], m[1], str(m[2])) == (reg.source_id, e["to"], str(key)) for m in p.members):
+                if (p.canonical or {}).get("name"):
+                    return str(p.canonical["name"])
+        mark = f"{e['to']}#{key}"
+        for r in rows:
+            path = list(r.path or [])
+            if r.via_bridge == "person" and mark in path and path.index(mark) + 2 == len(path) - 1:
+                pname = (_spec(r.source_id, r.table).get("person") or {}).get("name")
+                if pname and r.row.get(pname):
+                    return str(r.row[pname])
+    return None
+
+
+def agencies_answered(res: Dict[str, Any]) -> int:
+    ctx = res.get("context")
+    n = len({s.source_id for s in getattr(ctx, "stats", None) or [] if s.status == "OK"})
+    return n + (1 if res.get("docs") is not None else 0)   # the document store answers as an agency of its own
+# CONTEXT-END

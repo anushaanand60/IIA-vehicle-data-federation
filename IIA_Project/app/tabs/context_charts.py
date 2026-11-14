@@ -15,8 +15,12 @@ from theme import FONTS, TOKENS
 
 MODE_ORDER = ["bounded", "closure", "topn", "mediator"]
 MODE_COLOURS = {"bounded": "#2a78d6", "closure": "#eb6834", "topn": "#1baf7a", "mediator": "#eda100"}
-MODE_SHORT = {"bounded": "Ours (bounded)", "closure": "B0 every match + closure", "topn": "B1 top-n, no bounds",
-              "mediator": "B2 mediator walks the FKs"}
+# CONTEXT-REPLACED (R2/R3: plain names on the Proof page; B0/B1/B2 stay in the docs, not on screen):
+# MODE_SHORT = {"bounded": "Ours (bounded)", "closure": "B0 every match + closure", "topn": "B1 top-n, no bounds",
+#               "mediator": "B2 mediator walks the FKs"}
+MODE_SHORT = {"bounded": "Ours", "closure": "Copy everything", "topn": "Each agency's top rows, one round",
+              "mediator": "Mediator follows every link"}
+# CONTEXT-END
 SERIES = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300"]   # generic fixed order
 
 
@@ -65,7 +69,9 @@ def scale_chart(records: Sequence[Dict[str, Any]], field: str, y_title: str, log
         else:
             fig.add_trace(go.Bar(x=labels, y=ys, name=MODE_SHORT[m], marker_color=MODE_COLOURS[m],
                                  marker_line_color=TOKENS["panel"], marker_line_width=2, hovertemplate=hover))
-    return _layout(fig, y_title, "generator scale", log=log)
+    # CONTEXT-REPLACED (R2/R3: plain axis title): return _layout(fig, y_title, "generator scale", log=log)
+    return _layout(fig, y_title, "size of the data (× the demo data)", log=log)
+    # CONTEXT-END
 
 
 def convergence_chart(trace: Sequence[Dict[str, Any]]) -> go.Figure:
@@ -92,7 +98,10 @@ def sensitivity_chart(rows: Sequence[Dict[str, Any]], field: str, y_title: str, 
         fig.add_trace(go.Scatter(x=[str(t) for t in thetas], y=ys, name=f"n = {n}", mode="lines+markers",
                                  line=dict(color=SERIES[i], width=2), marker=dict(size=9),
                                  hovertemplate=f"n = {n}, θ = %{{x}}: %{{y:,.3g}}<extra></extra>"))
-    return _layout(fig, y_title, "θ (stop following a path below this affinity)", y_range=[0, 1.05] if pct else None)
+    # CONTEXT-REPLACED (R2/R3: plain axis title):
+    # return _layout(fig, y_title, "θ (stop following a path below this affinity)", y_range=[0, 1.05] if pct else None)
+    return _layout(fig, y_title, "weakest link still followed (θ)", y_range=[0, 1.05] if pct else None)
+    # CONTEXT-END
 
 
 def grouped_bars(categories: Sequence[str], series: Dict[str, Sequence[Optional[float]]], y_title: str,

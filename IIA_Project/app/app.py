@@ -94,7 +94,10 @@ PAGES: dict[str, object] = {
     "Test scenarios": scenarios_tab.render,
     # CONTEXT-ADDED (R2/R3: two phase-3 pages = a fifth group, Context (16-17); heading drawn in theme.py)
     "Context Explorer": context_explorer.render,
-    "Context Evaluation": context_evaluation.render,
+    # CONTEXT-REPLACED (R2/R3: the evaluation page is now the short "Proof" page; same module, new menu label):
+    # "Context Evaluation": context_evaluation.render,
+    "Proof": context_evaluation.render,
+    # CONTEXT-END
     # CONTEXT-END
 }
 
