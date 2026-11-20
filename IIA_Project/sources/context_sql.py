@@ -243,7 +243,12 @@ FROM hint_top h WHERE h.rn_h <= {hint_cap}"""
         sql = sql[: sql.index("SELECT 'row' AS kind")] + """
 SELECT 'count' AS kind, NULL AS battr, NULL AS bval, (SELECT COUNT(*) FROM node) AS n_rows
 UNION ALL
-SELECT DISTINCT 'value', s.battr, s.bval, NULL FROM scored s WHERE s.battr IS NOT NULL AND s.bval IS NOT NULL"""
+SELECT DISTINCT 'value', s.battr, s.bval, 0 FROM scored s WHERE s.battr IS NOT NULL AND s.bval IS NOT NULL"""
+    # CONTEXT-END
+    # CONTEXT-REPLACED (R2: on PostgreSQL, SELECT DISTINCT resolves a bare NULL to text, which cannot UNION with the
+    # COUNT(*) bigint column -> 400 "UNION types bigint and text cannot be matched" on CAM. 0 is an integer on every
+    # engine; n_rows is read only from the 'count' row, so the value rows' 0 is never used):
+    # SELECT DISTINCT 'value', s.battr, s.bval, NULL FROM scored s WHERE s.battr IS NOT NULL AND s.bval IS NOT NULL
     # CONTEXT-END
     return sql, b.params
 
